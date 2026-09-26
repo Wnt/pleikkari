@@ -10,6 +10,7 @@
 #include <VrApi.h>
 #include <VrApi_Helpers.h>
 #include <VrApi_Input.h>
+#include "vr-environment.h" // PLE-603: the room around the screen (plain GLES, no VrApi)
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -79,11 +80,15 @@ void main() { color = vec4(texture(picture, texcoord).rgb, 1.0); }
 }
 
 // VrApi matrices are row-major; GLES requires column-major and transpose=GL_FALSE.
-void matrixUniform(GLint location, const ovrMatrix4f &matrix) {
-    float columnMajor[16];
+void columnMajor(float out[16], const ovrMatrix4f &matrix) {
     for(int row = 0; row < 4; ++row)
-        for(int col = 0; col < 4; ++col) columnMajor[col * 4 + row] = matrix.M[row][col];
-    glUniformMatrix4fv(location, 1, GL_FALSE, columnMajor);
+        for(int col = 0; col < 4; ++col) out[col * 4 + row] = matrix.M[row][col];
+}
+
+void matrixUniform(GLint location, const ovrMatrix4f &matrix) {
+    float columns[16];
+    columnMajor(columns, matrix);
+    glUniformMatrix4fv(location, 1, GL_FALSE, columns);
 }
 
 struct Cinema {
@@ -101,9 +106,14 @@ struct Cinema {
     bool recenterPending = true;
     ovrMatrix4f screen = ovrMatrix4f_CreateIdentity();
     unsigned previousButtons = 0;
+    // PLE-603: the environment around the screen; null while the setting is "plain", so
+    // the default picture is this file's own path, untouched.
+    PleikkariVrEnvironment *environment = nullptr;
+    long long environmentStatsFrame = 0;
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
+        if(environment) pleikkari_vr_environment_destroy(environment);
         if(vr) vrapi_LeaveVrMode(vr);
         for(auto &eye : eyes) {
             if(!eye.fbos.empty()) glDeleteFramebuffers(static_cast<GLsizei>(eye.fbos.size()), eye.fbos.data());
@@ -210,6 +220,25 @@ struct Cinema {
         return glGetError() == GL_NO_ERROR;
     }
 
+    // PLE-603: apply the environment setting. PLAIN drops the renderer so nothing of it
+    // runs per frame; anything else builds or reconfigures it on this GL thread. A room
+    // that fails to build logs and falls back to the plain screen rather than failing VR.
+    void setEnvironment(const PleikkariVrEnvironmentConfig &requested) {
+        PleikkariVrEnvironmentConfig config = requested;
+        pleikkari_vr_environment_config_clamp(&config);
+        if(config.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN) {
+            if(environment) { pleikkari_vr_environment_destroy(environment); environment = nullptr; }
+            LOGI("Environment plain: black plus the 3 m / 80 degree screen");
+            return;
+        }
+        if(environment) pleikkari_vr_environment_set_config(environment, &config);
+        else environment = pleikkari_vr_environment_create(&config, GL_TEXTURE_EXTERNAL_OES);
+        if(!environment) { LOGE("Environment %s failed to build; keeping the plain screen", pleikkari_vr_environment_name(config.environment)); return; }
+        LOGI("Environment %s: screen %.2f m away, %.2f m wide, curve radius %.2f m, %.2f m above eyes, glow %.2f, room light %.2f",
+            pleikkari_vr_environment_name(config.environment), config.screen_distance_m, config.screen_width_m,
+            config.screen_curve_radius_m, config.screen_height_offset_m, config.glow, config.room_light);
+    }
+
     static void textureParams(GLenum target) {
         glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -244,7 +273,7 @@ struct Cinema {
         return action;
     }
 
-    int draw(const float *textureTransform, bool showVideo, bool menu) {
+    int draw(const float *textureTransform, bool showVideo, bool menu, bool newFrame) {
         ++frameIndex;
         double time = vrapi_GetPredictedDisplayTime(vr, frameIndex);
         ovrTracking2 tracking = vrapi_GetPredictedTracking2(vr, time);
@@ -275,13 +304,30 @@ struct Cinema {
         }
         glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
         glBindVertexArray(vao);
+        // PLE-603: refresh the room's 8x8 glow map from the video once per new frame (GPU only).
+        if(environment) pleikkari_vr_environment_begin_frame(environment, video, textureTransform, showVideo, newFrame);
         for(int eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
             Eye &eye = eyes[eyeIndex];
             glBindFramebuffer(GL_FRAMEBUFFER, eye.fbos[eye.index]);
             glViewport(0, 0, width, height);
-            glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
             const auto &view = tracking.Eye[eyeIndex].ViewMatrix;
             const auto &projection = tracking.Eye[eyeIndex].ProjectionMatrix;
+            if(environment) {
+                // The room and its screen sit in the recentred screen space, so their view is
+                // view * screen, exactly the strip's model-view. draw_eye clears the eye and
+                // draws the room and the picture; this pass then only adds the message strip.
+                float roomView[16], eyeProjection[16];
+                columnMajor(roomView, ovrMatrix4f_Multiply(&view, &screen));
+                columnMajor(eyeProjection, projection);
+                pleikkari_vr_environment_draw_eye(environment, roomView, eyeProjection, video, textureTransform, showVideo);
+                glUseProgram(p);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(showVideo ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, showVideo ? video : message);
+                glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
+                glBindVertexArray(vao);
+            } else {
+                glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+            }
             // Menu follows the head so Back always makes it reachable even when looking away.
             auto model = menu ? ovrMatrix4f_CreateFromQuaternion(&tracking.HeadPose.Pose.Orientation) : screen;
             if(menu) {
@@ -291,7 +337,7 @@ struct Cinema {
             auto mv = ovrMatrix4f_Multiply(&view, &model);
             auto mvp = ovrMatrix4f_Multiply(&projection, &mv);
             matrixUniform(glGetUniformLocation(p, "mvp"), mvp);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, (Segments + 1) * 2);
+            if(!environment || !showVideo) glDrawArrays(GL_TRIANGLE_STRIP, 0, (Segments + 1) * 2);
             // Keep an opaque black border for timewarp's out-of-range sampling.
             glEnable(GL_SCISSOR_TEST);
             glScissor(0, 0, width, 1); glClear(GL_COLOR_BUFFER_BIT);
@@ -305,6 +351,13 @@ struct Cinema {
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
+        if(environment && frameIndex - environmentStatsFrame >= 720) {
+            // Every 10 s at 72 Hz: the room's GPU cost (GL_EXT_disjoint_timer_query, one frame late).
+            PleikkariVrEnvironmentStats stats{};
+            pleikkari_vr_environment_stats(environment, &stats);
+            LOGI("Environment frame: gpu %.3f ms, %u draws, %u triangles", stats.gpu_ns / 1e6, stats.draw_calls, stats.triangles);
+            environmentStatsFrame = frameIndex;
+        }
         glFlush();
         const ovrLayerHeader2 *layers[] = {&layer.Header};
         ovrSubmitFrameDescription2 frame{};
@@ -330,10 +383,24 @@ extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jl
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(messageTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->message; }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) { return cinema(h)->input(); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { cinema(h)->recenterPending = true; }
-extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h, jfloatArray transform, jboolean video, jboolean menu) {
+extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h, jfloatArray transform, jboolean video, jboolean menu, jboolean newFrame) {
     float matrix[16];
     env->GetFloatArrayRegion(transform, 0, 16, matrix);
     if(env->ExceptionCheck()) return -1;
-    return cinema(h)->draw(matrix, video, menu);
+    return cinema(h)->draw(matrix, video, menu, newFrame);
+}
+// PLE-603: Preferences.vrEnvironmentConfig().toNative(), in metres and unit fractions.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(setEnvironment)(JNIEnv *, jobject, jlong h, jint environment, jfloat distance,
+        jfloat widthM, jfloat radius, jfloat heightOffset, jfloat glow, jfloat roomLight) {
+    PleikkariVrEnvironmentConfig config;
+    pleikkari_vr_environment_config_default(&config);
+    config.environment = static_cast<PleikkariVrEnvironmentKind>(environment);
+    config.screen_distance_m = distance;
+    config.screen_width_m = widthM;
+    config.screen_curve_radius_m = radius;
+    config.screen_height_offset_m = heightOffset;
+    config.glow = glow;
+    config.room_light = roomLight;
+    cinema(h)->setEnvironment(config);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(destroy)(JNIEnv *, jobject, jlong h) { delete cinema(h); }

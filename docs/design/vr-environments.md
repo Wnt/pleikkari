@@ -170,30 +170,36 @@ above eye level -200 to 200 cm (default 0), glow 0 to 100 (default 60), room lig
 
 ## 7. Integration with PLE-602
 
-The renderer has no VrApi dependency. `StreamVrActivity`'s native `Cinema` keeps its
-EGL context, swapchains and the decoder's external texture, and calls, in its render
-loop:
+The renderer has no VrApi dependency. PLE-602's native `Cinema` (`src/vr/cpp/vr-cinema.cpp`,
+built only with the licensed SDK present) keeps its EGL context, swapchains and the
+decoder's external texture, and since this ticket calls the renderer as follows:
 
-```c
-PleikkariVrEnvironmentConfig cfg;            // from Preferences.vrEnvironmentConfig()
-env = pleikkari_vr_environment_create(&cfg, GL_TEXTURE_EXTERNAL_OES);   // once
-pleikkari_vr_environment_begin_frame(env, video, transform, hasFrame, newFrame);  // per frame
-for each eye: bind eye FBO, glViewport; pleikkari_vr_environment_draw_eye(env, viewColumnMajor, projColumnMajor, video, transform, hasFrame);
-pleikkari_vr_environment_destroy(env);      // on the GL thread, before LeaveVrMode
-```
+- `StreamVrActivity`'s render thread reads `Preferences.vrEnvironmentConfig().toNative()`
+  once after `VrCinemaNative.create` and passes it to `VrCinemaNative.setEnvironment`.
+  With the default `plain` the native side drops the renderer and its own path runs
+  byte for byte as PLE-602 landed it (rule 4). Anything else builds the renderer on
+  the GL thread with `pleikkari_vr_environment_create(&cfg, GL_TEXTURE_EXTERNAL_OES)`;
+  a room that fails to build logs `GoCinema` and keeps the plain screen.
+- `Cinema::draw` calls `begin_frame` once per frame before the eye loop (the glow map
+  refresh, only when the Kotlin side reports a new decoder frame), then per eye binds
+  the swapchain framebuffer, sets the viewport and calls `draw_eye` with
+  `view * screen` (the recentred screen space PLE-602 already uses for its strip) and
+  the eye projection, both transposed to column-major. `draw_eye` clears the eye,
+  attaches its own depth renderbuffer for the duration of the eye and detaches it after
+  an invalidate, draws the room and the picture (or a dark idle panel without video).
+  PLE-602's own strip pass then draws only when there is a message or the menu, on top.
+- Every 720 frames (10 s at 72 Hz) `Cinema` logs `Environment frame: gpu … ms, … draws,
+  … triangles` from `pleikkari_vr_environment_stats` (`GL_EXT_disjoint_timer_query`, one
+  frame late). PLE-601's rounds should read it next to the frame timing.
+- `pleikkari_vr_environment_destroy` runs in `Cinema`'s destructor, on the GL thread,
+  before `vrapi_LeaveVrMode`.
 
-`draw_eye` clears the eye buffer, attaches its own depth renderbuffer to the bound eye
-framebuffer for the duration of the eye and detaches it after an invalidate, so the
-colour-only swapchain stays as it is. With `environment == plain` it draws exactly the
-black clear plus the strip PLE-602 draws today, so the activity can either call it only
-for non-plain environments or delegate always. The VrApi `ovrMatrix4f` is row-major;
-transpose before passing. Timer queries (`GL_EXT_disjoint_timer_query`) give the GPU
-time of the environment and picture per frame through `pleikkari_vr_environment_stats`;
-PLE-601's rounds should log it next to the frame timing.
-
-The library is `libpleikkari-vr-environment.so` (CMake target
-`pleikkari-vr-environment`); link it from the `pleikkari-vr` target and `System.loadLibrary`
-it before `pleikkari-vr`.
+The library is `libpleikkari-vr-environment.so` (CMake target `pleikkari-vr-environment`,
+built for every ABI in every gate); `pleikkari-vr` links it and `GoVrSupport` loads it
+before `pleikkari-vr`. Because the Oculus Mobile SDK is not on CT950, the wired
+`vr-cinema.cpp` was type-checked with the NDK's clang against a local stub of the VrApi
+declarations it uses (under `build/`, never committed), not compiled against the SDK;
+PLE-608 compiles the real thing.
 
 ## 8. Verification
 

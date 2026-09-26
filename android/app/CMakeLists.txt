@@ -160,6 +160,8 @@ if(CHIAKI_GO_VR AND ANDROID_ABI STREQUAL "arm64-v8a")
     set_target_properties(vrapi PROPERTIES IMPORTED_LOCATION
         "${CHIAKI_GO_VR_SDK}/VrApi/Libs/Android/arm64-v8a/Release/libvrapi.so")
     add_library(pleikkari-vr SHARED src/vr/cpp/vr-cinema.cpp)
-    target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include")
-    target_link_libraries(pleikkari-vr vrapi android log EGL GLESv3)
+    set_target_properties(pleikkari-vr PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+    # PLE-603: the environment renderer draws the room and the curved screen into the eye buffers.
+    target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include" src/main/cpp)
+    target_link_libraries(pleikkari-vr vrapi pleikkari-vr-environment android log EGL GLESv3)
 endif()
