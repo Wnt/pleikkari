@@ -3,6 +3,7 @@
 package fi.madekivi.pleikkari.stream
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -30,6 +31,7 @@ import kotlin.math.sin
  *
  * The eye buffers are 1024x1024 each (the Go's suggested eye texture size) regardless of
  * the window, so a frame time measured here is the cost the VrApi activity will pay.
+ * A second am start with another environment while the preview runs switches to it.
  */
 class VrEnvironmentPreviewActivity : Activity()
 {
@@ -70,6 +72,15 @@ class VrEnvironmentPreviewActivity : Activity()
 		surfaceView = view
 		setContentView(view)
 		Log.i(TAG, "preview of ${config.environment.value}: $config")
+	}
+
+	override fun onNewIntent(intent: Intent)
+	{
+		super.onNewIntent(intent)
+		// am start delivers to the running instance; rebuild so the new environment shows.
+		setIntent(intent)
+		if(intent.hasExtra(EXTRA_ENVIRONMENT))
+			recreate()
 	}
 
 	override fun onResume()
