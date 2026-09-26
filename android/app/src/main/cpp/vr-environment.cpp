@@ -724,7 +724,7 @@ struct PleikkariVrEnvironment
 	GLuint glowVao = 0;
 	GLuint glowTexture = 0, glowFbo = 0;
 	GLuint depthRenderbuffer = 0;
-	int depthWidth = 0, depthHeight = 0;
+	int depthWidth = 0, depthHeight = 0, depthSamples = 0;
 
 	GLsizei roomIndexCount = 0, skyVertexCount = 0, starCount = 0, screenVertexCount = 0;
 	size_t roomVertexBytes = 0;
@@ -997,15 +997,28 @@ void PleikkariVrEnvironment::rebuild_geometry()
 
 void PleikkariVrEnvironment::ensure_depth(GLint width, GLint height)
 {
-	if(depthRenderbuffer && depthWidth == width && depthHeight == height)
+	// PLE-615: the depth buffer's sample count must match the colour attachment's, which
+	// is multisampled render-to-texture when the VrApi cinema's eye FBO uses 4x MSAA.
+	GLint samples = 0;
+	glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_SAMPLES_EXT, &samples);
+	glGetError(); // not a texture attachment, or no extension: single-sampled
+	static const auto storageMultisample = reinterpret_cast<PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC>(
+		eglGetProcAddress("glRenderbufferStorageMultisampleEXT"));
+	if(!storageMultisample)
+		samples = 0;
+	if(depthRenderbuffer && depthWidth == width && depthHeight == height && depthSamples == samples)
 		return;
 	if(!depthRenderbuffer)
 		glGenRenderbuffers(1, &depthRenderbuffer);
 	glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+	if(samples > 1)
+		storageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT16, width, height);
+	else
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 	depthWidth = width;
 	depthHeight = height;
+	depthSamples = samples;
 }
 
 void PleikkariVrEnvironment::timer_begin()
