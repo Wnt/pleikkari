@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- PLE-603: debug-only stereo preview of the VR environments on a flat display.
+             Exported so `adb shell am start` can open it on the emulator, the phone or the
+             Go's 2D panel; it shows a synthetic picture and holds no app data. -->
+        <activity
+            android:name=".stream.VrEnvironmentPreviewActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+    </application>
+</manifest>

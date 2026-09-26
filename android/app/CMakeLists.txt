@@ -54,6 +54,18 @@ target_link_libraries(chiaki-jni "${ANDROID_LIB_LOG}" "${ANDROID_LIB_MEDIANDK}" 
 find_package (oboe REQUIRED CONFIG)
 target_link_libraries(chiaki-jni oboe::oboe)
 
+# PLE-603: the VR environment renderer (plain GLES 3.0, no VrApi) as its own small library
+# so it compiles in every gate and can be loaded on demand. PLE-602's VrApi library links
+# it and calls the C API in vr-environment.h; the JNI file serves the debug preview.
+add_library(pleikkari-vr-environment SHARED
+        src/main/cpp/vr-environment.h
+        src/main/cpp/vr-environment.cpp
+        src/main/cpp/vr-environment-jni.cpp)
+set_target_properties(pleikkari-vr-environment PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+find_library(ANDROID_LIB_EGL_ENV EGL)
+find_library(ANDROID_LIB_GLESV3_ENV GLESv3)
+target_link_libraries(pleikkari-vr-environment "${ANDROID_LIB_LOG}" "${ANDROID_LIB_EGL_ENV}" "${ANDROID_LIB_GLESV3_ENV}")
+
 # PLE-524: adb-shell sanitizer stress tests (android/native-stress/README.md). Built only when
 # -PchiakiNativeStress=thread|address|hwaddress sets CHIAKI_ANDROID_NATIVE_STRESS; never packaged
 # into the APK, and chiaki-jni itself is left uninstrumented (use -PchiakiSanitizer for that).
@@ -148,6 +160,8 @@ if(CHIAKI_GO_VR AND ANDROID_ABI STREQUAL "arm64-v8a")
     set_target_properties(vrapi PROPERTIES IMPORTED_LOCATION
         "${CHIAKI_GO_VR_SDK}/VrApi/Libs/Android/arm64-v8a/Release/libvrapi.so")
     add_library(pleikkari-vr SHARED src/vr/cpp/vr-cinema.cpp)
-    target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include")
-    target_link_libraries(pleikkari-vr vrapi android log EGL GLESv3)
+    set_target_properties(pleikkari-vr PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+    # PLE-603: the environment renderer draws the room and the curved screen into the eye buffers.
+    target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include" src/main/cpp)
+    target_link_libraries(pleikkari-vr vrapi pleikkari-vr-environment android log EGL GLESv3)
 endif()

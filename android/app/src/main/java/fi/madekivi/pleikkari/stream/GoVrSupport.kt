@@ -19,6 +19,7 @@ object GoVrSupport {
     private val loadable: Boolean by lazy {
         try {
             System.loadLibrary("vrapi")
+            System.loadLibrary("pleikkari-vr-environment") // PLE-603: linked by pleikkari-vr
             System.loadLibrary("pleikkari-vr")
             true
         } catch(error: LinkageError) {
