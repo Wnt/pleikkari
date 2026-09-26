@@ -219,17 +219,35 @@ PLE-608 compiles the real thing.
   ```
 
   Proven on the API 36 emulator (software GL, so the `gpu=` field reads 0 there: no
-  timer-query extension). On the Go it must run on the 2D panel inside Oculus TV with
-  the headset worn: while the Go sleeps off-head, `am start` is refused ("current
-  activity is being kept for the user") and the power key does not wake it over adb, so
-  the Adreno 530 cost is still unmeasured as of 2026-09-26.
+  timer-query extension). Measured on the Go on 2026-09-27 (serial 1KWPH802EW8203,
+  Adreno 530, the preview on the 2D panel at 72 Hz, two 1024x1024 eyes per frame,
+  no MSAA, `logcat -s VrEnvPreview`; captures and log excerpts under
+  `build/proof/go-preview-*.png` and `build/proof/go-logcat-*.txt` of the worktree):
+
+  | Environment | GPU per stereo frame | Draw calls | Triangles |
+  | --- | ---: | ---: | ---: |
+  | plain | 0.8 to 1.1 ms | 2 | 192 |
+  | cinema | 4.8 to 5.6 ms | 5 | 16,805 |
+  | void | 6.3 to 7.2 ms | 9 | 1,925 |
+  | terrace | 7.6 to 8.5 ms | 11 | 5,109 |
+
+  The rooms are fill-rate bound, not triangle bound: the void and the terrace cost more
+  than the cinema with a tenth of its triangles because their dome shader runs on every
+  pixel of both eyes (plus the star and halo overdraw), while the cinema's walls are
+  cheap lit triangles. At 72 Hz the frame is 13.9 ms and TimeWarp needs its share, so
+  the cinema is the room to A/B first; the void and terrace need the dome drawn after
+  the picture with the depth test on (skipping the picture's pixels) before they are
+  cheap enough for a stream (§9).
 - Unit: `VrEnvironmentConfigTest` pins the defaults to PLE-602's screen, the clamps and
   the native enum values.
 
 ## 9. Open points
 
-- The frame-time cost on the Go must be read from the preview activity's log and later
-  from the VrApi activity; the host numbers say nothing about the Adreno.
+- The void and the terrace cost 6 to 8.5 ms of GPU per stereo frame on the Adreno 530
+  (§8): draw the dome and stars after the picture with the depth test on, and consider
+  a cheaper sky shader, before offering them in a stream. The cost inside the VrApi
+  activity (eye buffer size, MSAA, TimeWarp alongside) is still to be read from the
+  `Environment frame:` lines in `logcat -s GoCinema` once PLE-608 builds it.
 - MSAA and the eye buffer size belong to PLE-602's swapchain; the environments assume
   4x MSAA like Skybox and look aliased without it.
 - A cylinder compositor layer for the picture (`VRAPI_LAYER_TYPE_CYLINDER2`) would
