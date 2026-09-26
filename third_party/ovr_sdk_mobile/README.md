@@ -96,13 +96,17 @@ Before treating this as a usable Go build:
    screencap -p`. Confirm entry from the Oculus TV task, actual 72 Hz, tracking,
    video orientation, controller mappings, sound, disconnect, headset sleep/wake,
    Home/resume, and repeated sessions without stale surfaces.
-4. Verify Library recognition on the installed Go firmware. `vr_only` is deliberately
-   **activity-local** as requested; there is no package-level VR classification or
-   second phone launcher. Whether this firmware recognizes that metadata without
-   application-level tagging remains unproven. The existing local Skybox APK uses
-   application-level tagging and a MAIN/INFO activity, so this is a real compatibility
-   question, not evidence that the requested activity-local tag suffices. Do not move it to the application
-   node without reconciling the baseline/phone requirement.
+4. Library classification (PLE-609, resolved): Pleikkari stays a 2D app in the
+   Go Library and opens in Oculus TV; the VR cinema is entered from Connect with
+   the setting on. The Go's own VR apps are classified per package: the installed
+   `games.b4t.epicrollercoasters.oculus` tags `vr_only` on the **application** node
+   and exposes its activity as MAIN/INFO with no LAUNCHER (aapt2 dump of the APK
+   pulled from Go `192.168.1.202:5555`, 2026-09-26). Doing the same here would
+   launch `MainActivity` in VR mode, which breaks the Oculus TV path and the phone
+   launcher, and a separate VR entry would need its own console picker in VrApi.
+   So `vr_only` stays **activity-local**. Do not move it to the application node,
+   and do not add a MAIN/INFO activity, unless a separate Go-only package or build
+   variant owns them.
 5. PLE-601 owns operator-in-headset A/B latency rounds. Keep codec, stream profile,
    pacing preferences, network and pad identical; record the two paths and actual
    refresh cadence. Do not infer a latency improvement from removing Oculus TV.
