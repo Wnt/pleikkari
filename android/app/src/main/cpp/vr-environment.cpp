@@ -153,7 +153,12 @@ uniform float uRoomLight;
 uniform float uAmbient;
 out mediump vec3 vColor;
 void main() {
-	gl_Position = uViewProj * vec4(aPos, 1.0);
+	vec4 clip = uViewProj * vec4(aPos, 1.0);
+	// PLE-622: keep the room off the far plane. The sky is drawn after it at z = w and
+	// depth-tested LEQUAL; a distant floor that rounds to 1.0 in a 16-bit buffer would
+	// otherwise let the sky paint over it.
+	clip.z = min(clip.z, clip.w * 0.9998);
+	gl_Position = clip;
 	vec3 d = aPos - uScreenCenter;
 	float rl2 = dot(uScreenRight, uScreenRight);
 	float ul2 = dot(uScreenUp, uScreenUp);
@@ -206,20 +211,15 @@ in mediump vec3 vDir;
 uniform vec3 uZenith;
 uniform vec3 uHorizon;
 uniform vec3 uGround;
-uniform vec3 uGlowAverage;
-uniform float uGlowStrength;
 uniform float uHorizonWidth;
 out vec4 fragColor;
 void main() {
-	vec3 d = normalize(vDir);
-	float up = d.y;
+	// PLE-622: the dome is drawn after the picture with the depth test on, so this only
+	// runs on pixels nothing else covered. Only the elevation matters; the unused glow
+	// term (its strength was always 0) is gone.
+	float up = vDir.y * inversesqrt(dot(vDir, vDir));
 	float band = exp(-abs(up) / uHorizonWidth);
-	vec3 sky = mix(uZenith, uHorizon, band);
-	vec3 ground = mix(uGround, uHorizon, band);
-	vec3 c = up >= 0.0 ? sky : ground;
-	// The picture faces +z from -z; light the hemisphere in front of the viewer more.
-	float front = clamp(-d.z, 0.0, 1.0);
-	c += uGlowAverage * uGlowStrength * 0.25 * front * band;
+	vec3 c = mix(up >= 0.0 ? uZenith : uGround, uHorizon, band);
 	float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 	fragColor = vec4(c + (n - 0.5) / 255.0, 1.0);
 }
@@ -256,7 +256,9 @@ layout(location = 1) in vec2 aUv;
 uniform mat4 uViewProj;
 out mediump vec2 vUv;
 void main() {
-	gl_Position = uViewProj * vec4(aPos, 1.0);
+	// PLE-622: on the far plane, like the sky it adds to. It is drawn last with the depth
+	// test on, so it only lands where the room and the picture left the sky showing.
+	gl_Position = (uViewProj * vec4(aPos, 1.0)).xyww;
 	vUv = aUv;
 }
 )";
@@ -735,7 +737,7 @@ struct PleikkariVrEnvironment
 		GLint viewProj, screenCenter, screenRight, screenUp, screenNormal, glow, glowStrength, roomLight, ambient;
 	} room{};
 	struct {
-		GLint viewProj, zenith, horizon, ground, glowAverage, glowStrength, horizonWidth;
+		GLint viewProj, zenith, horizon, ground, horizonWidth;
 	} sky{};
 	struct {
 		GLint viewProj, brightness;
@@ -814,8 +816,6 @@ bool PleikkariVrEnvironment::init()
 	sky.zenith = glGetUniformLocation(skyProgram, "uZenith");
 	sky.horizon = glGetUniformLocation(skyProgram, "uHorizon");
 	sky.ground = glGetUniformLocation(skyProgram, "uGround");
-	sky.glowAverage = glGetUniformLocation(skyProgram, "uGlowAverage");
-	sky.glowStrength = glGetUniformLocation(skyProgram, "uGlowStrength");
 	sky.horizonWidth = glGetUniformLocation(skyProgram, "uHorizonWidth");
 	star.viewProj = glGetUniformLocation(starProgram, "uViewProj");
 	star.brightness = glGetUniformLocation(starProgram, "uBrightness");
@@ -1233,64 +1233,6 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		glClearDepthf(1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		const bool sky = cfg.environment == PLEIKKARI_VR_ENVIRONMENT_VOID || cfg.environment == PLEIKKARI_VR_ENVIRONMENT_TERRACE;
-		if(sky)
-		{
-			glDisable(GL_DEPTH_TEST);
-			glDepthMask(GL_FALSE);
-			glDisable(GL_CULL_FACE);
-			glUseProgram(env->skyProgram);
-			glUniformMatrix4fv(env->sky.viewProj, 1, GL_FALSE, viewProj);
-			glActiveTexture(GL_TEXTURE0);
-			const float rl = cfg.room_light;
-			if(cfg.environment == PLEIKKARI_VR_ENVIRONMENT_VOID)
-			{
-				glUniform3f(env->sky.zenith, 0.006f, 0.008f, 0.016f);
-				glUniform3f(env->sky.horizon, 0.05f + 0.06f * rl, 0.06f + 0.07f * rl, 0.10f + 0.10f * rl);
-				glUniform3f(env->sky.ground, 0.014f, 0.014f, 0.020f);
-				glUniform1f(env->sky.horizonWidth, 0.25f);
-			}
-			else
-			{
-				glUniform3f(env->sky.zenith, 0.008f, 0.010f, 0.026f);
-				glUniform3f(env->sky.horizon, 0.11f + 0.08f * rl, 0.075f + 0.05f * rl, 0.065f + 0.04f * rl);
-				glUniform3f(env->sky.ground, 0.016f, 0.016f, 0.016f);
-				glUniform1f(env->sky.horizonWidth, 0.12f);
-			}
-			// Average picture colour from the glow map's top mip, read on the CPU side of
-			// the shader as a uniform would need a readback; sample it in the shader instead.
-			glUniform3f(env->sky.glowAverage, 1.0f, 1.0f, 1.0f);
-			glUniform1f(env->sky.glowStrength, 0.0f);
-			glBindVertexArray(env->skyVao);
-			glDrawArrays(GL_TRIANGLES, 0, env->skyVertexCount);
-			env->draw_call(env->skyVertexCount / 3);
-			if(cfg.environment == PLEIKKARI_VR_ENVIRONMENT_TERRACE)
-			{
-				glUseProgram(env->starProgram);
-				glUniformMatrix4fv(env->star.viewProj, 1, GL_FALSE, viewProj);
-				glUniform1f(env->star.brightness, 0.6f + 0.4f * cfg.room_light);
-				glBindVertexArray(env->starVao);
-				glDrawArrays(GL_POINTS, 0, env->starCount);
-				env->draw_call(0);
-			}
-			// Halo behind the picture, additive.
-			if(cfg.glow > 0.0f)
-			{
-				glEnable(GL_BLEND);
-				glBlendFunc(GL_ONE, GL_ONE);
-				glUseProgram(env->haloProgram);
-				glUniformMatrix4fv(env->halo.viewProj, 1, GL_FALSE, viewProj);
-				glBindTexture(GL_TEXTURE_2D, env->glowTexture);
-				glUniform1i(env->halo.glow, 0);
-				glUniform1f(env->halo.strength, 0.55f * cfg.glow);
-				glBindVertexArray(env->haloVao);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-				env->draw_call(2);
-				glDisable(GL_BLEND);
-			}
-			glDepthMask(GL_TRUE);
-		}
-
 		if(env->roomIndexCount > 0)
 		{
 			glEnable(GL_DEPTH_TEST);
@@ -1316,9 +1258,12 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 		glDisable(GL_CULL_FACE);
+		// The picture writes depth so the sky drawn after it skips its pixels.
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LEQUAL);
 	}
 
-	// The picture, last, on top of the bezel (depth test on when there is depth).
+	// The picture, on top of the bezel (depth test on when there is depth).
 	glUseProgram(env->screenProgram);
 	glUniformMatrix4fv(env->screen.viewProj, 1, GL_FALSE, viewProj);
 	glUniformMatrix4fv(env->screen.texTransform, 1, GL_FALSE, video_transform ? video_transform : kIdentity);
@@ -1334,6 +1279,65 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 	glBindVertexArray(0);
 	if(has_video && video_texture)
 		glBindTexture(env->videoTarget, 0);
+
+	// PLE-622: the dome, stars and halo go last. They sit at the far plane (z = w) or
+	// behind the screen, so with the depth test on (LEQUAL against the 1.0 clear) the
+	// picture's and the room's pixels are rejected before the fragment shader runs.
+	// Output is unchanged: the room and the picture are opaque and always overwrote them.
+	if(!plain && (cfg.environment == PLEIKKARI_VR_ENVIRONMENT_VOID || cfg.environment == PLEIKKARI_VR_ENVIRONMENT_TERRACE))
+	{
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LEQUAL);
+		glDepthMask(GL_FALSE);
+		glDisable(GL_CULL_FACE);
+		glUseProgram(env->skyProgram);
+		glUniformMatrix4fv(env->sky.viewProj, 1, GL_FALSE, viewProj);
+		glActiveTexture(GL_TEXTURE0);
+		const float rl = cfg.room_light;
+		if(cfg.environment == PLEIKKARI_VR_ENVIRONMENT_VOID)
+		{
+			glUniform3f(env->sky.zenith, 0.006f, 0.008f, 0.016f);
+			glUniform3f(env->sky.horizon, 0.05f + 0.06f * rl, 0.06f + 0.07f * rl, 0.10f + 0.10f * rl);
+			glUniform3f(env->sky.ground, 0.014f, 0.014f, 0.020f);
+			glUniform1f(env->sky.horizonWidth, 0.25f);
+		}
+		else
+		{
+			glUniform3f(env->sky.zenith, 0.008f, 0.010f, 0.026f);
+			glUniform3f(env->sky.horizon, 0.11f + 0.08f * rl, 0.075f + 0.05f * rl, 0.065f + 0.04f * rl);
+			glUniform3f(env->sky.ground, 0.016f, 0.016f, 0.016f);
+			glUniform1f(env->sky.horizonWidth, 0.12f);
+		}
+		glBindVertexArray(env->skyVao);
+		glDrawArrays(GL_TRIANGLES, 0, env->skyVertexCount);
+		env->draw_call(env->skyVertexCount / 3);
+		if(cfg.environment == PLEIKKARI_VR_ENVIRONMENT_TERRACE)
+		{
+			glUseProgram(env->starProgram);
+			glUniformMatrix4fv(env->star.viewProj, 1, GL_FALSE, viewProj);
+			glUniform1f(env->star.brightness, 0.6f + 0.4f * cfg.room_light);
+			glBindVertexArray(env->starVao);
+			glDrawArrays(GL_POINTS, 0, env->starCount);
+			env->draw_call(0);
+		}
+		// Halo behind the picture, additive.
+		if(cfg.glow > 0.0f)
+		{
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE);
+			glUseProgram(env->haloProgram);
+			glUniformMatrix4fv(env->halo.viewProj, 1, GL_FALSE, viewProj);
+			glBindTexture(GL_TEXTURE_2D, env->glowTexture);
+			glUniform1i(env->halo.glow, 0);
+			glUniform1f(env->halo.strength, 0.55f * cfg.glow);
+			glBindVertexArray(env->haloVao);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			env->draw_call(2);
+			glDisable(GL_BLEND);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		glDepthMask(GL_TRUE);
+	}
 
 	if(!plain && fbo != 0)
 	{
