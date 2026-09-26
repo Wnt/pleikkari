@@ -76,10 +76,6 @@ if(goVrRequested != "false" && !goVrPresent &&
     throw new GradleException("Incomplete Oculus Mobile SDK: see third_party/ovr_sdk_mobile/README.md")
 if(goVrEnabled && psnMockHost)
     throw new GradleException("Go VR and PSN mock manifest overlays cannot be combined; use -PchiakiGoVr=false")
-// PLE-600: -PchiakiGoEmbeddable=true sets android:allowEmbedded on the activities so
-// `am stack start <display>` can put them on the Oculus TV panel's ActivityView display
-// (scripts/dev/go.sh launch). Off by default; the attribute is inert outside an ActivityView.
-def goEmbeddable = (project.findProperty("chiakiGoEmbeddable") ?: "false").toBoolean()
 println("Go VrApi: ${goVrEnabled ? 'SDK enabled (arm64 only)' : 'not built'}")
 
 // PLE-524: sanitizer builds, debug-only and off by default (android/native-stress/README.md).
@@ -150,7 +146,6 @@ android {
         ndk {
             abiFilters.addAll(chiakiAbiFilters)
         }
-        manifestPlaceholders += [goAllowEmbedded: goEmbeddable.toString()]
         buildConfigField "boolean", "GO_VR_BUILT", goVrEnabled.toString()
         buildConfigField "boolean", "CHIAKI_ANDROID_EGL_RENDERER", androidEglRenderer.toString()
         buildConfigField "String", "BUILD_GIT_SHA_MARKER", "\"$buildGitShaMarker\""

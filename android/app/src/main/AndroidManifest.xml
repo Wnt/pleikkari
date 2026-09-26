@@ -50,9 +50,7 @@
                 />
         </provider>
 
-        <!-- PLE-600: allowEmbedded is ${goAllowEmbedded} (false unless -PchiakiGoEmbeddable=true). -->
         <activity android:name=".main.MainActivity"
-            android:allowEmbedded="${goAllowEmbedded}"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:exported="true">
             <intent-filter>
@@ -69,25 +67,21 @@
              session stays up (StreamActivity.onPause). -->
         <activity
             android:name=".stream.StreamActivity"
-            android:allowEmbedded="${goAllowEmbedded}"
             android:theme="@style/StreamTheme"
             android:resizeableActivity="true"
             android:configChanges="keyboard|keyboardHidden|navigation|touchscreen|orientation|screenSize|smallestScreenSize|screenLayout|uiMode" />
 
         <activity
-            android:name=".settings.SettingsActivity"
-            android:allowEmbedded="${goAllowEmbedded}" />
+            android:name=".settings.SettingsActivity" />
 
         <activity
             android:name=".regist.RegistActivity"
-            android:allowEmbedded="${goAllowEmbedded}"
             android:theme="@style/AppTheme"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:windowSoftInputMode="adjustResize"/>
 
         <activity
             android:name=".regist.PsnLoginActivity"
-            android:allowEmbedded="${goAllowEmbedded}"
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
@@ -114,13 +108,11 @@
 
         <activity
             android:name=".regist.RegistExecuteActivity"
-            android:allowEmbedded="${goAllowEmbedded}"
             android:theme="@style/AppTheme"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
 
         <activity
             android:name=".manualconsole.EditManualConsoleActivity"
-            android:allowEmbedded="${goAllowEmbedded}"
             android:theme="@style/AppTheme"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
     </application>
