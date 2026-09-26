@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Deliberately activity-local: never classify the phone launcher as vr_only. -->
+        <activity android:name=".stream.StreamVrActivity"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
+            android:exported="false">
+            <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only" />
+        </activity>
+    </application>
+</manifest>

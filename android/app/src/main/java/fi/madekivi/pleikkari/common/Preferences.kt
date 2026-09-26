@@ -267,6 +267,11 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(decoderLateFrameRecoveryEnabledKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(decoderLateFrameRecoveryEnabledKey, value).apply() }
 
+	val goVrEnabledKey get() = "stream_go_vr_enabled"
+	var goVrEnabled
+		get() = sharedPreferences.getBoolean(goVrEnabledKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrEnabledKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)

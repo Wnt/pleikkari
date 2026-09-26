@@ -19,3 +19,5 @@ debug-guard | fi/madekivi/pleikkari/main/MainActivity.kt: ?.takeIf { BuildConfig
 debug-guard | fi/madekivi/pleikkari/regist/RegistExecuteActivity.kt: if(BuildConfig.DEBUG && previewState != null) | debug-harness | PLE-219: renders the registration running/success state without a console, for layout-quality captures
 debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/remote/PsnMockBanner.kt | debug-harness | PLE-284: on-screen banner shown only in a -PchiakiPsnMock build, so a mock-backed build is never mistaken for a real one
 debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/remote/PsnMockBuild.kt | debug-harness | PLE-284: selects the mock PSN endpoints; debug source set only, so a release build cannot resolve to the mock
+
+default-off-pref | stream_go_vr_enabled | measurement | PLE-602: native Go cinema A/B against the existing Oculus TV virtual display
