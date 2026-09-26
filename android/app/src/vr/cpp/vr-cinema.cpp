@@ -11,7 +11,9 @@
 #include <VrApi_Helpers.h>
 #include <VrApi_Input.h>
 #include "vr-environment.h" // PLE-603: the room around the screen (plain GLES, no VrApi)
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -24,9 +26,13 @@ namespace {
 constexpr int Segments = 64;
 constexpr float Radius = 3.0f;
 constexpr float Arc = 1.4f; // 80 degrees wide, 3 m away; arc length preserves 16:9.
+constexpr GLsizei EnvironmentSamples = 4; // PLE-615: the environments' thin edges assume Skybox's 4x.
 struct Eye {
     ovrTextureSwapChain *chain = nullptr;
     std::vector<GLuint> fbos;
+    // PLE-615: the same swapchain images rendered through 4x MSAA (resolved on tile store,
+    // GL_EXT_multisampled_render_to_texture, as Skybox does). Empty without the extension.
+    std::vector<GLuint> msaaFbos;
     int index = 0;
 };
 
@@ -117,6 +123,7 @@ struct Cinema {
         if(vr) vrapi_LeaveVrMode(vr);
         for(auto &eye : eyes) {
             if(!eye.fbos.empty()) glDeleteFramebuffers(static_cast<GLsizei>(eye.fbos.size()), eye.fbos.data());
+            if(!eye.msaaFbos.empty()) glDeleteFramebuffers(static_cast<GLsizei>(eye.msaaFbos.size()), eye.msaaFbos.data());
             if(eye.chain) vrapi_DestroyTextureSwapChain(eye.chain);
         }
         if(video) glDeleteTextures(1, &video);
@@ -180,6 +187,14 @@ struct Cinema {
         width = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH);
         height = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT);
         if(width <= 0 || height <= 0) return false;
+        // PLE-615: MSAA only for the environments; the plain screen keeps its single-sample FBOs.
+        auto attachMultisample = reinterpret_cast<PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC>(
+            eglGetProcAddress("glFramebufferTexture2DMultisampleEXT"));
+        const char *extensions = reinterpret_cast<const char *>(glGetString(GL_EXTENSIONS));
+        GLint maxSamples = 0;
+        if(extensions && strstr(extensions, "GL_EXT_multisampled_render_to_texture")) glGetIntegerv(GL_MAX_SAMPLES_EXT, &maxSamples);
+        const GLsizei samples = std::min<GLsizei>(EnvironmentSamples, maxSamples);
+        if(!attachMultisample || samples < 2) { attachMultisample = nullptr; LOGI("No multisampled render-to-texture; environments render without MSAA"); }
         for(auto &eye : eyes) {
             eye.chain = vrapi_CreateTextureSwapChain3(VRAPI_TEXTURE_TYPE_2D, GL_RGBA8, width, height, 1, 3);
             if(!eye.chain) return false;
@@ -194,7 +209,23 @@ struct Cinema {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
                 if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false;
             }
+            if(attachMultisample) {
+                eye.msaaFbos.resize(eye.fbos.size());
+                glGenFramebuffers(static_cast<GLsizei>(eye.msaaFbos.size()), eye.msaaFbos.data());
+                for(size_t i = 0; i < eye.msaaFbos.size(); ++i) {
+                    glBindFramebuffer(GL_FRAMEBUFFER, eye.msaaFbos[i]);
+                    attachMultisample(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                        vrapi_GetTextureSwapChainHandle(eye.chain, static_cast<int>(i)), 0, samples);
+                    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                        LOGE("Multisampled eye framebuffer incomplete; environments render without MSAA");
+                        glDeleteFramebuffers(static_cast<GLsizei>(eye.msaaFbos.size()), eye.msaaFbos.data());
+                        eye.msaaFbos.clear();
+                        break;
+                    }
+                }
+            }
         }
+        while(glGetError() != GL_NO_ERROR) {} // a refused MSAA attachment is not an init failure
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         videoProgram = program(true); messageProgram = program(false);
         if(!videoProgram || !messageProgram) return false;
@@ -216,7 +247,8 @@ struct Cinema {
         glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void *>(3 * sizeof(float)));
         glBindVertexArray(0);
-        LOGI("VrApi cinema entered; requested 72 Hz, eye %dx%d, curved screen 3 m / 80 degrees", width, height);
+        LOGI("VrApi cinema entered; requested 72 Hz, eye %dx%d, curved screen 3 m / 80 degrees, environment MSAA %dx",
+            width, height, eyes[0].msaaFbos.empty() || eyes[1].msaaFbos.empty() ? 1 : static_cast<int>(samples));
         return glGetError() == GL_NO_ERROR;
     }
 
@@ -308,7 +340,8 @@ struct Cinema {
         if(environment) pleikkari_vr_environment_begin_frame(environment, video, textureTransform, showVideo, newFrame);
         for(int eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
             Eye &eye = eyes[eyeIndex];
-            glBindFramebuffer(GL_FRAMEBUFFER, eye.fbos[eye.index]);
+            const bool msaa = environment && !eye.msaaFbos.empty();
+            glBindFramebuffer(GL_FRAMEBUFFER, msaa ? eye.msaaFbos[eye.index] : eye.fbos[eye.index]);
             glViewport(0, 0, width, height);
             const auto &view = tracking.Eye[eyeIndex].ViewMatrix;
             const auto &projection = tracking.Eye[eyeIndex].ProjectionMatrix;
@@ -345,6 +378,11 @@ struct Cinema {
             glScissor(0, 0, 1, height); glClear(GL_COLOR_BUFFER_BIT);
             glScissor(width - 1, 0, 1, height); glClear(GL_COLOR_BUFFER_BIT);
             glDisable(GL_SCISSOR_TEST);
+            if(environment) {
+                // The room's depth never needs to leave the tile (and, with MSAA, never resolves).
+                const GLenum depth = GL_DEPTH_ATTACHMENT;
+                glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &depth);
+            }
             layer.Textures[eyeIndex].ColorSwapChain = eye.chain;
             layer.Textures[eyeIndex].SwapChainIndex = eye.index;
             layer.Textures[eyeIndex].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection(&projection);

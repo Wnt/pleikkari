@@ -248,8 +248,11 @@ PLE-608 compiles the real thing.
   a cheaper sky shader, before offering them in a stream. The cost inside the VrApi
   activity (eye buffer size, MSAA, TimeWarp alongside) is still to be read from the
   `Environment frame:` lines in `logcat -s GoCinema` once PLE-608 builds it.
-- MSAA and the eye buffer size belong to PLE-602's swapchain; the environments assume
-  4x MSAA like Skybox and look aliased without it.
+- Eye buffer size belongs to PLE-602's swapchain. MSAA is done (PLE-615): while an
+  environment is active the VrApi cinema renders its eyes through
+  `GL_EXT_multisampled_render_to_texture` at 4x, like Skybox, with a matching
+  multisampled depth buffer; the plain screen keeps its single-sample FBOs. The
+  `VrApi cinema entered` log line prints the sample count actually used.
 - A cylinder compositor layer for the picture (`VRAPI_LAYER_TYPE_CYLINDER2`) would
   sample the decoder texture once instead of through the eye buffer; Skybox does not do
   it for the picture either, but it is the next sharpness step for PLE-602.
