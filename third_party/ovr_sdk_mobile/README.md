@@ -56,6 +56,14 @@ no stereo conversion or optional side-by-side mode is implemented. SurfaceTextur
 crop/flip transform is applied before sampling. The chosen projection path has an
 extra eye render pass; it is not the native cylinder compositor optimization.
 
+PLE-603 adds the room around the screen: the Go-only settings under **VR cinema
+(Oculus Go)** pick an environment (plain, the default, keeps the path above unchanged;
+void, cinema hall, night terrace) and the screen's distance, width, curve radius and
+height. `libpleikkari-vr.so` links `libpleikkari-vr-environment.so` (plain GLES 3.0,
+built in every gate) for it; see `docs/design/vr-environments.md` §7. The wired
+`vr-cinema.cpp` was type-checked against a local stub of the VrApi declarations, not
+compiled against the SDK.
+
 The screen remains world-locked. Go touchpad click recentres it. Go Back opens a
 head-following menu: click the left/centre/right third of the touchpad for
 Resume/Recentre/Disconnect. The Bluetooth pad retains `StreamInput` unchanged.

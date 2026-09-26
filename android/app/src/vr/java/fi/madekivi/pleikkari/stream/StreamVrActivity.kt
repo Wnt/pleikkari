@@ -137,6 +137,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             try {
                 native = VrCinemaNative.create(this@StreamVrActivity, surface)
                 check(native != 0L) { "VrApi/EGL initialization or 72 Hz request failed (see GoCinema log)" }
+                // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
+                Preferences(this@StreamVrActivity).vrEnvironmentConfig().toNative().let {
+                    VrCinemaNative.setEnvironment(native, it.environment, it.screenDistanceM, it.screenWidthM,
+                        it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
+                }
                 val frameReady = AtomicBoolean(false)
                 val consumer = SurfaceTexture(VrCinemaNative.videoTexture(native))
                 texture = consumer
@@ -166,7 +171,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         }
                         menu = false
                     }
-                    if(frameReady.getAndSet(false)) {
+                    val newFrame = frameReady.getAndSet(false)
+                    if(newFrame) {
                         consumer.updateTexImage()
                         consumer.getTransformMatrix(transform)
                         hasFrame = true
@@ -179,7 +185,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         uploadText(VrCinemaNative.messageTexture(native), text)
                         previousText = text
                     }
-                    check(VrCinemaNative.draw(native, transform, hasFrame && text.isEmpty(), menu) >= 0) {
+                    check(VrCinemaNative.draw(native, transform, hasFrame && text.isEmpty(), menu, newFrame) >= 0) {
                         "vrapi_SubmitFrame2 failed"
                     }
                 }
@@ -226,6 +232,9 @@ internal object VrCinemaNative {
     external fun messageTexture(handle: Long): Int
     external fun input(handle: Long): Int
     external fun recentre(handle: Long)
-    external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean): Int
+    external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
+    /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
+    external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
+        heightOffset: Float, glow: Float, roomLight: Float)
     external fun destroy(handle: Long)
 }

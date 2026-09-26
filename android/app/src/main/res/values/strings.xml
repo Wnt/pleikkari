@@ -373,6 +373,27 @@
 	<string name="signin_explainer_mock_description">A browser toolbar: close, the page title, the highlighted ✓ Finish sign-in button, and the browser menu.</string>
 	<string name="signin_explainer_progress_description">The browser opens on its own shortly.</string>
 	<string name="action_signin_explainer_proceed">Sign in</string>
+
+	<!-- PLE-603: Oculus Go cinema environments (offered only on the Go) -->
+	<string name="preferences_category_title_vr_environment">VR cinema (Oculus Go)</string>
+	<string name="preferences_vr_environment_title">Environment around the screen</string>
+	<string name="preferences_vr_environment_plain">Plain screen (default)</string>
+	<string name="preferences_vr_environment_void">Void</string>
+	<string name="preferences_vr_environment_cinema">Cinema hall</string>
+	<string name="preferences_vr_environment_terrace">Night terrace</string>
+	<string name="preferences_vr_screen_distance_title">Screen distance, cm</string>
+	<string name="preferences_vr_screen_width_title">Screen width, cm</string>
+	<string name="preferences_vr_screen_curve_radius_title">Screen curve radius, cm (0 = flat)</string>
+	<string name="preferences_vr_screen_height_offset_title">Screen height above eye level, cm</string>
+	<string name="preferences_vr_glow_title">Screen glow on the room, 0 to 100</string>
+	<string name="preferences_vr_room_light_title">Room lights, 0 to 100</string>
+	<string name="preferences_vr_environment_key">stream_vr_environment</string>
+	<string name="preferences_vr_screen_distance_cm_key">stream_vr_screen_distance_cm</string>
+	<string name="preferences_vr_screen_width_cm_key">stream_vr_screen_width_cm</string>
+	<string name="preferences_vr_screen_curve_radius_cm_key">stream_vr_screen_curve_radius_cm</string>
+	<string name="preferences_vr_screen_height_offset_cm_key">stream_vr_screen_height_offset_cm</string>
+	<string name="preferences_vr_glow_percent_key">stream_vr_glow_percent</string>
+	<string name="preferences_vr_room_light_percent_key">stream_vr_room_light_percent</string>
     <string name="go_vr_title">Native VR cinema (Oculus Go)</string>
     <string name="go_vr_summary">Head-tracked cinema at 72 Hz. Turn off to use the Oculus TV screen.</string>
     <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>

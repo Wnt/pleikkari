@@ -7,6 +7,8 @@ import android.content.SharedPreferences
 import androidx.annotation.StringRes
 import androidx.preference.PreferenceManager
 import fi.madekivi.pleikkari.R
+import fi.madekivi.pleikkari.stream.VrEnvironmentConfig
+import fi.madekivi.pleikkari.stream.VrEnvironmentKind
 import fi.madekivi.pleikkari.lib.AndroidChiakiVideoPresenterConfig
 import fi.madekivi.pleikkari.lib.Codec
 import fi.madekivi.pleikkari.lib.ConnectVideoProfile
@@ -403,6 +405,56 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getInt(sharpnessIntensityKey, 0).toFloat() / 100f
 		set(value) { sharedPreferences.edit().putInt(sharpnessIntensityKey, (value * 100f).toInt()).apply() }
 
+
+	// PLE-603: the Oculus Go cinema's environment and screen geometry (stream/VrEnvironment.kt).
+	// Lengths are stored in centimetres and levels in percent so the SeekBar settings can hold
+	// them as ints; VrEnvironmentConfig.toNative() converts. Only offered on the Go
+	// (VrEnvironmentSupport.offered); every default reproduces PLE-602's plain screen.
+	val vrEnvironmentKey get() = resources.getString(R.string.preferences_vr_environment_key)
+	var vrEnvironment
+		get() = VrEnvironmentKind.fromValue(sharedPreferences.getString(vrEnvironmentKey, null))
+		set(value) { sharedPreferences.edit().putString(vrEnvironmentKey, value.value).apply() }
+
+	val vrScreenDistanceCmKey get() = resources.getString(R.string.preferences_vr_screen_distance_cm_key)
+	var vrScreenDistanceCm
+		get() = sharedPreferences.getInt(vrScreenDistanceCmKey, VrEnvironmentConfig.SCREEN_DISTANCE_CM_DEFAULT)
+		set(value) { sharedPreferences.edit().putInt(vrScreenDistanceCmKey, value).apply() }
+
+	val vrScreenWidthCmKey get() = resources.getString(R.string.preferences_vr_screen_width_cm_key)
+	var vrScreenWidthCm
+		get() = sharedPreferences.getInt(vrScreenWidthCmKey, VrEnvironmentConfig.SCREEN_WIDTH_CM_DEFAULT)
+		set(value) { sharedPreferences.edit().putInt(vrScreenWidthCmKey, value).apply() }
+
+	val vrScreenCurveRadiusCmKey get() = resources.getString(R.string.preferences_vr_screen_curve_radius_cm_key)
+	var vrScreenCurveRadiusCm
+		get() = sharedPreferences.getInt(vrScreenCurveRadiusCmKey, VrEnvironmentConfig.SCREEN_CURVE_RADIUS_CM_DEFAULT)
+		set(value) { sharedPreferences.edit().putInt(vrScreenCurveRadiusCmKey, value).apply() }
+
+	val vrScreenHeightOffsetCmKey get() = resources.getString(R.string.preferences_vr_screen_height_offset_cm_key)
+	var vrScreenHeightOffsetCm
+		get() = sharedPreferences.getInt(vrScreenHeightOffsetCmKey, VrEnvironmentConfig.SCREEN_HEIGHT_OFFSET_CM_DEFAULT)
+		set(value) { sharedPreferences.edit().putInt(vrScreenHeightOffsetCmKey, value).apply() }
+
+	val vrGlowPercentKey get() = resources.getString(R.string.preferences_vr_glow_percent_key)
+	var vrGlowPercent
+		get() = sharedPreferences.getInt(vrGlowPercentKey, VrEnvironmentConfig.GLOW_PERCENT_DEFAULT)
+		set(value) { sharedPreferences.edit().putInt(vrGlowPercentKey, value).apply() }
+
+	val vrRoomLightPercentKey get() = resources.getString(R.string.preferences_vr_room_light_percent_key)
+	var vrRoomLightPercent
+		get() = sharedPreferences.getInt(vrRoomLightPercentKey, VrEnvironmentConfig.ROOM_LIGHT_PERCENT_DEFAULT)
+		set(value) { sharedPreferences.edit().putInt(vrRoomLightPercentKey, value).apply() }
+
+	/** The clamped configuration the VR activity hands to the native environment renderer. */
+	fun vrEnvironmentConfig() = VrEnvironmentConfig(
+		environment = vrEnvironment,
+		screenDistanceCm = vrScreenDistanceCm,
+		screenWidthCm = vrScreenWidthCm,
+		screenCurveRadiusCm = vrScreenCurveRadiusCm,
+		screenHeightOffsetCm = vrScreenHeightOffsetCm,
+		glowPercent = vrGlowPercent,
+		roomLightPercent = vrRoomLightPercent
+	).clamped()
 
 	val resolutionKey get() = resources.getString(R.string.preferences_resolution_key)
 	var resolution
