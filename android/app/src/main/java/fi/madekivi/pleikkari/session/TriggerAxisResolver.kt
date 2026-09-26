@@ -7,7 +7,11 @@ import android.view.MotionEvent
 internal data class TriggerAxes(val l2: Int, val r2: Int)
 
 internal class TriggerAxisResolver(
-	private val rangesForDevice: (Int) -> Map<Int, Float?>
+	private val rangesForDevice: (Int) -> Map<Int, Float?>,
+	// PLE-95: also fall back when a trigger range is reported but zero. A device
+	// with no trigger range at all always falls back (PLE-599): reading an absent
+	// axis can only return 0.
+	private val fallbackForReportedRanges: Boolean = true
 )
 {
 	private val axesByDevice = mutableMapOf<Int, TriggerAxes>()
@@ -22,6 +26,8 @@ internal class TriggerAxisResolver(
 
 	private fun selectAxis(ranges: Map<Int, Float?>, primary: Int, fallback: Int): Int
 	{
+		if(ranges[primary] != null && !fallbackForReportedRanges)
+			return primary
 		if((ranges[primary] ?: 0.0f) > 0.0f)
 			return primary
 		if((ranges[fallback] ?: 0.0f) > 0.0f)
