@@ -1205,7 +1205,10 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 	GLint fbo = 0, viewport[4] = {0, 0, 0, 0};
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
 	glGetIntegerv(GL_VIEWPORT, viewport);
-	glDisable(GL_SCISSOR_TEST);
+	// A clear ignores the viewport, so scissor to it: two eyes side by side in one
+	// framebuffer (the preview, a future single-buffer layer) must not wipe each other.
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(viewport[0], viewport[1], viewport[2], viewport[3]);
 	glDisable(GL_BLEND);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
@@ -1341,6 +1344,7 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
 	}
 	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
 
 	if(++env->eyeInFrame >= 2)
 	{

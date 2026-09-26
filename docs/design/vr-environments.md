@@ -205,9 +205,18 @@ it before `pleikkari-vr`.
   GL error is raised.
 - Device: the debug-only `VrEnvironmentPreviewActivity` draws the stereo pair on a flat
   display with a synthetic picture and logs `gpu=` (timer query), `frame=`, `draws=` and
-  `tris=` under `VrEnvPreview` every 72 frames. On the Go it runs on the 2D panel inside
-  Oculus TV, so it measures the Adreno 530 cost of the environment at 1024x1024 per eye
-  without the SDK.
+  `tris=` under `VrEnvPreview` every 72 frames:
+
+  ```
+  adb shell am start -n fi.madekivi.pleikkari/.stream.VrEnvironmentPreviewActivity --es environment cinema
+  adb logcat -s VrEnvPreview
+  ```
+
+  Proven on the API 36 emulator (software GL, so the `gpu=` field reads 0 there: no
+  timer-query extension). On the Go it must run on the 2D panel inside Oculus TV with
+  the headset worn: while the Go sleeps off-head, `am start` is refused ("current
+  activity is being kept for the user") and the power key does not wake it over adb, so
+  the Adreno 530 cost is still unmeasured as of 2026-09-26.
 - Unit: `VrEnvironmentConfigTest` pins the defaults to PLE-602's screen, the clamps and
   the native enum values.
 

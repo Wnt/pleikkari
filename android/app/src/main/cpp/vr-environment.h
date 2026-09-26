@@ -25,8 +25,8 @@
 //   per eye, with the eye framebuffer bound and the viewport set:
 //     pleikkari_vr_environment_draw_eye(env, view, projection, video, target, transform, has_video)
 //   pleikkari_vr_environment_destroy(env)               on the same GL thread
-// draw_eye clears the framebuffer itself (colour and its own depth), so the caller's
-// glClear before it becomes redundant. When the environment is PLAIN the output is the
+// draw_eye clears the framebuffer itself (colour and its own depth, scissored to the
+// viewport), so the caller's glClear before it becomes redundant. When the environment is PLAIN the output is the
 // caller's own picture: black plus the curved screen.
 #ifndef PLEIKKARI_VR_ENVIRONMENT_H
 #define PLEIKKARI_VR_ENVIRONMENT_H
