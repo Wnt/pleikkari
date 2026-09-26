@@ -19,6 +19,9 @@ import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.common.getDatabase
 import fi.madekivi.pleikkari.common.importSettingsFromUri
 import fi.madekivi.pleikkari.stream.VideoTimestampSource
+import fi.madekivi.pleikkari.stream.VrEnvironmentConfig
+import fi.madekivi.pleikkari.stream.VrEnvironmentKind
+import fi.madekivi.pleikkari.stream.VrEnvironmentSupport
 import fi.madekivi.pleikkari.stream.videoTimestampSource
 
 class DataStore(val preferences: Preferences): PreferenceDataStore()
@@ -109,9 +112,29 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		}
 	}
 
-	override fun getInt(key: String?, defValue: Int) = defValue
+	override fun getInt(key: String?, defValue: Int) = when(key)
+	{
+		preferences.vrScreenDistanceCmKey -> preferences.vrScreenDistanceCm
+		preferences.vrScreenWidthCmKey -> preferences.vrScreenWidthCm
+		preferences.vrScreenCurveRadiusCmKey -> preferences.vrScreenCurveRadiusCm
+		preferences.vrScreenHeightOffsetCmKey -> preferences.vrScreenHeightOffsetCm
+		preferences.vrGlowPercentKey -> preferences.vrGlowPercent
+		preferences.vrRoomLightPercentKey -> preferences.vrRoomLightPercent
+		else -> defValue
+	}
 
-	override fun putInt(key: String?, value: Int) {}
+	override fun putInt(key: String?, value: Int)
+	{
+		when(key)
+		{
+			preferences.vrScreenDistanceCmKey -> preferences.vrScreenDistanceCm = value
+			preferences.vrScreenWidthCmKey -> preferences.vrScreenWidthCm = value
+			preferences.vrScreenCurveRadiusCmKey -> preferences.vrScreenCurveRadiusCm = value
+			preferences.vrScreenHeightOffsetCmKey -> preferences.vrScreenHeightOffsetCm = value
+			preferences.vrGlowPercentKey -> preferences.vrGlowPercent = value
+			preferences.vrRoomLightPercentKey -> preferences.vrRoomLightPercent = value
+		}
+	}
 
 	override fun getString(key: String, defValue: String?) = when
 	{
@@ -132,6 +155,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		key == preferences.audioBufferBurstsKey -> preferences.audioBufferBursts.toString()
 		key == preferences.audioFifoMsKey -> preferences.audioFifoMs.toString()
 		key == preferences.codecKey -> preferences.codec.value
+		key == preferences.vrEnvironmentKey -> preferences.vrEnvironment.value
 		key.startsWith("mapping_") -> preferences.sharedPreferences.getString(key, defValue)
 		else -> defValue
 	}
@@ -212,6 +236,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 				val codec = Preferences.Codec.values().firstOrNull { it.value == value } ?: return
 				preferences.codec = codec
 			}
+			key == preferences.vrEnvironmentKey -> preferences.vrEnvironment = VrEnvironmentKind.fromValue(value)
 			key.startsWith("mapping_") -> 
 			{
 				preferences.sharedPreferences.edit().putString(key, value).apply()
@@ -389,6 +414,9 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			}
 		}
 
+		if(preferenceResource == R.xml.preferences_user && VrEnvironmentSupport.offered())
+			addVrEnvironmentPreferences(preferences)
+
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_codec_key))?.let {
 			it.entryValues = Preferences.codecAll.map { codec -> codec.value }.toTypedArray()
 			it.entries = Preferences.codecAll.map { codec -> getString(codec.title) }.toTypedArray()
@@ -403,6 +431,53 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_import_settings_key))?.setOnPreferenceClickListener { importSettings(); true }
 
 		onPreferencesCreated(preferences)
+	}
+
+	/**
+	 * PLE-603: the Oculus Go cinema's environment picker and screen geometry. Built in code
+	 * rather than XML because the category exists only where the VR activity does
+	 * (Build.DEVICE == "pacific"); the phone's settings screen is unchanged.
+	 */
+	private fun addVrEnvironmentPreferences(preferences: Preferences)
+	{
+		val context = context ?: return
+		val category = PreferenceCategory(context).apply {
+			key = "category_vr_environment"
+			title = getString(R.string.preferences_category_title_vr_environment)
+		}
+		preferenceScreen.addPreference(category)
+		category.addPreference(ListPreference(context).apply {
+			key = preferences.vrEnvironmentKey
+			title = getString(R.string.preferences_vr_environment_title)
+			dialogTitle = title
+			entryValues = VrEnvironmentKind.values().map { it.value }.toTypedArray()
+			entries = VrEnvironmentKind.values().map { getString(it.title) }.toTypedArray()
+			setDefaultValue(VrEnvironmentKind.default.value)
+			summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
+		})
+		fun slider(keyName: String, titleRes: Int, minValue: Int, maxValue: Int, defaultValue: Int) =
+			SeekBarPreference(context).apply {
+				key = keyName
+				title = getString(titleRes)
+				min = minValue
+				max = maxValue
+				seekBarIncrement = if(maxValue - minValue > 200) 10 else 1
+				showSeekBarValue = true
+				isAdjustable = true
+				setDefaultValue(defaultValue)
+			}
+		category.addPreference(slider(preferences.vrScreenDistanceCmKey, R.string.preferences_vr_screen_distance_title,
+			VrEnvironmentConfig.SCREEN_DISTANCE_CM_MIN, VrEnvironmentConfig.SCREEN_DISTANCE_CM_MAX, VrEnvironmentConfig.SCREEN_DISTANCE_CM_DEFAULT))
+		category.addPreference(slider(preferences.vrScreenWidthCmKey, R.string.preferences_vr_screen_width_title,
+			VrEnvironmentConfig.SCREEN_WIDTH_CM_MIN, VrEnvironmentConfig.SCREEN_WIDTH_CM_MAX, VrEnvironmentConfig.SCREEN_WIDTH_CM_DEFAULT))
+		category.addPreference(slider(preferences.vrScreenCurveRadiusCmKey, R.string.preferences_vr_screen_curve_radius_title,
+			0, VrEnvironmentConfig.SCREEN_CURVE_RADIUS_CM_MAX, VrEnvironmentConfig.SCREEN_CURVE_RADIUS_CM_DEFAULT))
+		category.addPreference(slider(preferences.vrScreenHeightOffsetCmKey, R.string.preferences_vr_screen_height_offset_title,
+			-VrEnvironmentConfig.SCREEN_HEIGHT_OFFSET_CM_MAX, VrEnvironmentConfig.SCREEN_HEIGHT_OFFSET_CM_MAX, VrEnvironmentConfig.SCREEN_HEIGHT_OFFSET_CM_DEFAULT))
+		category.addPreference(slider(preferences.vrGlowPercentKey, R.string.preferences_vr_glow_title,
+			0, 100, VrEnvironmentConfig.GLOW_PERCENT_DEFAULT))
+		category.addPreference(slider(preferences.vrRoomLightPercentKey, R.string.preferences_vr_room_light_title,
+			0, 100, VrEnvironmentConfig.ROOM_LIGHT_PERCENT_DEFAULT))
 	}
 
 	protected open fun onPreferencesCreated(preferences: Preferences)

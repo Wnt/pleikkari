@@ -19,3 +19,10 @@ debug-guard | fi/madekivi/pleikkari/main/MainActivity.kt: ?.takeIf { BuildConfig
 debug-guard | fi/madekivi/pleikkari/regist/RegistExecuteActivity.kt: if(BuildConfig.DEBUG && previewState != null) | debug-harness | PLE-219: renders the registration running/success state without a console, for layout-quality captures
 debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/remote/PsnMockBanner.kt | debug-harness | PLE-284: on-screen banner shown only in a -PchiakiPsnMock build, so a mock-backed build is never mistaken for a real one
 debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/remote/PsnMockBuild.kt | debug-harness | PLE-284: selects the mock PSN endpoints; debug source set only, so a release build cannot resolve to the mock
+
+# --- PLE-603: VR environment preview. Renders the Go cinema environments in stereo on a flat
+# display (emulator, phone, or the Go's 2D panel) with a synthetic picture, so the room can be
+# screencapped and its Adreno frame time read from logcat without the Oculus Mobile SDK. Debug
+# source set only; the real feature is the stream_vr_environment setting on the Go.
+debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/stream/VrEnvironmentPreviewActivity.kt | debug-harness | PLE-603: stereo preview of the VR environments for screencaps and frame-time logs; no user path reaches it
+debug-guard | source set: android/app/src/debug/AndroidManifest.xml | debug-harness | PLE-603: declares the debug-only VrEnvironmentPreviewActivity; a release build has no such activity
