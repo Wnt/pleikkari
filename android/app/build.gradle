@@ -62,6 +62,22 @@ def chiakiAbiFilters = (project.findProperty("chiakiAbiFilters") ?: "")
         .collect { it.trim() }
         .findAll { it }
 
+// PLE-602: optional, licensed Go SDK. A partial extraction must fail loudly.
+def goVrSdk = file("../../third_party/ovr_sdk_mobile")
+def goVrRequested = (project.findProperty("chiakiGoVr") ?: "auto").toString()
+if(!(goVrRequested in ["auto", "true", "false"]))
+    throw new GradleException("chiakiGoVr must be auto, true or false")
+def goVrFiles = ["VrApi/Include/VrApi.h", "VrApi/Include/VrApi_Helpers.h",
+                 "VrApi/Include/VrApi_Input.h", "VrApi/Libs/Android/arm64-v8a/Release/libvrapi.so"]
+def goVrPresent = goVrFiles.every { new File(goVrSdk, it).isFile() }
+def goVrEnabled = goVrRequested != "false" && goVrPresent
+if(goVrRequested != "false" && !goVrPresent &&
+        (goVrRequested == "true" || new File(goVrSdk, "VrApi").exists()))
+    throw new GradleException("Incomplete Oculus Mobile SDK: see third_party/ovr_sdk_mobile/README.md")
+if(goVrEnabled && psnMockHost)
+    throw new GradleException("Go VR and PSN mock manifest overlays cannot be combined; use -PchiakiGoVr=false")
+println("Go VrApi: ${goVrEnabled ? 'SDK enabled (arm64 only)' : 'not built'}")
+
 // PLE-524: sanitizer builds, debug-only and off by default (android/native-stress/README.md).
 // -PchiakiSanitizer=address|hwaddress instruments the APK's whole native build (chiaki-lib and
 // chiaki-jni) and packages the NDK wrap.sh that loads the runtime at app start.
@@ -130,11 +146,14 @@ android {
         ndk {
             abiFilters.addAll(chiakiAbiFilters)
         }
+        buildConfigField "boolean", "GO_VR_BUILT", goVrEnabled.toString()
         buildConfigField "boolean", "CHIAKI_ANDROID_EGL_RENDERER", androidEglRenderer.toString()
         buildConfigField "String", "BUILD_GIT_SHA_MARKER", "\"$buildGitShaMarker\""
         externalNativeBuild {
             cmake {
                 arguments "-DCHIAKI_ENABLE_TESTS=OFF",
+                        "-DCHIAKI_GO_VR=${goVrEnabled ? 'ON' : 'OFF'}",
+                        "-DCHIAKI_GO_VR_SDK=${goVrSdk.absolutePath}",
                         "-DCHIAKI_ENABLE_CLI=OFF",
                         "-DCHIAKI_ENABLE_GUI=OFF",
                         "-DCHIAKI_ENABLE_SETSU=OFF",
@@ -182,6 +201,16 @@ android {
     kotlinOptions {
         jvmTarget = "17"
         freeCompilerArgs += "-opt-in=kotlin.ExperimentalUnsignedTypes"
+    }
+
+    if(goVrEnabled) {
+        sourceSets.main.java.srcDir "src/vr/java"
+        sourceSets.debug.manifest.srcFile "src/vr/AndroidManifest.xml"
+        sourceSets.release.manifest.srcFile "src/vr/AndroidManifest.xml"
+    } else {
+        // Compile the optional Kotlin in host unit tests even without the proprietary SDK.
+        // No VR class or native library from this source set goes into an SDK-absent APK.
+        sourceSets.test.java.srcDir "src/vr/java"
     }
 
     if(psnMockHost) {

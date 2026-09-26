@@ -373,4 +373,15 @@
 	<string name="signin_explainer_mock_description">A browser toolbar: close, the page title, the highlighted ✓ Finish sign-in button, and the browser menu.</string>
 	<string name="signin_explainer_progress_description">The browser opens on its own shortly.</string>
 	<string name="action_signin_explainer_proceed">Sign in</string>
+    <string name="go_vr_title">Native VR cinema (Oculus Go)</string>
+    <string name="go_vr_summary">Head-tracked cinema at 72 Hz. Turn off to use the Oculus TV screen.</string>
+    <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>
+    <string name="go_vr_connecting">Connecting to PlayStation…</string>
+    <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
+    <string name="go_vr_pin">Console login PIN required. Use Oculus TV to enter it.</string>
+    <string name="go_vr_menu">Pleikkari cinema</string>
+    <string name="go_vr_resume">Resume</string>
+    <string name="go_vr_recentre">Recentre</string>
+    <string name="go_vr_disconnect">Disconnect</string>
+    <string name="go_vr_menu_help">Click left: Resume · centre: Recentre · right: Disconnect</string>
 </resources>

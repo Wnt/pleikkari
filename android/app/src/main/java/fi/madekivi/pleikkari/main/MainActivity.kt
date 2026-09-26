@@ -35,6 +35,7 @@ import fi.madekivi.pleikkari.regist.RegistActivity
 import fi.madekivi.pleikkari.remote.AndroidPsnRemoteClient
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.settings.SettingsActivity
+import fi.madekivi.pleikkari.stream.GoVrSupport
 import fi.madekivi.pleikkari.stream.StreamActivity
 import fi.madekivi.pleikkari.stream.ConsoleDiscoveryProbe
 import fi.madekivi.pleikkari.stream.StreamEndCause
@@ -538,7 +539,7 @@ class MainActivity : AppCompatActivity()
 			streamDiagnosticsEnabled = true,
 			videoPresenterConfig = preferences.videoPresenterConfig
 		)
-		streamLauncher.launch(Intent(this, StreamActivity::class.java).apply {
+		streamLauncher.launch(GoVrSupport.streamIntent(this).apply {
 			putExtra(StreamActivity.EXTRA_CONNECT_INFO, connectInfo)
 			putExtra(StreamActivity.EXTRA_JUST_LINKED, justLinked)
 		})
@@ -689,7 +690,7 @@ class MainActivity : AppCompatActivity()
 			showUnsupportedRegistration(registered)
 			return
 		}
-		streamLauncher.launch(Intent(this, StreamActivity::class.java).apply {
+		streamLauncher.launch(GoVrSupport.streamIntent(this).apply {
 			putExtra(StreamActivity.EXTRA_CONNECT_INFO, viewModel.connectInfo(registered))
 			putExtra(StreamActivity.EXTRA_PSN_DEVICE, console.device)
 			putExtra(StreamActivity.EXTRA_JUST_LINKED, justLinked)

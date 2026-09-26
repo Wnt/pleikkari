@@ -45,3 +45,7 @@ site/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Licensed Oculus Mobile SDK is supplied locally, never vendored.
+/third_party/ovr_sdk_mobile/*
+!/third_party/ovr_sdk_mobile/README.md
