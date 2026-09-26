@@ -177,7 +177,7 @@
     <string name="preferences_gamepad_unbuffered_dispatch_enabled_title">Unbuffered gamepad dispatch</string>
     <string name="preferences_gamepad_unbuffered_dispatch_enabled_summary">Ask Android not to batch physical-controller joystick events on Android 11+, so an axis change reaches the coalescer as soon as it arrives instead of waiting for the next input batch</string>
     <string name="preferences_gamepad_trigger_fallback_enabled_title">Alternate gamepad trigger axes</string>
-    <string name="preferences_gamepad_trigger_fallback_enabled_summary">Use brake/gas for L2/R2 when a controller does not report working trigger axes (applies to the next stream)</string>
+    <string name="preferences_gamepad_trigger_fallback_enabled_summary">Use brake/gas for L2/R2 when a controller reports trigger axes that stay at zero (applies to the next stream)</string>
     <string name="preferences_feedback_reduced_interval_enabled_title">Reduced feedback interval (experimental)</string>
     <string name="preferences_feedback_reduced_interval_enabled_summary">Send controller feedback state at most every 4ms instead of 8ms; untested on PS5, revert if it causes disconnects or dropped input (applies to the next stream)</string>
     <string name="preferences_stream_end_cause_probe_enabled_title">Explain console-side stream ends</string>

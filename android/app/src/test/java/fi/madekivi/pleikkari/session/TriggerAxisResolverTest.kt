@@ -55,10 +55,10 @@ class TriggerAxisResolverTest
 	fun readsRangesOnlyOncePerDeviceId()
 	{
 		var reads = 0
-		val resolver = TriggerAxisResolver {
+		val resolver = TriggerAxisResolver({
 			reads++
 			mapOf(MotionEvent.AXIS_BRAKE to 1.0f, MotionEvent.AXIS_GAS to 1.0f)
-		}
+		})
 
 		resolver.axesFor(10)
 		resolver.axesFor(10)
@@ -67,6 +67,64 @@ class TriggerAxisResolverTest
 		assertEquals(2, reads)
 	}
 
+	@Test
+	fun usesBrakeAndGasWithoutTriggerRangesRegardlessOfPreference()
+	{
+		for(preference in listOf(false, true))
+		{
+			val resolver = TriggerAxisResolver(
+				{ mapOf(MotionEvent.AXIS_BRAKE to 1.0f, MotionEvent.AXIS_GAS to 1.0f) },
+				fallbackForReportedRanges = preference
+			)
+			assertEquals(
+				TriggerAxes(MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_GAS),
+				resolver.axesFor(12)
+			)
+		}
+	}
+
+	@Test
+	fun keepsReportedTriggerAxesWhenPreferenceIsOff()
+	{
+		val resolver = TriggerAxisResolver(
+			{
+				mapOf(
+					MotionEvent.AXIS_LTRIGGER to 0.0f,
+					MotionEvent.AXIS_RTRIGGER to 1.0f,
+					MotionEvent.AXIS_BRAKE to 1.0f,
+					MotionEvent.AXIS_GAS to 1.0f
+				)
+			},
+			fallbackForReportedRanges = false
+		)
+
+		assertEquals(
+			TriggerAxes(MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_RTRIGGER),
+			resolver.axesFor(13)
+		)
+	}
+
+	@Test
+	fun fallsBackFromZeroReportedRangeWhenPreferenceIsOn()
+	{
+		val resolver = TriggerAxisResolver(
+			{
+				mapOf(
+					MotionEvent.AXIS_LTRIGGER to 0.0f,
+					MotionEvent.AXIS_RTRIGGER to 1.0f,
+					MotionEvent.AXIS_BRAKE to 1.0f,
+					MotionEvent.AXIS_GAS to 1.0f
+				)
+			},
+			fallbackForReportedRanges = true
+		)
+
+		assertEquals(
+			TriggerAxes(MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_RTRIGGER),
+			resolver.axesFor(14)
+		)
+	}
+
 	private fun resolverWith(vararg ranges: Pair<Int, Float>) =
-		TriggerAxisResolver { ranges.toMap() }
+		TriggerAxisResolver({ ranges.toMap() })
 }
