@@ -18,6 +18,7 @@ import fi.madekivi.pleikkari.common.exportAndShareAllSettings
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.common.getDatabase
 import fi.madekivi.pleikkari.common.importSettingsFromUri
+import fi.madekivi.pleikkari.stream.GoVrSupport
 import fi.madekivi.pleikkari.stream.VideoTimestampSource
 import fi.madekivi.pleikkari.stream.VrEnvironmentConfig
 import fi.madekivi.pleikkari.stream.VrEnvironmentKind
@@ -28,6 +29,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 {
 	override fun getBoolean(key: String?, defValue: Boolean) = when(key)
 	{
+		preferences.goVrEnabledKey -> preferences.goVrEnabled
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -72,6 +74,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 	{
 		when(key)
 		{
+			preferences.goVrEnabledKey -> preferences.goVrEnabled = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
@@ -264,6 +267,15 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 		val preferences = viewModel.preferences
 		preferenceManager.preferenceDataStore = DataStore(preferences)
 		setPreferencesFromResource(preferenceResource, rootKey)
+		if(preferenceResource == R.xml.preferences_user && GoVrSupport.available())
+		{
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrEnabledKey
+				title = getString(R.string.go_vr_title)
+				summary = getString(R.string.go_vr_summary)
+				isChecked = preferences.goVrEnabled
+			})
+		}
 
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_resolution_key))?.let {
 			it.entryValues = Preferences.resolutionAll.map { res -> res.value }.toTypedArray()

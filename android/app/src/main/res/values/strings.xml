@@ -394,4 +394,15 @@
 	<string name="preferences_vr_screen_height_offset_cm_key">stream_vr_screen_height_offset_cm</string>
 	<string name="preferences_vr_glow_percent_key">stream_vr_glow_percent</string>
 	<string name="preferences_vr_room_light_percent_key">stream_vr_room_light_percent</string>
+    <string name="go_vr_title">Native VR cinema (Oculus Go)</string>
+    <string name="go_vr_summary">Head-tracked cinema at 72 Hz. Turn off to use the Oculus TV screen.</string>
+    <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>
+    <string name="go_vr_connecting">Connecting to PlayStation…</string>
+    <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
+    <string name="go_vr_pin">Console login PIN required. Use Oculus TV to enter it.</string>
+    <string name="go_vr_menu">Pleikkari cinema</string>
+    <string name="go_vr_resume">Resume</string>
+    <string name="go_vr_recentre">Recentre</string>
+    <string name="go_vr_disconnect">Disconnect</string>
+    <string name="go_vr_menu_help">Click left: Resume · centre: Recentre · right: Disconnect</string>
 </resources>

@@ -153,3 +153,13 @@ if(CHIAKI_ANDROID_NATIVE_STRESS)
             DEPENDS chiaki-audio-output-stress
             VERBATIM)
 endif()
+
+# PLE-602: separate JNI library; the normal decoder/audio library has no VrApi dependency.
+if(CHIAKI_GO_VR AND ANDROID_ABI STREQUAL "arm64-v8a")
+    add_library(vrapi SHARED IMPORTED)
+    set_target_properties(vrapi PROPERTIES IMPORTED_LOCATION
+        "${CHIAKI_GO_VR_SDK}/VrApi/Libs/Android/arm64-v8a/Release/libvrapi.so")
+    add_library(pleikkari-vr SHARED src/vr/cpp/vr-cinema.cpp)
+    target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include")
+    target_link_libraries(pleikkari-vr vrapi android log EGL GLESv3)
+endif()

@@ -1,0 +1,231 @@
+// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
+package fi.madekivi.pleikkari.stream
+
+import android.graphics.*
+import android.opengl.GLES20
+import android.opengl.GLUtils
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.*
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.core.content.IntentCompat
+import androidx.lifecycle.ViewModelProvider
+import fi.madekivi.pleikkari.R
+import fi.madekivi.pleikkari.common.Preferences
+import fi.madekivi.pleikkari.common.ext.viewModelFactory
+import fi.madekivi.pleikkari.lib.ConnectInfo
+import fi.madekivi.pleikkari.remote.PsnDevice
+import fi.madekivi.pleikkari.session.*
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** VrApi owns the display; Android's SurfaceView is only the native-window handoff. */
+class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
+    private var model: StreamViewModel? = null
+    private var cinema: CinemaThread? = null
+    private var windowSurface: Surface? = null
+    private var resumed = false
+    private var failed = false
+    private var statusText = ""
+    private val main = Handler(Looper.getMainLooper())
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val info = IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_CONNECT_INFO, ConnectInfo::class.java)
+        if(!Preferences(this).goVrEnabled || !GoVrSupport.available() || info == null) {
+            finish()
+            return
+        }
+        val device = IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_PSN_DEVICE, PsnDevice::class.java)
+        val justLinked = intent.getBooleanExtra(StreamActivity.EXTRA_JUST_LINKED, false)
+        model = ViewModelProvider(this, viewModelFactory {
+            StreamViewModel(application, info, device, justLinked = justLinked)
+        })[StreamViewModel::class.java].also { vm ->
+            vm.input.observe(this)
+            vm.session.state.observe(this) { state ->
+                statusText = when(state) {
+                    StreamStateConnected -> ""
+                    is StreamStateQuit, is StreamStateCreateError, is StreamStateRemoteError -> getString(R.string.go_vr_disconnected)
+                    is StreamStateLoginPinRequest -> getString(R.string.go_vr_pin)
+                    else -> getString(R.string.go_vr_connecting)
+                }
+                cinema?.status = statusText
+            }
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        setContentView(SurfaceView(this).apply { holder.addCallback(this@StreamVrActivity) })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        startCinema()
+    }
+
+    override fun onPause() {
+        resumed = false
+        stopCinema()
+        super.onPause()
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) = Unit
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        stopCinema()
+        windowSurface = holder.surface
+        startCinema()
+    }
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        stopCinema() // LeaveVrMode must finish before returning the window to Android.
+        windowSurface = null
+    }
+
+    private fun startCinema() {
+        val vm = model ?: return
+        val surface = windowSurface?.takeIf { it.isValid } ?: return
+        if(!resumed || failed || cinema != null) return
+        cinema = CinemaThread(surface, vm.connectInfo).also { it.status = statusText; it.start() }
+    }
+
+    private fun stopCinema() {
+        val thread = cinema ?: return
+        // Stop the producer and detach before releasing its SurfaceTexture on the GL thread.
+        thread.running.set(false)
+        model?.pause()
+        model?.session?.detachSurface()
+        thread.detached.countDown()
+        thread.join()
+        cinema = null
+    }
+
+    private fun cinemaFailed(error: Throwable) {
+        Log.e("GoCinema", "Cannot start/continue VR cinema", error)
+        failed = true
+        stopCinema()
+        Toast.makeText(this, R.string.go_vr_failed, Toast.LENGTH_LONG).show()
+        finish() // Return to the existing Oculus TV task; never relaunch onto display 0.
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Bluetooth pads retain the existing StreamInput mapping, including their Back key.
+        val gamepad = event.isFromSource(InputDevice.SOURCE_GAMEPAD) || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
+        if(!gamepad && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            // The Go remote is polled by VrApi. Do not toggle twice if Android also
+            // delivers its Back event; its press edge will open the cinema menu.
+            return true
+        }
+        return model?.input?.dispatchKeyEvent(event) == true || super.dispatchKeyEvent(event)
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean =
+        model?.input?.onGenericMotionEvent(event) == true || super.onGenericMotionEvent(event)
+
+    /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
+    private inner class CinemaThread(private val surface: Surface, private val info: ConnectInfo) : Thread("GoCinema") {
+        val running = AtomicBoolean(true)
+        val detached = CountDownLatch(1)
+        @Volatile var status = ""
+
+        override fun run() {
+            var native = 0L
+            var texture: SurfaceTexture? = null
+            var decoder: Surface? = null
+            try {
+                native = VrCinemaNative.create(this@StreamVrActivity, surface)
+                check(native != 0L) { "VrApi/EGL initialization or 72 Hz request failed (see GoCinema log)" }
+                val frameReady = AtomicBoolean(false)
+                val consumer = SurfaceTexture(VrCinemaNative.videoTexture(native))
+                texture = consumer
+                consumer.setDefaultBufferSize(info.videoProfile.width, info.videoProfile.height)
+                consumer.setOnFrameAvailableListener({ frameReady.set(true) }, main)
+                val output = Surface(consumer)
+                decoder = output
+                main.post {
+                    if(cinema === this && running.get() && resumed) {
+                        model?.session?.attachToSurface(output)
+                        model?.session?.updateDisplayTiming(72.0, 0L)
+                        model?.resume()
+                    }
+                }
+                val transform = FloatArray(16)
+                android.opengl.Matrix.setIdentityM(transform, 0)
+                var hasFrame = false
+                var menu = false
+                var previousText: String? = null
+                while(running.get()) {
+                    val input = VrCinemaNative.input(native)
+                    if(input and MENU != 0) menu = !menu
+                    if(input and CLICK != 0) {
+                        if(!menu || input and CENTRE != 0) VrCinemaNative.recentre(native)
+                        if(menu && input and RIGHT != 0) {
+                            main.post { if(cinema === this) finish() }
+                        }
+                        menu = false
+                    }
+                    if(frameReady.getAndSet(false)) {
+                        consumer.updateTexImage()
+                        consumer.getTransformMatrix(transform)
+                        hasFrame = true
+                    }
+                    val text = if(menu) getString(R.string.go_vr_menu) + "\n\n" +
+                        getString(R.string.go_vr_resume) + "     |     " + getString(R.string.go_vr_recentre) +
+                        "     |     " + getString(R.string.go_vr_disconnect) + "\n\n" + getString(R.string.go_vr_menu_help)
+                    else status
+                    if(text != previousText) {
+                        uploadText(VrCinemaNative.messageTexture(native), text)
+                        previousText = text
+                    }
+                    check(VrCinemaNative.draw(native, transform, hasFrame && text.isEmpty(), menu) >= 0) {
+                        "vrapi_SubmitFrame2 failed"
+                    }
+                }
+            } catch(error: Exception) {
+                main.post { if(cinema === this) cinemaFailed(error) }
+            } catch(error: LinkageError) {
+                main.post { if(cinema === this) cinemaFailed(error) }
+            } finally {
+                // An error may reach here while the decoder still holds the output. The main
+                // thread stops it before signalling detached; never free a live producer's target.
+                detached.await()
+                decoder?.release()
+                texture?.release()
+                if(native != 0L) VrCinemaNative.destroy(native)
+            }
+        }
+
+        private fun uploadText(texture: Int, text: String) {
+            val bitmap = Bitmap.createBitmap(1536, 864, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.rgb(12, 15, 22))
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE; textSize = 36f; textAlign = Paint.Align.CENTER
+            }
+            text.split('\n').forEachIndexed { i, line -> canvas.drawText(line, 768f, 300f + i * 64f, paint) }
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+            bitmap.recycle()
+        }
+    }
+
+    companion object {
+        // JNI poll result: Back toggles menu; touchpad click recentres or picks its horizontal third.
+        private const val MENU = 1
+        private const val CLICK = 2
+        private const val CENTRE = 4
+        private const val RIGHT = 8
+    }
+}
+
+internal object VrCinemaNative {
+    external fun create(activity: android.app.Activity, surface: Surface): Long
+    external fun videoTexture(handle: Long): Int
+    external fun messageTexture(handle: Long): Int
+    external fun input(handle: Long): Int
+    external fun recentre(handle: Long)
+    external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean): Int
+    external fun destroy(handle: Long)
+}
