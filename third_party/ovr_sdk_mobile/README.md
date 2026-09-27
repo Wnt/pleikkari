@@ -104,15 +104,28 @@ adb -s 192.168.1.202:5555 logcat -s GoCinema VrApi
 `am force-stop fi.madekivi.pleikkari` ends it. A release build ignores the extra.
 The Go's first results with it (every room 7.5 to 8.6 ms of GPU in VrApi, and
 `Environment frame:` under-reporting that) are in `docs/design/vr-environments.md` §8.
-Reaching the streaming cinema from adb is harder: the Library path opens
-`MainActivity` inside the Oculus TV panel (PLE-600's `go.sh launch`), where
-`input tap` cannot reach it, and a plain `am start` of `MainActivity` on display 0 is
-covered at once by vrshell's `ClearActivity`, which stops it and its discovery.
+The streaming cinema can be reached from adb too, through the real Connect path
+(PLE-643, PLE-654). The Library path is no use for this: it opens `MainActivity` inside
+the Oculus TV panel (PLE-600's `go.sh launch`), where `input tap` cannot reach it.
+Instead:
+1. Force-stop the app, and check that none of its activities remains on any display.
+2. Write `stream_go_vr_enabled=true` into its prefs through `run-as`.
+3. `am start -W` `MainActivity`, which opens on display 0.
+4. `input tap` the enabled `playButton` found by `uiautomator dump`.
+5. `StreamVrActivity` streams live. End it with `am force-stop`.
+
+`docs/verification/PLE-654/go-live.sh` does all of this under the Go lease, with backup
+and restore. Every 5 s the cinema logs `GoCinema: Cinema video: N decoder frames latched
+in … s (… fps), X of Y submitted frames showed video`. Read it next to the session log's
+`Feedback stats` `decoded`: on the Go about 4 % of decoded frames are never latched at
+72 Hz, and 9-11 % at 60 Hz (`docs/verification/PLE-654.md`). PLE-623 once saw vrshell's
+`ClearActivity` cover a display-0 `MainActivity`; five PLE-654 arms did not.
 
 ## Required device validation
 
-Built with SDK 1.35.0 (PLE-617, PLE-623); the streaming path's headset acceptance and
-latency were not run. Before treating this as a usable Go build:
+Built with SDK 1.35.0 (PLE-617, PLE-623). A live PS5 stream plays through the cinema on
+the Go, started from Connect with nobody in the headset (PLE-643, PLE-654). Headset
+acceptance and latency were not run. Before treating this as a usable Go build:
 
 1. Done (PLE-617, PLE-623): the SDK build packages arm64 `libvrapi.so`,
    `libpleikkari-vr.so` and `libpleikkari-vr-environment.so`, `vr-cinema.cpp` needed no
@@ -125,7 +138,11 @@ latency were not run. Before treating this as a usable Go build:
    VrApi, decoder and session messages), and `adb -s 192.168.1.202:5555 exec-out
    screencap -p`. Confirm entry from the Oculus TV task, actual 72 Hz, tracking,
    video orientation, controller mappings, sound, disconnect, headset sleep/wake,
-   Home/resume, and repeated sessions without stale surfaces.
+   Home/resume, and repeated sessions without stale surfaces. Done headless (PLE-654,
+   `docs/verification/PLE-654.md`): Connect enters the cinema, the panel holds 72 Hz
+   (60 Hz with `stream_go_vr_match_60hz`), decoded frames are latched and drawn, and
+   five sessions, each in a fresh process, ran with no crash. Everything seen, heard or
+   held in the headset still needs a person.
 4. Library classification (PLE-609, resolved): Pleikkari stays a 2D app in the
    Go Library and opens in Oculus TV; the VR cinema is entered from Connect with
    the setting on. The Go's own VR apps are classified per package: the installed
