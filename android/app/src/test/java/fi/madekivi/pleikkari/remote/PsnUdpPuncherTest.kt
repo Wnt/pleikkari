@@ -102,6 +102,24 @@ class PsnUdpPuncherTest
 	}
 
 	/**
+	 * PLE-319: discovery started ahead of the console OFFER is what the next prepare offers, so our OFFER
+	 * no longer waits on STUN. The fake answers once: a second STUN round would find no answer.
+	 */
+	@Test fun prepareUsesTheDiscoveryStartedAhead() = runBlocking {
+		val stun = fakeStun(answers = 1)
+		try
+		{
+			val puncher = DatagramPsnHolePuncher(stunServers = listOf(InetSocketAddress("127.0.0.1", stun.first.localPort)))
+			puncher.discoverAhead()
+			val offer = puncher.prepare(consoleOffer(sid = 4567, port = 1), "12345678901234567").use { it.offer }
+			assertEquals(45678, offer.candidate.first { it.type == "STUN" }.port)
+			puncher.discoverAhead()
+			puncher.discardAhead()
+		}
+		finally { stun.first.close(); stun.second.join(2_000) }
+	}
+
+	/**
 	 * PLE-327: when the NAT keeps our local port as the external one, upstream drops the STUN candidate
 	 * because it would duplicate STATIC (`holepunch.c:2912-2918`) and offers STATIC, LOCAL, the same shape the
 	 * console offers on such a network. Both S25 captures sent the duplicate (STUN :53637, STATIC :53637).
