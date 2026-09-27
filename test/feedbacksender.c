@@ -26,10 +26,18 @@
 #define FEEDBACK_TEST_STATE_MIN_MS 8 // the sender's default state_min_interval_ms
 #define FEEDBACK_TEST_KEEPALIVE_MS 200 // FEEDBACK_STATE_TIMEOUT_MAX_MS
 #define FEEDBACK_TEST_AT_ONCE_US 1000
+// The sender reads its clock in whole ms, so it sends a throttled state packet up to 1 ms after
+// the minimum; the rest is the host's scheduling.
+#define FEEDBACK_TEST_AT_MINIMUM_SLACK_US 2000
+#define FEEDBACK_TEST_STATE_STICKS_OFFSET (0xc + 0x11) // left_x in a v12 state packet
 // A loaded host can delay a thread's wake-up past FEEDBACK_TEST_AT_ONCE_US now and then, so a
 // press gets this many tries. The defect is not noise: it held every press it hit for up to
 // the keepalive deadline, and no try may come near that.
 #define FEEDBACK_TEST_ATTEMPTS 10
+// Every try must stay under this, however the host scheduled it. A stale deadline held a change
+// inside the state minimum until the keepalive, at least FEEDBACK_TEST_KEEPALIVE_MS -
+// FEEDBACK_TEST_STATE_MIN_MS after it; a host at load 34 once delayed a try by 69 ms (PLE-823).
+#define FEEDBACK_TEST_NEVER_US (FEEDBACK_TEST_KEEPALIVE_MS * 1000 * 3 / 4)
 
 typedef struct feedback_test_rig_t
 {
@@ -38,6 +46,7 @@ typedef struct feedback_test_rig_t
 	ChiakiCond cond;
 	bool connected;
 	ChiakiGKCrypt gkcrypt;
+	ChiakiGKCrypt console_gkcrypt; // the same keys, so the console can read a state packet's sticks
 	ChiakiTakion takion;
 	ChiakiFeedbackSender sender;
 	ChiakiControllerState state;
@@ -50,6 +59,7 @@ typedef struct feedback_test_packet_t
 	uint8_t type;
 	uint16_t seq_num;
 	uint64_t at_us; // when the console received it
+	int16_t left_x; // state packets only
 } FeedbackTestPacket;
 
 static void feedback_test_takion_cb(ChiakiTakionEvent *event, void *user)
@@ -99,13 +109,13 @@ static void feedback_test_rig_start(FeedbackTestRig *rig)
 	static const uint8_t handshake_key[0x10] = { 0 };
 	static const uint8_t ecdh_secret[CHIAKI_ECDH_SECRET_SIZE] = { 0 };
 	munit_assert_int(chiaki_gkcrypt_init(&rig->gkcrypt, get_test_log(), 0, 2, handshake_key, ecdh_secret), ==, CHIAKI_ERR_SUCCESS);
+	munit_assert_int(chiaki_gkcrypt_init(&rig->console_gkcrypt, get_test_log(), 0, 2, handshake_key, ecdh_secret), ==, CHIAKI_ERR_SUCCESS);
 	chiaki_takion_set_crypt(&rig->takion, &rig->gkcrypt, NULL);
 
 	chiaki_controller_state_set_idle(&rig->state);
 	munit_assert_int(chiaki_feedback_sender_init(&rig->sender, &rig->takion, 0, 0), ==, CHIAKI_ERR_SUCCESS);
-	// The sender counts its start as a state packet. A stick move inside the state minimum
-	// still sleeps until the sender's next deadline, up to 200 ms (PLE-800 leaves state
-	// packets alone), so the first move comes after it.
+	// The sender counts its start as a state packet, so a stick move inside the state minimum
+	// would wait out the rest of it. The first move comes after it.
 	usleep(2 * FEEDBACK_TEST_STATE_MIN_MS * 1000);
 }
 
@@ -113,6 +123,7 @@ static void feedback_test_rig_stop(FeedbackTestRig *rig)
 {
 	chiaki_feedback_sender_fini(&rig->sender);
 	chiaki_takion_close(&rig->takion);
+	chiaki_gkcrypt_fini(&rig->console_gkcrypt);
 	chiaki_gkcrypt_fini(&rig->gkcrypt);
 	fake_console_fini(&rig->console);
 	chiaki_cond_fini(&rig->cond);
@@ -141,8 +152,15 @@ static bool feedback_test_recv(FeedbackTestRig *rig, int timeout_ms, FeedbackTes
 		packet->type = buf[0];
 		packet->seq_num = ntohs(*((chiaki_unaligned_uint16_t *)(buf + 1)));
 		packet->at_us = at_us;
+		packet->left_x = 0;
 		if(packet->type == FEEDBACK_TEST_PACKET_STATE)
+		{
 			munit_assert_uint16(packet->seq_num, ==, rig->state_seq_num_next++);
+			munit_assert_int((int)r, >=, FEEDBACK_TEST_STATE_STICKS_OFFSET + 2);
+			uint32_t key_pos = ntohl(*((chiaki_unaligned_uint32_t *)(buf + 4)));
+			munit_assert_int(chiaki_gkcrypt_decrypt(&rig->console_gkcrypt, key_pos + CHIAKI_GKCRYPT_BLOCK_SIZE, buf + 0xc, (size_t)r - 0xc), ==, CHIAKI_ERR_SUCCESS);
+			packet->left_x = (int16_t)ntohs(*((chiaki_unaligned_uint16_t *)(buf + FEEDBACK_TEST_STATE_STICKS_OFFSET)));
+		}
 		else
 			munit_assert_uint16(packet->seq_num, ==, rig->history_seq_num_next++);
 		return true;
@@ -163,6 +181,7 @@ static FeedbackTestPacket feedback_test_state_packet(FeedbackTestRig *rig, uint6
 	FeedbackTestPacket packet;
 	munit_assert_true(feedback_test_recv(rig, 1000, &packet));
 	munit_assert_uint8(packet.type, ==, FEEDBACK_TEST_PACKET_STATE);
+	munit_assert_int16(packet.left_x, ==, rig->state.left_x);
 	return packet;
 }
 
@@ -171,6 +190,18 @@ static void feedback_test_sleep_until(uint64_t at_us)
 	uint64_t now_us = chiaki_time_now_monotonic_us();
 	if(now_us < at_us)
 		usleep((useconds_t)(at_us - now_us));
+}
+
+/**
+ * Moves the left stick alone to left_x at at_us (a state packet only). Returns when it moved.
+ */
+static uint64_t feedback_test_move_stick_at(FeedbackTestRig *rig, uint64_t at_us, int16_t left_x)
+{
+	feedback_test_sleep_until(at_us);
+	rig->state.left_x = left_x;
+	uint64_t moved_us = chiaki_time_now_monotonic_us();
+	munit_assert_int(chiaki_feedback_sender_set_controller_state(&rig->sender, &rig->state), ==, CHIAKI_ERR_SUCCESS);
+	return moved_us;
 }
 
 /**
@@ -198,7 +229,7 @@ static bool feedback_test_press_after_state(FeedbackTestRig *rig, unsigned int d
 	munit_assert_uint8(history.type, ==, FEEDBACK_TEST_PACKET_HISTORY);
 	// Before PLE-800 the sender slept until the keepalive deadline, FEEDBACK_TEST_KEEPALIVE_MS
 	// after the state packet, and only then sent the history packet.
-	munit_assert_uint64(latency_us, <, FEEDBACK_TEST_KEEPALIVE_MS * 1000 / 2);
+	munit_assert_uint64(latency_us, <, FEEDBACK_TEST_NEVER_US);
 
 	if(after_state_us >= FEEDBACK_TEST_STATE_MIN_MS * 1000)
 		return false; // the sleep overshot past the state minimum: the press proves nothing
@@ -264,7 +295,7 @@ static MunitResult test_state_minimum_holds_for_a_stick_moved_with_a_press(const
 		uint64_t state_gap_us = next_state->at_us - move_us;
 		munit_logf(MUNIT_LOG_INFO, "press and stick %llu us after the last stick move (try %u): history packet out %llu us after the press, next state packet %llu us after the move",
 			(unsigned long long)(press_us - move_us), attempt, (unsigned long long)latency_us, (unsigned long long)state_gap_us);
-		munit_assert_uint64(latency_us, <, FEEDBACK_TEST_KEEPALIVE_MS * 1000 / 2);
+		munit_assert_uint64(latency_us, <, FEEDBACK_TEST_NEVER_US);
 		// The sender stamped the last state packet after move_us and reads its clock in whole
 		// ms, so it sees the minimum pass as much as 1 ms early, never more. A history packet
 		// out less than that after move_us was sent from inside the minimum, however the
@@ -276,6 +307,120 @@ static MunitResult test_state_minimum_holds_for_a_stick_moved_with_a_press(const
 		at_once = latency_us < FEEDBACK_TEST_AT_ONCE_US;
 	}
 	munit_assert_true(at_once);
+
+	feedback_test_rig_stop(&rig);
+	return MUNIT_OK;
+}
+
+/**
+ * Moves the left stick alone delay_ms after a state packet: a state packet only. Returns true if
+ * the move came inside the state minimum and its state packet reached the console as the minimum
+ * ended; false for a try the host's scheduling spoilt.
+ */
+static bool feedback_test_stick_after_state(FeedbackTestRig *rig, unsigned int delay_ms, unsigned int attempt)
+{
+	uint64_t last_move_us;
+	FeedbackTestPacket state = feedback_test_state_packet(rig, &last_move_us);
+	int16_t left_x = rig->state.left_x / 2;
+	uint64_t move_us = feedback_test_move_stick_at(rig, state.at_us + delay_ms * 1000, left_x);
+
+	FeedbackTestPacket next;
+	munit_assert_true(feedback_test_recv(rig, 1000, &next));
+	uint64_t after_state_us = move_us - state.at_us;
+	uint64_t latency_us = next.at_us - move_us;
+	uint64_t gap_us = next.at_us - state.at_us;
+	munit_logf(MUNIT_LOG_INFO, "stick %u ms after a state packet (try %u): %llu us after it, next state packet %llu us after the move, %llu us after the last one",
+		delay_ms, attempt, (unsigned long long)after_state_us, (unsigned long long)latency_us, (unsigned long long)gap_us);
+	munit_assert_uint8(next.type, ==, FEEDBACK_TEST_PACKET_STATE);
+	munit_assert_int16(next.left_x, ==, left_x);
+	// Before PLE-823 the sender slept until the keepalive deadline, FEEDBACK_TEST_KEEPALIVE_MS
+	// after the last state packet, or until the next controller change.
+	munit_assert_uint64(latency_us, <, FEEDBACK_TEST_NEVER_US);
+	// The minimum still holds. The sender stamped the last state packet after last_move_us and
+	// reads its clock in whole ms, so it sees the minimum pass as much as 1 ms early, never more.
+	munit_assert_uint64(next.at_us - last_move_us, >=, (FEEDBACK_TEST_STATE_MIN_MS - 1) * 1000);
+
+	if(after_state_us >= FEEDBACK_TEST_STATE_MIN_MS * 1000)
+		return false; // the sleep overshot past the state minimum: the move proves nothing
+	return gap_us < FEEDBACK_TEST_STATE_MIN_MS * 1000 + FEEDBACK_TEST_AT_MINIMUM_SLACK_US;
+}
+
+// PLE-823: a stick-only change inside the 8 ms state minimum woke the sender, but its wait kept
+// the deadline computed before the change: the next controller change, or the 200 ms keepalive.
+// The chiaki-unit rig saw 202 ms. Moves 1-7 ms after a state packet must go out as the minimum
+// ends, and not before.
+static MunitResult test_stick_change_inside_state_minimum_sent_at_minimum(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	FeedbackTestRig rig;
+	feedback_test_rig_start(&rig);
+
+	for(unsigned int delay_ms = 1; delay_ms < FEEDBACK_TEST_STATE_MIN_MS; delay_ms++)
+	{
+		bool at_minimum = false;
+		for(unsigned int attempt = 0; attempt < FEEDBACK_TEST_ATTEMPTS && !at_minimum; attempt++)
+			at_minimum = feedback_test_stick_after_state(&rig, delay_ms, attempt);
+		munit_assert_true(at_minimum);
+	}
+
+	feedback_test_rig_stop(&rig);
+	return MUNIT_OK;
+}
+
+// PLE-823: the shape the defect hurt: a stick movement whose last samples, the stick easing
+// back to centre, come inside the state minimum. One state packet goes out as the minimum ends,
+// carrying the last sample, and nothing follows it until the keepalive.
+static MunitResult test_last_stick_sample_inside_state_minimum_sent_at_minimum(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	FeedbackTestRig rig;
+	feedback_test_rig_start(&rig);
+
+	static const int16_t samples[] = { 0x0c00, 0x0600, 0 };
+	const size_t samples_count = sizeof(samples) / sizeof(samples[0]);
+	bool at_minimum = false;
+	for(unsigned int attempt = 0; attempt < FEEDBACK_TEST_ATTEMPTS && !at_minimum; attempt++)
+	{
+		uint64_t last_move_us;
+		FeedbackTestPacket state = feedback_test_state_packet(&rig, &last_move_us);
+		uint64_t move_us = 0;
+		for(size_t i = 0; i < samples_count; i++)
+			move_us = feedback_test_move_stick_at(&rig, state.at_us + (1 + 2 * i) * 1000, samples[i]);
+
+		// If the host delayed a sample past the minimum, the sample before it went out as the
+		// minimum ended and the last one follows a minimum later: at most one packet per sample.
+		FeedbackTestPacket first, next;
+		unsigned int packets = 0;
+		do
+		{
+			munit_assert_true(feedback_test_recv(&rig, 1000, &next));
+			munit_assert_uint8(next.type, ==, FEEDBACK_TEST_PACKET_STATE);
+			if(!packets)
+				first = next;
+			packets++;
+			munit_assert_uint(packets, <=, samples_count);
+		} while(next.left_x != samples[samples_count - 1]);
+		FeedbackTestPacket extra;
+		munit_assert_false(feedback_test_recv(&rig, 2 * FEEDBACK_TEST_STATE_MIN_MS, &extra));
+
+		uint64_t last_sample_us = move_us - state.at_us;
+		uint64_t latency_us = next.at_us - move_us;
+		uint64_t gap_us = next.at_us - state.at_us;
+		munit_logf(MUNIT_LOG_INFO, "last of %zu stick samples %llu us after a state packet (try %u): %u state packets, the last %llu us after the sample, %llu us after the state packet",
+			samples_count, (unsigned long long)last_sample_us, attempt, packets, (unsigned long long)latency_us, (unsigned long long)gap_us);
+		// Before PLE-823 the last sample waited for the keepalive, FEEDBACK_TEST_KEEPALIVE_MS
+		// after the state packet.
+		munit_assert_uint64(latency_us, <, FEEDBACK_TEST_NEVER_US);
+		// The minimum still holds; see feedback_test_stick_after_state().
+		munit_assert_uint64(first.at_us - last_move_us, >=, (FEEDBACK_TEST_STATE_MIN_MS - 1) * 1000);
+
+		if(packets > 1 || last_sample_us >= FEEDBACK_TEST_STATE_MIN_MS * 1000)
+			continue; // the host delayed a sample past the minimum
+		at_minimum = gap_us < FEEDBACK_TEST_STATE_MIN_MS * 1000 + FEEDBACK_TEST_AT_MINIMUM_SLACK_US;
+	}
+	munit_assert_true(at_minimum);
 
 	feedback_test_rig_stop(&rig);
 	return MUNIT_OK;
@@ -295,6 +440,22 @@ MunitTest tests_feedback_sender[] = {
 	{
 		"/state_minimum_holds_for_a_stick_moved_with_a_press",
 		test_state_minimum_holds_for_a_stick_moved_with_a_press,
+		NULL,
+		NULL,
+		MUNIT_TEST_OPTION_NONE,
+		NULL
+	},
+	{
+		"/stick_change_inside_state_minimum_sent_at_minimum",
+		test_stick_change_inside_state_minimum_sent_at_minimum,
+		NULL,
+		NULL,
+		MUNIT_TEST_OPTION_NONE,
+		NULL
+	},
+	{
+		"/last_stick_sample_inside_state_minimum_sent_at_minimum",
+		test_last_stick_sample_inside_state_minimum_sent_at_minimum,
 		NULL,
 		NULL,
 		MUNIT_TEST_OPTION_NONE,
