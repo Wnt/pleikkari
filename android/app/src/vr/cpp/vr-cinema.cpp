@@ -115,6 +115,8 @@ struct Cinema {
     // the default picture is this file's own path, untouched.
     PleikkariVrEnvironment *environment = nullptr;
     long long environmentStatsFrame = 0;
+    // PLE-652: GPU clock level while a room is drawn; 2 (the PLE-623 baseline) unless the A/B setting raises it.
+    int roomGpuLevel = 2;
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
@@ -183,7 +185,7 @@ struct Cinema {
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
-        vrapi_SetClockLevels(vr, 2, 2);
+        applyClockLevels();
         width = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH);
         height = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT);
         if(width <= 0 || height <= 0) return false;
@@ -255,7 +257,19 @@ struct Cinema {
     // PLE-603: apply the environment setting. PLAIN drops the renderer so nothing of it
     // runs per frame; anything else builds or reconfigures it on this GL thread. A room
     // that fails to build logs and falls back to the plain screen rather than failing VR.
+    // PLE-652: CPU stays at 2; the GPU takes roomGpuLevel only while a room is active.
+    void applyClockLevels() {
+        const int gpu = environment ? roomGpuLevel : 2;
+        const ovrResult result = vrapi_SetClockLevels(vr, 2, gpu);
+        LOGI("Clock levels CPU 2 / GPU %d (%s)", gpu, result == ovrSuccess ? "accepted" : "refused");
+    }
+
     void setEnvironment(const PleikkariVrEnvironmentConfig &requested) {
+        setEnvironmentRenderer(requested);
+        applyClockLevels();
+    }
+
+    void setEnvironmentRenderer(const PleikkariVrEnvironmentConfig &requested) {
         PleikkariVrEnvironmentConfig config = requested;
         pleikkari_vr_environment_config_clamp(&config);
         if(config.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN) {
@@ -442,5 +456,9 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setEnvironment)(JNIEnv *, jobject, 
     config.glow = glow;
     config.room_light = roomLight;
     cinema(h)->setEnvironment(config);
+}
+// PLE-652: call before setEnvironment; it applies on the next environment change.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(setRoomGpuLevel)(JNIEnv *, jobject, jlong h, jint level) {
+    cinema(h)->roomGpuLevel = std::clamp(static_cast<int>(level), 0, 4);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(destroy)(JNIEnv *, jobject, jlong h) { delete cinema(h); }

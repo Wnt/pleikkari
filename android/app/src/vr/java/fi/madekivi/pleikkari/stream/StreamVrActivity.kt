@@ -154,6 +154,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
+                // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
+                if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
                 val stored = Preferences(this@StreamVrActivity).vrEnvironmentConfig()
                 val environment = previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
                 environment.toNative().let {
@@ -307,6 +309,7 @@ internal object VrCinemaNative {
     external fun recentre(handle: Long)
     external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
+    external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
         heightOffset: Float, glow: Float, roomLight: Float)
     external fun destroy(handle: Long)
