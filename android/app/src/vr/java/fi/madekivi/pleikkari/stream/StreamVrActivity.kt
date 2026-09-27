@@ -48,7 +48,8 @@ import java.util.concurrent.locks.LockSupport
 /** VrApi owns the display; Android's SurfaceView is only the native-window handoff. */
 class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var model: StreamViewModel? = null
-    private var cinema: CinemaThread? = null
+    /** Volatile: PLE-802's [inputWindow] routes keys to its VR UI from the GoPadInput thread. */
+    @Volatile private var cinema: CinemaThread? = null
     private var windowSurface: Surface? = null
     private var resumed = false
     private var failed = false
@@ -67,7 +68,14 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val debugInput = AtomicInteger(0)
     private var debugInputReceiver: BroadcastReceiver? = null
     /** PLE-722: when the remote's Back went down, as Android saw it (a long press recentres). */
-    private var backDownMs = 0L
+    @Volatile private var backDownMs = 0L
+    /**
+     * PLE-802: with stream_go_vr_input_thread, the window that takes the pad and the remote's keys off
+     * the main looper while a session streams into the cinema; null otherwise.
+     */
+    private var inputWindow: InputThreadWindow? = null
+    /** PLE-802: the event [inputWindow] handed back, while it gets only the activity's own handling. */
+    private var handedBack: InputEvent? = null
     /** PLE-730: VR Home's page (the Library flow's, then the connecting sheet); null once the stream shows. */
     private var homeState: VrHomeState? = null
     /** PLE-730: the console a Library launch connects to, for the connecting sheet's title. */
@@ -463,7 +471,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** PLE-722: while the VR menu is open the pad drives it, so the console sees it at rest. */
     private fun menuChanged(open: Boolean) {
-        if(open) model?.input?.releasePad()
+        if(!open) return
+        val input = model?.input ?: return
+        // PLE-802: with the pad on its own thread, release it there, after the pad event that thread may
+        // be handling: one that saw the menu still closed would otherwise land after this release.
+        if(inputWindow?.post { input.releasePad() } != true) input.releasePad()
     }
 
     /** PLE-722: the VR menu's view of the stored Go settings; its setters run on the GoVrUi thread. */
@@ -532,9 +544,18 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         vm.session.attachToSurface(output)
         vm.session.updateDisplayTiming(thread.refreshHz.toDouble(), 0L) // PLE-654: the panel's real rate
         vm.resume()
+        // PLE-802: A/B the pad read off the main looper, for as long as this cinema streams.
+        if(inputWindow == null && Preferences(this).goVrInputThread) {
+            inputWindow = InputThreadWindow(this, PadRouter()).takeIf { it.start() }
+            if(inputWindow == null) Log.w(InputThreadWindow.TAG, "No window token yet; input stays on the main thread")
+        }
     }
 
     private fun stopCinema() {
+        // PLE-802: the pad goes back to the main looper. An event already on the input thread can
+        // still set a state while the session stops; Session makes that safe.
+        inputWindow?.stop()
+        inputWindow = null
         val thread = cinema ?: return
         thread.ui?.close("cinema stopping")
         // Stop the producer and detach before releasing its SurfaceTexture on the GL thread.
@@ -558,17 +579,30 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // PLE-746: the key's dispatch in the app, for the probe's atrace capture.
-        if(!LatencyProbe.active) return dispatchKey(event)
+        // PLE-802: an event the input thread handed back has been routed there already.
+        if(event === handedBack) return super.dispatchKeyEvent(event)
+        return tracedRouteKey(event) || super.dispatchKeyEvent(event)
+    }
+
+    /** PLE-746: the key's dispatch in the app, for the probe's atrace capture; on either thread (PLE-802). */
+    private fun tracedRouteKey(event: KeyEvent): Boolean {
+        if(!LatencyProbe.active) return routeKey(event)
         android.os.Trace.beginSection("PLE746 input dispatchKeyEvent")
         try {
-            return dispatchKey(event)
+            return routeKey(event)
         } finally {
             android.os.Trace.endSection()
         }
     }
 
-    private fun dispatchKey(event: KeyEvent): Boolean {
+    /**
+     * Every key's routing but the activity's own handling. On the main thread, or with PLE-802's
+     * [inputWindow] on its GoPadInput thread, which is why [cinema] and [backDownMs] are volatile:
+     * the VR UI's [VrUiHost.key] and [VrUiHost.recentre] only read volatile fields and post, and
+     * [StreamInput] locks its own state. [libraryFlow] belongs to the main thread, but it is null
+     * whenever [inputWindow] runs: a Library launch drops it before its session attaches.
+     */
+    private fun routeKey(event: KeyEvent): Boolean {
         // Bluetooth pads retain the existing StreamInput mapping, including their Back key.
         val gamepad = event.isFromSource(InputDevice.SOURCE_GAMEPAD) || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
         val ui = cinema?.ui
@@ -592,12 +626,38 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         if(ui?.key(event) == true) return true
         // PLE-690: before a Library launch's stream the pad drives the chooser; no session has its keys yet.
         if(gamepad && libraryFlow?.key(event) == true) return true
-        return model?.input?.dispatchKeyEvent(event) == true || super.dispatchKeyEvent(event)
+        return model?.input?.dispatchKeyEvent(event) == true
     }
 
-    override fun onGenericMotionEvent(event: MotionEvent): Boolean =
-        cinema?.ui?.motion(event) == true || model?.input?.onGenericMotionEvent(event) == true ||
-            super.onGenericMotionEvent(event)
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if(event === handedBack) return super.onGenericMotionEvent(event)
+        return routeMotion(event) || super.onGenericMotionEvent(event)
+    }
+
+    /** Like [routeKey], on either thread. */
+    private fun routeMotion(event: MotionEvent): Boolean =
+        cinema?.ui?.motion(event) == true || model?.input?.onGenericMotionEvent(event) == true
+
+    /**
+     * PLE-802: [inputWindow]'s routing. What the stream does not take goes through the activity's
+     * window as if it had arrived there, to Activity's and PhoneWindow's own key handling (Back,
+     * volume, media keys), without routing it a second time.
+     */
+    private inner class PadRouter : InputThreadWindow.Router {
+        override fun key(event: KeyEvent) = tracedRouteKey(event)
+        override fun motion(event: MotionEvent) = routeMotion(event)
+        override fun unhandledKey(event: KeyEvent) = handBack(event) { window.decorView.dispatchKeyEvent(event) }
+        override fun unhandledMotion(event: MotionEvent) = handBack(event) { window.decorView.dispatchGenericMotionEvent(event) }
+    }
+
+    private inline fun handBack(event: InputEvent, dispatch: () -> Boolean): Boolean {
+        handedBack = event
+        try {
+            return dispatch()
+        } finally {
+            handedBack = null
+        }
+    }
 
     /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
     private inner class CinemaThread(private val surface: Surface, private val videoProfile: ConnectVideoProfile?,
