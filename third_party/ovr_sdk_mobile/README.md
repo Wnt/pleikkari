@@ -36,6 +36,16 @@ From `android/`, with the Android SDK environment loaded:
 ./gradlew assembleDebug -PchiakiGoVr=true -PchiakiAbiFilters=arm64-v8a
 ```
 
+**CI (PLE-741).** `.github/workflows/build-android.yml` builds this variant too, but only on
+pushes to `android-port`. Its job `build-android-go-vr` fetches the SDK subset (a pinned,
+checksummed bundle) from the private workspace repo with a read-only deploy key
+(`.github/scripts/fetch-ovr-sdk.py`, secret `OVR_SDK_DEPLOY_KEY`). It links the subset
+here and fails unless `.github/scripts/check-go-vr-apk.sh` finds both libraries and
+`StreamVrActivity` in the APK. The APK is published as the artifact `pleikkari-android-go-vr`
+and as `pleikkari-android-go-vr.apk` on the `android-latest` prerelease. The SDK files
+themselves stay in the private repo. The workspace's `docs/OCULUS-GO.md` explains the key,
+how to rotate or revoke it, and how to refresh the bundle.
+
 The regular gate without the SDK still compiles the VR **Kotlin** in the unit-test
 source set (not the APK). It cannot compile or link `src/vr/cpp/vr-cinema.cpp`.
 A passing SDK-absent gate is **not evidence that the native integration compiles**.

@@ -111,3 +111,147 @@ jobs:
             Debug APK built from commit ${{ github.sha }} on ${{ github.event.head_commit.timestamp }}.
           prerelease: true
           files: build/android-release/pleikkari-android-debug.apk
+
+  # PLE-741: the Oculus Go VR variant, the same debug build plus StreamVrActivity,
+  # libpleikkari-vr.so, libvrapi.so and the Go Library VR entry. The Oculus Mobile SDK is
+  # licensed and never enters this repo: the private workspace repo keeps its CI subset as a
+  # Git LFS object no commit references (scripts/dev/ovr-sdk-ci.py there), and this job reads
+  # it with a read-only deploy key on that repo, secret OVR_SDK_DEPLOY_KEY. Pushes to
+  # android-port only, so a pull request (from a fork or not) never runs with the key; the
+  # job gets no write token, and publishing is the separate job below.
+  build-android-go-vr:
+    if: github.repository == 'Wnt/pleikkari' && github.event_name == 'push' && github.ref == 'refs/heads/android-port'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      OVR_SDK_REPO: Wnt/pleikkari-android
+      # sha256 and size of ovr-sdk-1.35.0-ci.tar.gz, printed by `ovr-sdk-ci.py bundle`.
+      OVR_SDK_BUNDLE_SHA256: 7ffff9dfd8d441ffb853ac8488442841cab8b8f0db75bfc535fbff16709cc6fe
+      OVR_SDK_BUNDLE_SIZE: '134794'
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          validate-wrappers: false
+
+      - name: Install Android SDK packages
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            ndk;28.2.13676358
+            cmake;3.22.1
+            platforms;android-35
+            build-tools;35.0.0
+          accept-android-sdk-licenses: true
+
+      - name: Install native build host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes protobuf-compiler python3 python3-protobuf
+
+      - name: Restore project debug keystore
+        if: env.KS != ''
+        env:
+          KS: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          mkdir -p ~/.android
+          echo "$KS" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey \
+            | sed -n 's/.*SHA-256): *//p' | tr -d ':' | tr 'A-F' 'a-f' > ~/.android/expected-digest
+          echo "keystore certificate digest: $(cat ~/.android/expected-digest)"
+
+      - name: Fetch the Oculus Mobile SDK from the private workspace repo
+        env:
+          OVR_SDK_DEPLOY_KEY: ${{ secrets.OVR_SDK_DEPLOY_KEY }}
+        run: |
+          python3 .github/scripts/fetch-ovr-sdk.py --repo "$OVR_SDK_REPO" \
+            --sha256 "$OVR_SDK_BUNDLE_SHA256" --size "$OVR_SDK_BUNDLE_SIZE" \
+            --dest "$RUNNER_TEMP/ovr_sdk_mobile"
+          ln -s "$RUNNER_TEMP/ovr_sdk_mobile/VrApi" third_party/ovr_sdk_mobile/VrApi
+
+      - name: Build Go VR debug APK
+        working-directory: android
+        run: |
+          ./gradlew assembleDebug \
+            -PchiakiGoVr=true \
+            -PchiakiAbiFilters=arm64-v8a \
+            -PchiakiDebugKeystore="$HOME/.android/debug.keystore" \
+            -PchiakiTakionReceiveBatching=false \
+            -PchiakiAndroidEglRenderer=false \
+            -PchiakiTakionSocketTuning=false
+
+      - name: Check the APK is the Go VR variant
+        run: .github/scripts/check-go-vr-apk.sh android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify the APK signer matches the project debug keystore
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/35.0.0)/apksigner
+          got=$("$APKSIGNER" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk \
+            | sed -n 's/.*SHA-256 digest: //p' | head -1)
+          echo "apk signer digest: $got"
+          if [ -f ~/.android/expected-digest ] && [ "$got" != "$(cat ~/.android/expected-digest)" ]; then
+            echo "::error::APK is not signed with the project debug keystore; it would not install over the Go's app"
+            exit 1
+          fi
+
+      - name: Prepare APK for publishing
+        run: |
+          mkdir -p build/android-release
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            build/android-release/pleikkari-android-go-vr.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pleikkari-android-go-vr
+          path: build/android-release/pleikkari-android-go-vr.apk
+          retention-days: 30
+
+  # Adds the Go VR APK to android-latest once the flat job has moved the tag to this commit.
+  # If the VR build failed, removes the previous commit's VR APK rather than leave it next to
+  # a newer flat APK.
+  publish-android-go-vr:
+    needs: [build-android, build-android-go-vr]
+    if: >-
+      !cancelled() && needs.build-android.result == 'success' &&
+      github.repository == 'Wnt/pleikkari' && github.event_name == 'push' && github.ref == 'refs/heads/android-port'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download the Go VR APK
+        if: needs.build-android-go-vr.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: pleikkari-android-go-vr
+          path: build/android-release
+
+      - name: Add the Go VR APK to the rolling prerelease
+        if: needs.build-android-go-vr.result == 'success'
+        run: |
+          gh release upload android-latest build/android-release/pleikkari-android-go-vr.apk \
+            --clobber -R "$GITHUB_REPOSITORY"
+
+      - name: Remove the previous commit's Go VR APK
+        if: needs.build-android-go-vr.result != 'success'
+        run: |
+          echo "::warning::Go VR build did not succeed (${{ needs.build-android-go-vr.result }}); android-latest has no Go VR APK for this commit"
+          if gh release view android-latest -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+              | grep -qx pleikkari-android-go-vr.apk; then
+            gh release delete-asset android-latest pleikkari-android-go-vr.apk --yes -R "$GITHUB_REPOSITORY"
+          fi

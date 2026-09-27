@@ -30,6 +30,8 @@ These two images are from a real Remote Play session between the Galaxy S22 Ultr
 
 Download the latest `android-port` APK from the stable [pleikkari-android-debug.apk](https://github.com/Wnt/pleikkari/releases/download/android-latest/pleikkari-android-debug.apk) link. Each workflow run also keeps a `pleikkari-android-debug` artifact for 30 days under the repository's [Actions](https://github.com/Wnt/pleikkari/actions/workflows/build-android.yml) page.
 
+For the Oculus Go, download [pleikkari-android-go-vr.apk](https://github.com/Wnt/pleikkari/releases/download/android-latest/pleikkari-android-go-vr.apk) (workflow artifact `pleikkari-android-go-vr`). It is the same build plus the native VrApi cinema and the Go Library VR entry. It bundles Meta's `libvrapi.so`, as every Go VR app does. The Oculus Mobile SDK is licensed and is not in this repository: CI fetches it from a private repository, only on pushes to `android-port`.
+
 This is a debug build signed with the project debug key. Android may ask you to allow installs from your browser or file manager. Existing development installs can be updated with `adb install -r pleikkari-android-debug.apk` without removing registration data; do not uninstall first if you want to retain registered consoles.
 
 ## Status
