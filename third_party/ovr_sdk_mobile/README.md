@@ -341,12 +341,18 @@ How the three loop switches combine:
 | off | on | on the frame signal, or 7.5 ms before VrApi's next release; the lead VrApi runs at stays as it is |
 | on | off or on | the late start's: a fixed point 7.5 ms before the release, with its hold and drain. The latch on the signal does nothing here: the late start already starts the frame at its deadline, and waking it earlier on a frame would give VrApi a longer prediction and undo the hold and drain |
 
+PLE-753's **Keep the headset from running ahead** (`stream_go_vr_hold_drain`, off by default) is a
+third pacing mode: the late start's hold and drain without its late latch, in the plain cinema and
+in rooms. The late start wins in the plain cinema when both are on. Under the hold and drain the
+latch on the signal does nothing either, because it only works with VrApi's release pacing.
+
 `stream_go_vr_frame_listener_thread` is independent of both. It decides which thread delivers the
 decoder's frame signal: the main looper (the default, shared with input dispatch and the session's
 LiveData) or the cinema's own `GoCinemaFrames` thread. That thread sets the loop's new-frame flag
 and, with the latch on the signal, wakes the loop. So on the main looper, the latch on the signal
-waits for the main thread as well. A/B it both ways. A room (not plain) keeps today's loop for both
-pacing switches, because its eye frame costs about 8 ms of GPU, which the budget does not leave.
+waits for the main thread as well. A/B it both ways. A room (not plain) never takes the late start
+or the latch on the signal, because its eye frame costs about 8 ms of GPU, which the budget does
+not leave. It keeps today's loop, or takes the hold and drain when that is on.
 `docs/verification/PLE-801.md` has the session plan and `docs/verification/PLE-801/latch_sum.py`
 the per-arm summary.
 

@@ -296,13 +296,18 @@ struct Cinema {
     // PLE-715: when each frame starts (after the loop's own sleep, if any) and what VrApi's
     // scheduler did with it; the per-second "Frame pacing" line with the stats log on.
     PleikkariVrPacing pacing;
-    // The mode asked for; the late start is for the plain cinema only (see applyPacingMode).
+    // The modes asked for, with the plain screen and with a room (see applyPacingMode).
     PleikkariVrPacingMode pacingRequested = PLEIKKARI_VR_PACING_VRAPI;
+    PleikkariVrPacingMode roomPacingRequested = PLEIKKARI_VR_PACING_VRAPI;
     // PLE-801: the latch on the frame signal asked for; the plain cinema only too.
     bool latchRequested = false;
     bool pacingLog = false;
     int64_t frameStartNs = 0;
     int64_t frameSleptNs = 0;
+    // PLE-753: for the debug trace, when draw() was entered and when its glFlush began and returned.
+    int64_t drawNs = 0;
+    int64_t flushNs = 0;
+    int64_t flushedNs = 0;
     int64_t pacingWindowStartNs = 0;
     // PLE-722: the VR UI's panels and pointer; idle (no layer, no draw) until a panel opens.
     pleikkari::VrUiLayers ui;
@@ -390,7 +395,7 @@ struct Cinema {
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
-        setPacing(PLEIKKARI_VR_PACING_VRAPI, false, false, nullptr, refreshHz);
+        setPacing(PLEIKKARI_VR_PACING_VRAPI, PLEIKKARI_VR_PACING_VRAPI, false, false, nullptr, refreshHz);
         applyClockLevels();
         {
             // PLE-698: per-frame latency mixes both clocks; log how far apart they are (expected ~0).
@@ -548,8 +553,10 @@ struct Cinema {
     }
 
     // PLE-715: mode and the stats log from the settings; spec is a debug build's experiments.
+    // PLE-753: roomMode applies while a room is drawn; its holddrain applies to both.
     // PLE-801: latchOnSignal from its setting (or the spec's "signal"); returns whether it is asked for.
-    bool setPacing(PleikkariVrPacingMode mode, bool latchOnSignal, bool log, const char *spec, float refreshHz) {
+    bool setPacing(PleikkariVrPacingMode mode, PleikkariVrPacingMode roomMode, bool latchOnSignal, bool log, const char *spec,
+            float refreshHz) {
         PleikkariVrPacingConfig config;
         pleikkari_vr_pacing_config_default(&config, refreshHz);
         config.mode = mode;
@@ -557,25 +564,29 @@ struct Cinema {
         const int read = pleikkari_vr_pacing_config_parse(&config, spec);
         pleikkari_vr_pacing_init(&pacing, &config);
         pacingRequested = config.mode;
+        roomPacingRequested = config.mode == PLEIKKARI_VR_PACING_HOLD || roomMode == PLEIKKARI_VR_PACING_HOLD
+            ? PLEIKKARI_VR_PACING_HOLD : PLEIKKARI_VR_PACING_VRAPI;
         latchRequested = config.latch_on_signal;
         pacingLog = log || config.trace;
         pacingWindowStartNs = 0;
-        if(read || mode != PLEIKKARI_VR_PACING_VRAPI || config.latch_on_signal)
-            LOGI("Frame pacing: %s, budget %.1f ms, period %.3f ms%s%s%s", pleikkari_vr_pacing_mode_name(config.mode),
-                config.budget_ns / 1e6, config.period_ns / 1e6,
+        if(read || mode != PLEIKKARI_VR_PACING_VRAPI || roomPacingRequested != PLEIKKARI_VR_PACING_VRAPI || config.latch_on_signal)
+            LOGI("Frame pacing: %s, with a room %s, budget %.1f ms, period %.3f ms%s%s%s", pleikkari_vr_pacing_mode_name(config.mode),
+                pleikkari_vr_pacing_mode_name(roomPacingRequested), config.budget_ns / 1e6, config.period_ns / 1e6,
                 !config.latch_on_signal ? "" : config.mode == PLEIKKARI_VR_PACING_LATE
-                    ? "; latch on the frame signal (inert: the late start already latches at its deadline)" : "; latch on the frame signal",
+                    ? "; latch on the frame signal (inert: the late start already latches at its deadline)"
+                    : config.mode == PLEIKKARI_VR_PACING_HOLD
+                    ? "; latch on the frame signal (inert: it is for VrApi's release, not the hold and drain)" : "; latch on the frame signal",
                 read ? "; debug experiments: " : "", read ? spec : "");
         applyPacingMode();
         return config.latch_on_signal;
     }
 
     // PLE-715: a room's eye frame takes about 8 ms of GPU (VrApi App=, PLE-623), which the late
-    // start's budget does not leave, and the rooms were never measured with it: they keep VrApi's
-    // release, today's loop. PLE-801: the latch on the frame signal draws within the same budget.
+    // start's budget does not leave: a room never takes the late start. PLE-753: it takes the hold
+    // and drain when that is asked for, else VrApi's release, today's loop. PLE-801: the latch on
+    // the frame signal draws within the late start's budget, so it is for the plain cinema only too.
     void applyPacingMode() {
-        const PleikkariVrPacingMode mode = pacingRequested == PLEIKKARI_VR_PACING_LATE && environment
-            ? PLEIKKARI_VR_PACING_VRAPI : pacingRequested;
+        const PleikkariVrPacingMode mode = environment ? roomPacingRequested : pacingRequested;
         const bool latch = latchRequested && !environment;
         if(pacing.config.mode == mode && pacing.config.latch_on_signal == latch) return;
         const bool modeChanged = pacing.config.mode != mode;
@@ -583,7 +594,7 @@ struct Cinema {
         pacing.config.latch_on_signal = latch;
         if(modeChanged)
             LOGI("Frame pacing: %s%s", pleikkari_vr_pacing_mode_name(mode),
-                mode != pacingRequested ? " (late start is for the plain cinema; a room is drawn)" : "");
+                environment && pacingRequested == PLEIKKARI_VR_PACING_LATE ? " (late start is for the plain cinema; a room is drawn)" : "");
         if(latchRequested)
             LOGI("Frame pacing: latch on the frame signal %s", latch ? "on" : "off (it is for the plain cinema; a room is drawn)");
     }
@@ -614,11 +625,13 @@ struct Cinema {
     void recordPacing(int64_t returnedNs) {
         const int64_t start = frameStartNs ? frameStartNs : submitNs;
         pleikkari_vr_pacing_frame(&pacing, start, frameSleptNs, submitNs, returnedNs, predictedDisplayNs);
+        // PLE-753: d frame start to draw(), g draw() to its glFlush (with PLE-746's probe pass when it runs), f the glFlush itself (us).
         if(pacing.config.trace)
-            LOGP("F %llu s=%lld z=%lld u=%lld r=%lld p=%lld", static_cast<unsigned long long>(pacing.frames),
+            LOGP("F %llu s=%lld z=%lld u=%lld r=%lld p=%lld d=%lld g=%lld f=%lld", static_cast<unsigned long long>(pacing.frames),
                 static_cast<long long>(start / 1000), static_cast<long long>(frameSleptNs / 1000),
                 static_cast<long long>((submitNs - start) / 1000), static_cast<long long>((returnedNs - submitNs) / 1000),
-                static_cast<long long>((predictedDisplayNs - returnedNs) / 1000));
+                static_cast<long long>((predictedDisplayNs - returnedNs) / 1000), static_cast<long long>((drawNs - start) / 1000),
+                static_cast<long long>((flushNs - drawNs) / 1000), static_cast<long long>((flushedNs - flushNs) / 1000));
         frameStartNs = 0;
         frameSleptNs = 0;
         if(!pacingLog) return;
@@ -698,6 +711,7 @@ struct Cinema {
     // uiControl: PLE-722's panels (null with the strip menu); uiOut receives the pointer's hit.
     int draw(const float *textureTransform, bool showVideo, bool menu, bool newFrame,
              const pleikkari::VrUiControl *uiControl, float *uiOut) {
+        drawNs = monotonicNs();
         ++frameIndex;
         double time = vrapi_GetPredictedDisplayTime(vr, frameIndex);
         ovrTracking2 tracking = vrapi_GetPredictedTracking2(vr, time);
@@ -811,6 +825,8 @@ struct Cinema {
                 const GLenum depth = GL_DEPTH_ATTACHMENT;
                 glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &depth);
             }
+            // PLE-753: a debug experiment; the first eye's pass goes to the GPU while the second is built.
+            if(eyeIndex == 0 && pacing.config.flush_eyes) glFlush();
             layer.Textures[eyeIndex].ColorSwapChain = eye.chain;
             layer.Textures[eyeIndex].SwapChainIndex = eye.index;
             layer.Textures[eyeIndex].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection(&projection);
@@ -833,7 +849,9 @@ struct Cinema {
         const int64_t predictedNs = std::llround(time * 1e9);
         if(probe && probe->requested)
             probe->measure(video, textureTransform, showVideo ? monotonicNs() : 0, showVideo ? predictedNs : 0);
+        flushNs = monotonicNs();
         glFlush();
+        flushedNs = monotonicNs();
         ovrLayer_Union2 panelLayers[pleikkari::VrUiMaxPanels];
         const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
         const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 2];
@@ -887,13 +905,16 @@ extern "C" JNIEXPORT jint JNICALL JNI_METHOD(messageTexture)(JNIEnv *, jobject, 
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) { return cinema(h)->input(); }
 // PLE-715: the top of every render loop iteration; sleeps when the pacing mode asks.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(pace)(JNIEnv *, jobject, jlong h) { cinema(h)->pace(); }
-// PLE-715: mode 0 is VrApi's own release (the default), 1 the late start; spec a debug build's experiments.
+// PLE-715: mode 0 is VrApi's own release (the default), 1 the late start, 2 (PLE-753) the hold and
+// drain; roomMode the same while a room is drawn (never the late start); spec a debug build's experiments.
 // PLE-801: latchOnSignal is the latch on the frame signal; returns it, or the spec's "signal".
-extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jboolean latchOnSignal,
-        jboolean log, jstring spec, jfloat refreshHz) {
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jint roomMode,
+        jboolean latchOnSignal, jboolean log, jstring spec, jfloat refreshHz) {
     const char *chars = spec ? env->GetStringUTFChars(spec, nullptr) : nullptr;
-    const bool latch = cinema(h)->setPacing(mode == PLEIKKARI_VR_PACING_LATE ? PLEIKKARI_VR_PACING_LATE : PLEIKKARI_VR_PACING_VRAPI,
-        latchOnSignal, log, chars, refreshHz);
+    auto known = [](jint m) {
+        return m == PLEIKKARI_VR_PACING_LATE || m == PLEIKKARI_VR_PACING_HOLD ? static_cast<PleikkariVrPacingMode>(m) : PLEIKKARI_VR_PACING_VRAPI;
+    };
+    const bool latch = cinema(h)->setPacing(known(mode), known(roomMode), latchOnSignal, log, chars, refreshHz);
     if(chars) env->ReleaseStringUTFChars(spec, chars);
     return latch;
 }

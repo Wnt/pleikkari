@@ -6,14 +6,18 @@
 #       preview p72-base "" "trace" preview p72-sweep "" "trace,sweep=500/144/13500" restore
 # Steps: setup | ensure <apk> | restore (PLE-654's go-live.sh, one backup for the session);
 #  preview <label> <prefs> <pacing>  the debug preview (no console) with the snapshot prefs, the stats
-#           log and <prefs> (key=true|false,...), and debug.pleikkari.vr_pacing=<pacing> (see
+#           log and <prefs> (key=true|false or key=s:string,...; PLE-753: an @msaa=N item is the
+#           preview's environment_msaa extra, not a pref), and debug.pleikkari.vr_pacing=<pacing> (see
 #           vr-frame-pacing.h). The app is started as its own uid on --user 0; logcat streams to the
 #           host for $SECS s (the per-frame trace outruns the Go's 256 KB buffer), then force-stop.
 #  live <label> <prefs> <pacing>     the same around a live PS5-466 stream started the way the Go
 #           Library starts the app (PLE-690's MAIN/INFO GoVrLibraryEntry through vrshell's desktop;
 #           the entry streams the last used console). Refused while ps5-hold.sh holds the PS5.
 # The property is put back to its old value and the prefs back to the snapshot after every arm.
-# Env: SECS (window, default 30; a label <name>@<s> sets one arm's), ENVIRONMENT (preview room, default plain), DEADLINE (epoch s).
+# Env: SECS (window, default 30; a label <name>@<s> sets one arm's), ENVIRONMENT (preview room, default
+# plain; empty: the room in the arm's prefs, stream_vr_environment=s:<room>), DEADLINE (epoch s),
+# FULL_POSE=1 (PLE-753: debug.pleikkari.vr_full_pose=1 for the arm, a screencap at its end and
+# go-latency/screen_check.py on it, the property put back after).
 set -uo pipefail
 ROOT=/home/wnt/gta6
 WT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -25,7 +29,8 @@ PROP=debug.pleikkari.vr_pacing
 OUT=${1:?out dir}; shift
 SECS=${SECS:-30}
 SECS_DEFAULT=$SECS
-ENVIRONMENT=${ENVIRONMENT:-plain}
+ENVIRONMENT=${ENVIRONMENT-plain}
+FULL_POSE=${FULL_POSE:-0}
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
 BACKUP=${BACKUP:-$OUT/backup}
@@ -52,9 +57,15 @@ import re, sys
 src, dst, spec = sys.argv[1:]
 text = open(src).read()
 for item in filter(None, spec.split(",")):
+    if item.startswith("@"):
+        continue
     key, value = item.split("=", 1)
     text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % re.escape(key), "", text)
-    text = text.replace("</map>", '    <boolean name="%s" value="%s" />\n</map>' % (key, value))
+    text = re.sub(r'\s*<string name="%s">[^<]*</string>' % re.escape(key), "", text)
+    if value.startswith("s:"):
+        text = text.replace("</map>", '    <string name="%s">%s</string>\n</map>' % (key, value[2:]))
+    else:
+        text = text.replace("</map>", '    <boolean name="%s" value="%s" />\n</map>' % (key, value))
 open(dst, "w").write(text)
 EOF
 }
@@ -65,6 +76,8 @@ set_prop() { # <value>: an empty value clears it
 }
 
 old_prop=""
+old_pose=""
+FULL_POSE_PROP=debug.pleikkari.vr_full_pose
 arm_start() { # <label> <prefs> <pacing>
 	local label=$1 n
 	case "$(resumed)" in *Stream*) say "abort: a stream is live, not ours"; exit 2 ;; esac
@@ -76,6 +89,10 @@ arm_start() { # <label> <prefs> <pacing>
 	write_prefs "$OUT/prefs-$label.xml" || exit 3
 	old_prop=$(a shell getprop $PROP | tr -d '\r')
 	set_prop "$3" || exit 3
+	if [ "$FULL_POSE" = 1 ]; then
+		old_pose=$(a shell getprop $FULL_POSE_PROP | tr -d '\r')
+		a shell setprop $FULL_POSE_PROP 1
+	fi
 	mkdir -p "$OUT/$label"
 	since=$(a shell "date +'%m-%d %H:%M:%S.000'" | tr -d '\r')
 	echo "$since" > "$OUT/$label/since.txt"
@@ -86,21 +103,36 @@ arm_capture() { # <label>: stream logcat since the arm's start for $SECS s
 	timeout "$SECS" "$A" -s "$G" logcat -v threadtime -T "$since" -s GoPacing:I GoCinema:I VrApi:I Chiaki:I GoVrEntry:I AndroidRuntime:E \
 		| tr -d '\r' > "$OUT/$label/logcat.txt"
 	say "$label: $(grep -c ' GoPacing: F ' "$OUT/$label/logcat.txt") trace lines, $(grep -c 'Frame pacing (' "$OUT/$label/logcat.txt") pacing windows, $(grep -c 'FPS=' "$OUT/$label/logcat.txt") VrApi lines, $(grep -c 'FATAL' "$OUT/$label/logcat.txt") fatal"
+	if [ "$FULL_POSE" = 1 ]; then
+		a exec-out screencap -p > "$OUT/$label/shot.png" 2>/dev/null
+		python3 "$ROOT/scripts/dev/go-latency/screen_check.py" "$OUT/$label/shot.png" --logcat "$OUT/$label/logcat.txt" \
+			> "$OUT/$label/screen-check.txt" 2>&1
+		local rc=$?
+		say "$label: screencap $(stat -c %s "$OUT/$label/shot.png") B, screen_check rc=$rc $(tail -1 "$OUT/$label/screen-check.txt")"
+	fi
 }
 
 arm_end() { # <label>
 	a shell am force-stop $PKG
 	set_prop "$old_prop" || say "WARNING: $PROP left set"
+	if [ "$FULL_POSE" = 1 ]; then
+		a shell "setprop $FULL_POSE_PROP '$old_pose'"
+		[ "$(a shell getprop $FULL_POSE_PROP | tr -d '\r')" = "$old_pose" ] || say "WARNING: $FULL_POSE_PROP left set"
+	fi
 	sleep 2
 	write_prefs "$BACKUP/prefs.xml" && say "$1: original prefs and $PROP='$old_prop' back"
 }
 
 step_preview() { # <label> <prefs> <pacing>
-	local label=$1 cur out i
-	say "=== preview $label prefs '$2' pacing '$3' environment $ENVIRONMENT"
+	local label=$1 cur out i extras msaa
+	say "=== preview $label prefs '$2' pacing '$3' environment ${ENVIRONMENT:-from prefs}"
 	arm_start "$@"
+	extras=""
+	[ -n "$ENVIRONMENT" ] && extras="--es environment $ENVIRONMENT"
+	msaa=$(printf '%s\n' "$2" | tr ',' '\n' | sed -n 's/^@msaa=//p' | tail -1)
+	[ -n "$msaa" ] && extras="$extras --ei environment_msaa $msaa"
 	out=$(a shell run-as $PKG am start --user 0 -n $PKG/.stream.StreamVrActivity \
-		--ez vr_cinema_preview true --es environment "$ENVIRONMENT" 2>&1 | tr -d '\r')
+		--ez vr_cinema_preview true $extras 2>&1 | tr -d '\r')
 	echo "$out" >> "$LOG"
 	case "$out" in *Error*|*"not exported"*|*Exception*) say "am start refused"; arm_end "$label"; return 4 ;; esac
 	for i in $(seq 1 15); do cur=$(resumed); case "$cur" in *StreamVr*) break ;; esac; sleep 1; done
