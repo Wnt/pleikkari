@@ -147,6 +147,10 @@ internal sealed interface PsnRedirect
 	data class Code(val value: String) : PsnRedirect
 }
 
+private val PSN_CANCEL_ERRORS = setOf(
+	"access_denied", "login_required", "consent_required", "interaction_required", "user_cancel", "cancel"
+)
+
 internal fun parsePsnRedirect(url: String, endpoints: PsnServiceEndpoints = PsnServiceEndpoints.current): PsnRedirect
 {
 	val uri = try { URI(url.trim()) } catch(_: Exception) { return PsnRedirect.NotRedirect }
@@ -164,7 +168,9 @@ internal fun parsePsnRedirect(url: String, endpoints: PsnServiceEndpoints = PsnS
 	} catch(_: IllegalArgumentException) {
 		return PsnRedirect.Invalid
 	}
-	if(params["error"] == "access_denied")
+	// PLE-286: Sony's in-page close (X) abandons the flow; besides access_denied it can come back as an
+	// OIDC interaction error, which is still the user leaving, not a broken redirect.
+	if(params["code"].isNullOrBlank() && params["error"] in PSN_CANCEL_ERRORS)
 		return PsnRedirect.Cancelled
 	val code = params["code"]
 	return if(code.isNullOrBlank()) PsnRedirect.Invalid else PsnRedirect.Code(code)

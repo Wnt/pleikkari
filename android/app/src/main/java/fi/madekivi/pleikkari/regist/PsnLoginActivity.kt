@@ -563,7 +563,7 @@ class PsnLoginActivity : AppCompatActivity()
 			// PLE-296/PLE-293: a cancel is not an error, so it gets no dialog -- just the screen the user
 			// came from, same as its RESULT_CANCELED default when setResult is never called.
 			PsnRedirect.Cancelled -> {
-				Log.i(TAG, "sign-in cancelled (error=access_denied)")
+				Log.i(TAG, "sign-in cancelled (error redirect)")
 				handlingRedirect = true
 				PsnPendingRedirect.take()
 				finish()
