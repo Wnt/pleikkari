@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import android.view.*
 import android.widget.Toast
@@ -506,10 +507,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             // The Go remote is polled by VrApi. Do not toggle twice if Android also
             // delivers its Back event; its press edge will open the cinema menu.
             // PLE-722: VrApi reports only short presses; a long one reaching Android recentres (§10.6).
+            // PLE-773: the Go stamps the remote's Back with a foreign timebase (held logged ~-27,700,000 ms), so time it here.
             if(ui != null) {
-                if(event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) backDownMs = event.eventTime
+                if(event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) backDownMs = SystemClock.uptimeMillis()
                 if(event.action == KeyEvent.ACTION_UP && backDownMs > 0) {
-                    val held = event.eventTime - backDownMs
+                    val held = SystemClock.uptimeMillis() - backDownMs
                     backDownMs = 0
                     Log.i(VrUiHost.TAG, "Remote Back held $held ms")
                     if(held >= LONG_BACK_MS) ui.recentre()
