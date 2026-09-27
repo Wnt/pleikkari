@@ -118,6 +118,21 @@ void pleikkari_vr_environment_stats(PleikkariVrEnvironment *env, PleikkariVrEnvi
 
 void pleikkari_vr_environment_destroy(PleikkariVrEnvironment *env);
 
+// PLE-650: debug-only sky draw variants for the void and terrace, for interleaved GPU
+// A/B in the preview. PLEIKKARI_VR_SKY_DOME is the shipped draw and the default; nothing
+// but the debug preview calls this.
+enum {
+	PLEIKKARI_VR_SKY_DOME = 0,                // 32x12 sphere, culling off (shipped)
+	PLEIKKARI_VR_SKY_DOME_CULLED = 1,         // same mesh, back faces culled
+	PLEIKKARI_VR_SKY_DOME_COARSE = 2,         // 8x4 sphere, culling off
+	PLEIKKARI_VR_SKY_FULLSCREEN = 3,          // one triangle, direction from inverse view-projection
+	PLEIKKARI_VR_SKY_NONE = 4,                // dome not drawn
+	PLEIKKARI_VR_SKY_DOME_CONSTANT = 5,       // shipped mesh, constant-colour shader
+	PLEIKKARI_VR_SKY_FULLSCREEN_CONSTANT = 6, // one triangle, constant colour
+	PLEIKKARI_VR_SKY_COUNT = 7
+};
+void pleikkari_vr_environment_debug_set_sky_variant(PleikkariVrEnvironment *env, int variant);
+
 // Name of an environment kind, for logs and tests.
 const char *pleikkari_vr_environment_name(PleikkariVrEnvironmentKind kind);
 

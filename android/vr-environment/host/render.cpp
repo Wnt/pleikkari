@@ -271,6 +271,9 @@ int main(int argc, char **argv)
 			fprintf(stderr, "create failed for %s\n", name);
 			return 1;
 		}
+		// PLE-650: PLEIKKARI_SKY_VARIANT renders a debug sky draw (see vr-environment.h).
+		if(const char *variant = getenv("PLEIKKARI_SKY_VARIANT"))
+			pleikkari_vr_environment_debug_set_sky_variant(env, atoi(variant));
 		// Let the glow map's moving average settle, as it would a fraction of a second
 		// into a stream.
 		for(int i = 0; i < 24; ++i)

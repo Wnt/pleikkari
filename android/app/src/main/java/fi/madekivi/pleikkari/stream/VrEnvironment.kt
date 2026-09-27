@@ -151,5 +151,7 @@ object VrEnvironmentNative
 	@JvmStatic external fun drawEye(handle: Long, view: FloatArray, projection: FloatArray, texture: Int, transform: FloatArray, hasVideo: Boolean)
 	/** out[0] = GPU ns of the last frame (0 without timer queries), out[1] = draw calls, out[2] = triangles, out[3] = room vertex bytes. */
 	@JvmStatic external fun stats(handle: Long, out: LongArray)
+	/** PLE-650: debug preview only; 0 is the shipped sky dome. */
+	@JvmStatic external fun debugSetSkyVariant(handle: Long, variant: Int)
 	@JvmStatic external fun destroy(handle: Long)
 }
