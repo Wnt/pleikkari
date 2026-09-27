@@ -279,6 +279,19 @@ warnings, and against 1.50.0's headers too (PLE-623).
   the second eye's draws are issued, before that eye's tiled pass (and its MSAA
   resolve) runs, so in VrApi read `logcat -s VrApi` `App=` instead. Captures under
   `build/ple-623/go/run6-preview/` of the workspace.
+- MSAA share (PLE-653): the preview's debug extra `--ei environment_msaa 1|4`
+  (default 4) sets the rooms' sample count for that run. On the Go (1KWPH802EW8203,
+  same setup, 2026-09-27), eight 35 s runs interleaved 4x/off, two per cell, median
+  `App=` over the last ~31 s of each:
+
+  | Environment | 4x MSAA `App=` | MSAA off `App=` | Stale frames/s at 4x (mean) | off |
+  | --- | ---: | ---: | ---: | ---: |
+  | cinema | 9.01, 7.58 ms | 3.51, 3.50 ms | 5.5, 5.0 | 0.3, 0.0 |
+  | void | 8.61, 8.62 ms | 3.33, 3.34 ms | 1.1, 0.5 | 0.1, 0.1 |
+
+  4x MSAA is about 4 to 5.5 ms of the 7 to 8 ms room cost, well over half; without it a
+  room costs about 3 ms over the plain screen's 0.55 ms and drops almost no frames.
+  Logs under `build/ple-653/go/` of the workspace.
 - Unit: `VrEnvironmentConfigTest` pins the defaults to PLE-602's screen, the clamps and
   the native enum values.
 
@@ -289,7 +302,8 @@ warnings, and against 1.50.0's headers too (PLE-623).
   is the dome draw, not its shader (§8), so a cheaper sky shader will not fix it.
   Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
   GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
-  (§8, PLE-623): the MSAA share, a higher GPU level while a room is on, and a timer
+  (§8, PLE-623); 4x MSAA is 4 to 5.5 ms of that (§8, PLE-653), so a lower sample count
+  (2x) or MSAA off is the first lever; a higher GPU level while a room is on, and a timer
   that covers the whole frame are open.
 - Eye buffer size belongs to PLE-602's swapchain. MSAA is done (PLE-615): while an
   environment is active the VrApi cinema renders its eyes through
