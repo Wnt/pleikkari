@@ -51,6 +51,8 @@ class MainActivity : AppCompatActivity()
 		const val EXTRA_ONBOARDING_PREVIEW = "onboarding_preview"
 		/** Debug builds only: the address of a registered console to stream from as soon as it is discovered. */
 		const val EXTRA_AUTO_CONNECT_HOST = "auto_connect_host"
+		/** PLE-729: logcat tag of the extra's progress, so a harness can tell where an auto-connect stopped. */
+		const val AUTO_CONNECT_TAG = "AutoConnect"
 		private const val PREVIEW_WELCOME = "welcome"
 		private const val PREVIEW_CONSOLES = "consoles"
 		private const val PREVIEW_SUMMARY = "summary"
@@ -67,8 +69,7 @@ class MainActivity : AppCompatActivity()
 	private var pendingRegistrationHost: DisplayHost? = null
 	/** An unlinked console found on the network, waiting for the account's console list to link it. */
 	private var pendingLinkHost: DisplayHost? = null
-	private var pendingAutoPlayAddress: String? = null
-	private var pendingAutoPlayJustLinked = false
+	private val pendingAutoPlay = PendingAutoPlay()
 	private var previewState: String? = null
 
 	private val psnListAllowed: Boolean get() = shouldLoadPsnConsoleList(
@@ -111,9 +112,8 @@ class MainActivity : AppCompatActivity()
 	private val registrationLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
 		if(result.resultCode == Activity.RESULT_OK)
 		{
-			pendingAutoPlayAddress = result.data?.getStringExtra(RegistActivity.EXTRA_REGISTERED_HOST)
 			// A console linked with a PIN needs the same moment to settle as a PSN-linked one.
-			pendingAutoPlayJustLinked = true
+			pendingAutoPlay.request(result.data?.getStringExtra(RegistActivity.EXTRA_REGISTERED_HOST), justLinked = true)
 			maybePlayRegisteredHost(localHosts)
 		}
 	}
@@ -139,7 +139,12 @@ class MainActivity : AppCompatActivity()
 		previewState = intent.getStringExtra(EXTRA_ONBOARDING_PREVIEW)
 			?.takeIf { BuildConfig.DEBUG && it in setOf(PREVIEW_WELCOME, PREVIEW_CONSOLES, PREVIEW_SUMMARY) }
 		if(BuildConfig.DEBUG && savedInstanceState == null)
-			pendingAutoPlayAddress = intent.getStringExtra(EXTRA_AUTO_CONNECT_HOST)?.takeIf { it.isNotBlank() }
+		{
+			pendingAutoPlay.request(intent.getStringExtra(EXTRA_AUTO_CONNECT_HOST))
+			pendingAutoPlay.address?.let {
+				Log.i(AUTO_CONNECT_TAG, "auto_connect_host $it: streaming as soon as it is listed as a registered console")
+			}
+		}
 		setSupportActionBar(binding.toolbar)
 		setupQualityPresetChooser()
 
@@ -639,12 +644,9 @@ class MainActivity : AppCompatActivity()
 
 	private fun maybePlayRegisteredHost(hosts: List<DisplayHost>)
 	{
-		val address = pendingAutoPlayAddress ?: return
-		val host = hosts.firstOrNull { it.host == address && it.registeredHost != null } ?: return
-		pendingAutoPlayAddress = null
-		val justLinked = pendingAutoPlayJustLinked
-		pendingAutoPlayJustLinked = false
-		playLocalConsole(host, justLinked = justLinked)
+		val play = pendingAutoPlay.take(hosts) ?: return
+		Log.i(AUTO_CONNECT_TAG, "${play.host.host} is listed as registered console ${play.host.name}: connecting")
+		playLocalConsole(play.host, justLinked = play.justLinked)
 	}
 
 	private fun wakeupHost(host: DisplayHost)

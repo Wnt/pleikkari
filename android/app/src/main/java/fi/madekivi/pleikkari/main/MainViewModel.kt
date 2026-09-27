@@ -13,6 +13,7 @@ import fi.madekivi.pleikkari.common.*
 import fi.madekivi.pleikkari.discovery.DiscoveryManager
 import fi.madekivi.pleikkari.discovery.serverMac
 import fi.madekivi.pleikkari.lib.ConnectInfo
+import fi.madekivi.pleikkari.lib.DiscoveryHost
 import fi.madekivi.pleikkari.remote.AndroidPsnRemoteClient
 import fi.madekivi.pleikkari.remote.AndroidPsnRemoteNativeBridge
 import fi.madekivi.pleikkari.remote.ConnectPhase
@@ -55,14 +56,7 @@ class MainViewModel(
 			database.registeredHostDao().getAll(),
 			discoveryManager.discoveredHosts
 		) { manualHosts, registeredHosts, discoveredHosts ->
-			val macRegisteredHosts = registeredHosts.associateBy { it.serverMac }
-			val idRegisteredHosts = registeredHosts.associateBy { it.id }
-			discoveredHosts.map {
-				DiscoveredDisplayHost(it.serverMac?.let { mac -> macRegisteredHosts[mac] }, it)
-			} +
-			manualHosts.map {
-				ManualDisplayHost(it.registeredHost?.let { id -> idRegisteredHosts[id] }, it)
-			}
+			joinDisplayHosts(manualHosts, registeredHosts, discoveredHosts)
 		}.asLiveData()
 	}
 
@@ -313,6 +307,23 @@ private const val PSN_LIST_TAG = "PsnConsoles"
 
 /** How often the console card's elapsed count is refreshed; a quarter second reads as smooth. */
 private const val PSN_PROGRESS_TICK_MS = 250L
+
+/** Home's console list: the discovered consoles, each with its registration found by MAC, then the manual ones. */
+internal fun joinDisplayHosts(
+	manualHosts: List<ManualHost>,
+	registeredHosts: List<RegisteredHost>,
+	discoveredHosts: List<DiscoveryHost>
+): List<DisplayHost>
+{
+	val macRegisteredHosts = registeredHosts.associateBy { it.serverMac }
+	val idRegisteredHosts = registeredHosts.associateBy { it.id }
+	return discoveredHosts.map {
+		DiscoveredDisplayHost(it.serverMac?.let { mac -> macRegisteredHosts[mac] }, it)
+	} +
+	manualHosts.map {
+		ManualDisplayHost(it.registeredHost?.let { id -> idRegisteredHosts[id] }, it)
+	}
+}
 
 /** One support-readable line: exception type, message, HTTP status and PSN's error excerpt. Never tokens. */
 internal fun describePsnFailure(error: Throwable): String = buildString {
