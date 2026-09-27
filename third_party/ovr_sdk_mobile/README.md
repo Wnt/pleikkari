@@ -295,6 +295,39 @@ measured refresh period (13.924 ms at "72 Hz"). A debug build also takes
 `docs/verification/PLE-715.md` has the Go measurements, and `docs/verification/PLE-715/` the
 session script and trace summariser.
 
+**Latch on the frame signal (PLE-801).** With VrApi's release pacing (today's loop), the loop
+latches right after the last submit returns. A frame decoded while the next submit waits for
+VrApi's release sits there until that submit returns, which is one refresh later on screen.
+PLE-746 measured release → latch at 8.6 ms p50. **Cinema latches on the new-frame signal**
+(`stream_go_vr_latch_on_signal`, off by default, plain cinema only) works like this:
+* After a submit VrApi held to its release, a loop with no new video frame waits for the
+  SurfaceTexture's frame signal, until 7.5 ms (the late start's budget) before the next release.
+* It then latches and draws at once. At the deadline it draws the last frame, as before.
+* After a late frame it latches at once, and it never waits past a release it can still make.
+* When a frame it made wait still comes late, the next one is held to the release after it (the
+  late start's hold), so no second submit goes into the same refresh and the lead cannot grow.
+* With the stats log on, a `GoCinema: Frame pacing latch on signal:` line follows each
+  `Frame pacing` window. It counts the frames that waited, those a frame woke and those the
+  deadline ended, gives the wait's mean and max, and the frames that waited and still came late.
+* The debug `vr_pacing` property also takes `signal`.
+
+How the three loop switches combine:
+
+| `stream_go_vr_late_start` | `stream_go_vr_latch_on_signal` | the cinema's latch |
+|---|---|---|
+| off | off | right after the last submit returns (today) |
+| off | on | on the frame signal, or 7.5 ms before VrApi's next release; the lead VrApi runs at stays as it is |
+| on | off or on | the late start's: a fixed point 7.5 ms before the release, with its hold and drain. The latch on the signal does nothing here: the late start already starts the frame at its deadline, and waking it earlier on a frame would give VrApi a longer prediction and undo the hold and drain |
+
+`stream_go_vr_frame_listener_thread` is independent of both. It decides which thread delivers the
+decoder's frame signal: the main looper (the default, shared with input dispatch and the session's
+LiveData) or the cinema's own `GoCinemaFrames` thread. That thread sets the loop's new-frame flag
+and, with the latch on the signal, wakes the loop. So on the main looper, the latch on the signal
+waits for the main thread as well. A/B it both ways. A room (not plain) keeps today's loop for both
+pacing switches, because its eye frame costs about 8 ms of GPU, which the budget does not leave.
+`docs/verification/PLE-801.md` has the session plan and `docs/verification/PLE-801/latch_sum.py`
+the per-arm summary.
+
 ## Required device validation
 
 Built with SDK 1.35.0 (PLE-617, PLE-623). A live PS5 stream plays through the cinema on
