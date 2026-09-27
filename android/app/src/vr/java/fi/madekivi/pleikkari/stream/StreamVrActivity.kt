@@ -126,7 +126,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 statusText = when(state) {
                     StreamStateConnected -> ""
                     is StreamStateQuit, is StreamStateCreateError, is StreamStateRemoteError -> getString(R.string.go_vr_disconnected)
-                    is StreamStateLoginPinRequest -> getString(R.string.go_vr_pin)
+                    // PLE-731: with the VR UI the PIN pad takes it; without, the old pointer to Oculus TV.
+                    is StreamStateLoginPinRequest ->
+                        getString(if(Preferences(this).goVrUi) R.string.go_vr_pin_pad else R.string.go_vr_pin)
                     else -> getString(R.string.go_vr_connecting)
                 }
                 cinema?.status = statusText
@@ -136,6 +138,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     StreamStateIdle, StreamStateConnecting, StreamStateLinkedStarting -> connectingSheet()
                     else -> null
                 })
+                pinRequest = state as? StreamStateLoginPinRequest
+                updatePinPad()
             }
             // PLE-722: the VR menu's stats overlay, once a second while it is on.
             vm.session.streamStats.observe(this) { stats ->
@@ -179,8 +183,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             VrHomeAction.Retry -> flow?.retry()
             VrHomeAction.Consoles -> flow?.consoles()
             VrHomeAction.OculusTv -> openPanel()
-            // Until the Go has a VR Settings sheet: the menu holds the room, screen and stats settings.
-            VrHomeAction.Settings -> cinema?.ui?.openMenu("Home Settings")
+            // PLE-732's Go Settings sheet, on the menu panel over Home.
+            VrHomeAction.Settings -> cinema?.ui?.openSettings("Home Settings")
             VrHomeAction.Exit -> finish()
         }
     }
@@ -308,6 +312,43 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         val ui = if(prefs.goVrUi) createUi(prefs) else null
         ui?.home(homeState)
         cinema = CinemaThread(surface, profile, frameLatency, ui).also { it.status = statusText; it.start() }
+        pinPadShown = null
+        updatePinPad()
+    }
+
+    /** PLE-731: the session's pending login PIN request, if any. */
+    private var pinRequest: StreamStateLoginPinRequest? = null
+    /** PLE-731: the request the current cinema's PIN pad was shown for. */
+    private var pinPadShown: StreamStateLoginPinRequest? = null
+
+    /** PLE-731: shows the VR PIN pad for a login PIN request, and takes it down once the session moves on. */
+    private fun updatePinPad() {
+        val host = cinema?.ui ?: return
+        val request = pinRequest
+        if(request === pinPadShown) return
+        pinPadShown = request
+        if(request == null) {
+            host.closeModal("PIN request over")
+            return
+        }
+        val text = VrPinPadText(
+            title = getString(R.string.alert_message_login_pin_request).trimEnd(':'),
+            titleIncorrect = getString(R.string.go_vr_pin_incorrect),
+            connect = getString(R.string.action_login_pin_connect),
+            quit = getString(R.string.action_quit_session),
+            clear = getString(R.string.go_vr_pin_clear),
+            backspace = "\u232B")
+        val model = object : VrPinPadModel {
+            // Both run on the GoVrUi thread.
+            override fun submit(pin: String) {
+                Log.i(VrUiHost.TAG, "PIN pad: submitting ${pin.length} digits")
+                host.closeModal("PIN submitted")
+                main.post { this@StreamVrActivity.model?.session?.setLoginPin(pin) }
+            }
+            override fun quit() { main.post { if(cinema?.ui === host) finish() } }
+        }
+        val pad = VrPinPad(model, text, request.pinIncorrect)
+        host.showModal(pad.screen, pad::refresh, model::quit)
     }
 
     /** The stored room and screen, or with the preview the room its extra asked for. */
@@ -325,6 +366,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             recentre = getString(R.string.go_vr_recentre),
             disconnect = getString(R.string.go_vr_disconnect),
             exit = getString(R.string.go_vr_exit),
+            settings = getString(R.string.go_vr_ui_settings),
             room = getString(R.string.go_vr_ui_room),
             rooms = VrEnvironmentKind.values().associateWith {
                 if(it == VrEnvironmentKind.PLAIN) getString(R.string.go_vr_ui_room_plain) else getString(it.title)
@@ -338,7 +380,22 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // Debug builds only: `adb shell setprop debug.pleikkari.vr_pointer x,y` aims a synthetic ray x degrees
         // right and y up of the open menu's middle, so screencaps can show hover and press (third_party README).
         val debugPointer: (() -> String)? = if(BuildConfig.DEBUG) { { debugProperty(POINTER_PROPERTY) } } else null
-        val host = VrUiHost(this, { VrMenu.build(model, text) }, { VrMenu.refresh(it, model) }, ::menuChanged,
+        // PLE-732: the Go Settings sheet, the menu panel's second page.
+        val settingsText = VrSettingsText(
+            title = getString(R.string.go_vr_ui_settings),
+            back = getString(R.string.go_vr_ui_back),
+            oculusTv = getString(R.string.go_vr_ui_oculus_tv),
+            stream = getString(R.string.go_vr_ui_stream),
+            nextStream = getString(R.string.go_vr_ui_match_60hz_detail),
+            resolutions = Preferences.Resolution.values().associateWith { getString(it.title) },
+            fpsValues = Preferences.FPS.values().associateWith { getString(it.title) },
+            bitrate = getString(R.string.go_vr_ui_bitrate),
+            bitrateAuto = getString(R.string.go_vr_ui_bitrate_auto),
+            codecs = Preferences.Codec.values().associateWith { getString(it.title) })
+        val host = VrUiHost(this,
+            { page -> if(page == VrPage.SETTINGS) VrSettings.build(model, model, text, settingsText) else VrMenu.build(model, text) },
+            { page, screen -> if(page == VrPage.SETTINGS) VrSettings.refresh(screen, model) else VrMenu.refresh(screen, model) },
+            ::menuChanged,
             prefs.mappingShare, prefs.mappingOptions, debugPointer, ::homeAction)
         model.host = host
         host.showStats(prefs.streamDiagnosticsOverlayEnabled)
@@ -351,13 +408,30 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     /** PLE-722: the VR menu's view of the stored Go settings; its setters run on the GoVrUi thread. */
-    private inner class MenuModel : VrMenuModel {
+    private inner class MenuModel : VrMenuModel, VrStreamProfileModel {
         @Volatile var host: VrUiHost? = null
         private val prefs = Preferences(this@StreamVrActivity)
         override val leaveIsExit get() = picking
         override fun resume() { host?.close("resume") }
         override fun recentre() { host?.recentre() }
         override fun leave() { main.post { if(cinema?.ui === host) this@StreamVrActivity.leave() } }
+        override fun openSettings() { host?.showPage(VrPage.SETTINGS) }
+        // PLE-732: the Settings sheet's stream profile, stored for the next stream.
+        override fun back() { host?.showPage(VrPage.MENU) }
+        override fun openOculusTv() { main.post { if(cinema?.ui === host) openPanel() } }
+        override var resolution: Preferences.Resolution
+            get() = prefs.resolution
+            set(value) { prefs.resolution = value }
+        override var fps: Preferences.FPS
+            get() = prefs.fps
+            set(value) { prefs.fps = value }
+        override var bitrateKbps: Int
+            get() = prefs.bitrate ?: 0
+            set(value) { prefs.bitrate = if(value <= 0) null else value }
+        override val bitrateAutoKbps get() = prefs.bitrateAuto
+        override var codec: Preferences.Codec
+            get() = prefs.codec
+            set(value) { prefs.codec = value }
         override var room: VrEnvironmentKind
             get() = previewEnvironment?.let { VrEnvironmentKind.fromValue(it) } ?: prefs.vrEnvironment
             set(value) {

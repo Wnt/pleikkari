@@ -807,7 +807,7 @@ one primary action, Play, and states replace buttons.
 | Home (Library launch) | A card per linked console with its state (awake, rest mode, not found) and Play; Settings; the Oculus TV row. Replaces `GoVrLibraryFlow`'s text chooser | follow-up |
 | Finding, waking, connecting | A status sheet with a Progress and Cancel, replacing today's status text | follow-up |
 | Console login PIN | The PIN pad on `StreamStateLoginPinRequest` | follow-up |
-| Settings | The Go subset: room and screen, stream (resolution, frame rate, bitrate, codec), stats; "More on the Oculus TV screen" | follow-up |
+| Settings | The Go subset, reached from the in-stream menu's Settings button (Back returns to the menu): room and screen, Match 60 Hz, stats; stream (resolution, frame rate, codec, bitrate with Auto), stored for the next stream; "Oculus TV screen" at the bottom left for the rest, which ends the VR task | PLE-732 |
 | Add a console | The address pad; linking and PSN sign-in stay on the Oculus TV screen until a VR flow is designed | follow-up |
 | Errors and quit reasons | A dialog with the reason and Retry or Home | follow-up |
 

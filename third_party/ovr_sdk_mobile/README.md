@@ -158,8 +158,8 @@ and a click away from it brings it back in front. `GoVrLibraryFlow` describes ea
   along the bottom. A card shows the console's name, its state and a Play pill; the whole card is
   the target. The states are Ready, "In rest mode · Play wakes it", "Looking on this network…",
   "Not found on this network" (after the 15 s find timeout) and "Not discovered · Play tries its
-  saved address". Settings opens the VR menu (room, screen, 60 Hz, stats) until the Go has a
-  Settings sheet.
+  saved address". Settings opens PLE-732's Go Settings sheet on the same panel; Back returns
+  to the menu, then to Home.
 - **Status sheets** show a spinner that turns at 8 redraws a second:
   - Looking for or waking a console: Cancel returns to the cards.
   - "did not answer": Try again, or Consoles.

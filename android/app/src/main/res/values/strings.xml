@@ -411,6 +411,9 @@
     <string name="go_vr_connecting">Connecting to PlayStation…</string>
     <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
     <string name="go_vr_pin">Console login PIN required. Use Oculus TV to enter it.</string>
+    <string name="go_vr_pin_pad">Console login PIN required.</string>
+    <string name="go_vr_pin_incorrect">Wrong PIN. Try again</string>
+    <string name="go_vr_pin_clear">Clear</string>
     <string name="go_vr_menu">Pleikkari cinema</string>
     <string name="go_vr_resume">Resume</string>
     <string name="go_vr_recentre">Recentre</string>
@@ -427,6 +430,12 @@
     <string name="go_vr_ui_match_60hz">Match 60 Hz</string>
     <string name="go_vr_ui_match_60hz_detail">From the next stream</string>
     <string name="go_vr_ui_stats">Stats overlay</string>
+    <string name="go_vr_ui_settings">Settings</string>
+    <string name="go_vr_ui_back">Back</string>
+    <string name="go_vr_ui_oculus_tv">Oculus TV screen</string>
+    <string name="go_vr_ui_stream">Stream</string>
+    <string name="go_vr_ui_bitrate">Bitrate</string>
+    <string name="go_vr_ui_bitrate_auto">Auto (%s)</string>
     <string name="go_vr_menu_help_exit">Click left: Resume · centre: Recentre · right: Exit</string>
     <!-- PLE-690: the Go Library's VR launch, drawn in the cinema; keep lines under about 60 characters. -->
     <string name="go_vr_entry_loading">Pleikkari\n\nLooking for your PlayStation…</string>
