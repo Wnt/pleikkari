@@ -158,6 +158,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
+                // PLE-675: debug builds only, `adb shell setprop debug.pleikkari.vr_full_pose 1` before
+                // the stream starts; the screen follows the full head pose so a Go on a table shows it.
+                if(BuildConfig.DEBUG && debugProperty(FULL_POSE_PROPERTY) == "1") VrCinemaNative.setFullPoseRecentre(native, true)
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
                 // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
                 if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
@@ -332,6 +335,14 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         /** PLE-653: with the preview, the rooms' MSAA sample count (1 turns MSAA off) instead of PLE-615's 4x. */
         const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
+        private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
+
+        /** android.os.SystemProperties is hidden API; a debug-only reader, "" on any failure. */
+        private fun debugProperty(name: String): String = try {
+            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, name) as String
+        } catch(e: Exception) {
+            ""
+        }
         private const val PREVIEW_WIDTH = 1280
         private const val PREVIEW_HEIGHT = 720
         private const val VIDEO_STATS_WINDOW_NS = 5_000_000_000L
@@ -344,6 +355,7 @@ internal object VrCinemaNative {
     external fun messageTexture(handle: Long): Int
     external fun input(handle: Long): Int
     external fun recentre(handle: Long)
+    external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
     external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
     external fun setRoomGpuLevel(handle: Long, level: Int)
