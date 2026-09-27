@@ -73,3 +73,11 @@ endif()
 if(CHIAKI_ENABLE_FFMPEG_DECODER)
 	target_link_libraries(chiaki-unit FFMPEG::avcodec FFMPEG::avutil)
 endif()
+
+# PLE-766: compile and link the Go's GLSL shaders through the host's Mesa, so a
+# precision or link error fails here instead of on the Go. Skips (77) without Mesa.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+	add_test(NAME vr-shaders COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/vr_shaders_check.py")
+	set_tests_properties(vr-shaders PROPERTIES SKIP_RETURN_CODE 77)
+endif()
