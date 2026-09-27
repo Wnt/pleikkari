@@ -43,7 +43,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.decoderOperatingRateDefaultKey -> preferences.decoderOperatingRateDefault
 		preferences.decoderOperatingRateAutoKey -> preferences.decoderOperatingRateAuto
 		preferences.decoderRealtimePriorityKey -> preferences.decoderRealtimePriority
-		preferences.decoderQcomGoProfileKey -> preferences.decoderQcomGoProfile
+		preferences.decoderQcomVtLowLatencyKey -> preferences.decoderQcomVtLowLatency
 		preferences.feedbackReducedIntervalEnabledKey -> preferences.feedbackReducedIntervalEnabled
 		preferences.feedbackStatsLogEnabledKey -> preferences.feedbackStatsLogEnabled
 		preferences.streamEndCauseProbeEnabledKey -> preferences.streamEndCauseProbeEnabled
@@ -89,7 +89,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.decoderOperatingRateDefaultKey -> preferences.decoderOperatingRateDefault = value
 			preferences.decoderOperatingRateAutoKey -> preferences.decoderOperatingRateAuto = value
 			preferences.decoderRealtimePriorityKey -> preferences.decoderRealtimePriority = value
-			preferences.decoderQcomGoProfileKey -> preferences.decoderQcomGoProfile = value
+			preferences.decoderQcomVtLowLatencyKey -> preferences.decoderQcomVtLowLatency = value
 			preferences.feedbackReducedIntervalEnabledKey -> preferences.feedbackReducedIntervalEnabled = value
 			preferences.feedbackStatsLogEnabledKey -> preferences.feedbackStatsLogEnabled = value
 			preferences.streamEndCauseProbeEnabledKey -> preferences.streamEndCauseProbeEnabled = value
@@ -280,7 +280,7 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			})
 		}
 
-		preferenceScreen.findPreference<Preference>(preferences.decoderQcomGoProfileKey)?.isVisible =
+		preferenceScreen.findPreference<Preference>(preferences.decoderQcomVtLowLatencyKey)?.isVisible =
 			GoDecoderProfile.eligible()
 
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_resolution_key))?.let {

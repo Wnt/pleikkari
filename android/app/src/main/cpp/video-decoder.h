@@ -82,9 +82,8 @@ typedef struct android_chiaki_video_decoder_t
 	int32_t operating_rate;
 	AndroidChiakiDecoderOperatingRateSource operating_rate_source;
 	bool realtime_priority;
-	// PLE-635: the Oculus Go's Qualcomm OMX profile is on (frame-rate, this capacity-derived
-	// operating-rate and priority 0); 0 = off.
-	int32_t qcom_profile_operating_rate;
+	// PLE-635: ask the Oculus Go's OMX.qcom decoder for its VT low-latency mode (decode-order output).
+	bool qcom_vt_low_latency;
 	bool diagnostics_enabled;
 	bool late_frame_recovery_enabled;
 	bool last_queued_frame_index_valid;
@@ -109,7 +108,7 @@ ChiakiErrorCode android_chiaki_video_decoder_init(AndroidChiakiVideoDecoder *dec
 		int32_t target_fps, ChiakiCodec codec, bool low_latency_enabled, bool real_pts_enabled,
 		bool input_thread_enabled, bool late_frame_recovery_enabled,
 		int32_t operating_rate, bool operating_rate_default, bool operating_rate_auto,
-		bool realtime_priority, int32_t qcom_profile_operating_rate, unsigned int pts_rate_hz,
+		bool realtime_priority, bool qcom_vt_low_latency, unsigned int pts_rate_hz,
 		bool diagnostics_enabled, bool stats_log_enabled,
 		const AndroidChiakiVideoPresenterConfig *presenter_config);
 void android_chiaki_video_decoder_set_request_idr_cb(AndroidChiakiVideoDecoder *decoder,

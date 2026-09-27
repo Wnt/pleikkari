@@ -12,7 +12,6 @@ typedef enum android_chiaki_decoder_operating_rate_source_t
 	ANDROID_CHIAKI_DECODER_OPERATING_RATE_EXPLICIT,
 	ANDROID_CHIAKI_DECODER_OPERATING_RATE_DEFAULT_PATH,
 	ANDROID_CHIAKI_DECODER_OPERATING_RATE_AUTO,
-	ANDROID_CHIAKI_DECODER_OPERATING_RATE_QCOM_PROFILE,
 } AndroidChiakiDecoderOperatingRateSource;
 
 typedef struct android_chiaki_decoder_operating_rate_t
@@ -21,12 +20,8 @@ typedef struct android_chiaki_decoder_operating_rate_t
 	AndroidChiakiDecoderOperatingRateSource source;
 } AndroidChiakiDecoderOperatingRate;
 
-/**
- * Explicit rate > Qualcomm OMX profile (PLE-635, 0 = off) > default-path experiment
- * > real-PTS auto switch > codec default.
- */
 AndroidChiakiDecoderOperatingRate android_chiaki_video_decoder_select_operating_rate(
-		int32_t explicit_rate, int32_t qcom_profile_rate, bool default_path_enabled, int32_t default_path_rate,
+		int32_t explicit_rate, bool default_path_enabled, int32_t default_path_rate,
 		bool real_pts_enabled, bool auto_enabled, int32_t auto_rate);
 
 #endif

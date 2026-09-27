@@ -535,7 +535,7 @@ class MainActivity : AppCompatActivity()
 			decoderOperatingRateDefault = preferences.decoderOperatingRateDefault,
 			decoderOperatingRateAuto = preferences.decoderOperatingRateAuto,
 			decoderRealtimePriority = preferences.decoderRealtimePriority,
-			decoderQcomProfileOperatingRate = GoDecoderProfile.operatingRate(preferences),
+			decoderQcomVtLowLatency = GoDecoderProfile.vtLowLatency(preferences),
 			videoTimestampRateHz = preferences.videoTimestampRateHz,
 			streamDiagnosticsEnabled = true,
 			videoPresenterConfig = preferences.videoPresenterConfig

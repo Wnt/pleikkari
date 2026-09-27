@@ -10,39 +10,25 @@ static MunitResult test_precedence(const MunitParameter params[], void *user)
 	(void)user;
 
 	AndroidChiakiDecoderOperatingRate selected =
-			android_chiaki_video_decoder_select_operating_rate(1920, 0, true, 960, true, true, 960);
+			android_chiaki_video_decoder_select_operating_rate(1920, true, 960, true, true, 960);
 	munit_assert_int(selected.rate, ==, 1920);
 	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_EXPLICIT);
 
-	selected = android_chiaki_video_decoder_select_operating_rate(0, 0, true, 960, true, true, 960);
+	selected = android_chiaki_video_decoder_select_operating_rate(0, true, 960, true, true, 960);
 	munit_assert_int(selected.rate, ==, 960);
 	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_DEFAULT_PATH);
 
-	selected = android_chiaki_video_decoder_select_operating_rate(0, 0, false, 960, true, true, 960);
+	selected = android_chiaki_video_decoder_select_operating_rate(0, false, 960, true, true, 960);
 	munit_assert_int(selected.rate, ==, 960);
 	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_AUTO);
 
-	selected = android_chiaki_video_decoder_select_operating_rate(0, 0, false, 960, true, false, 960);
+	selected = android_chiaki_video_decoder_select_operating_rate(0, false, 960, true, false, 960);
 	munit_assert_int(selected.rate, ==, 0);
 	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_NONE);
 
-	selected = android_chiaki_video_decoder_select_operating_rate(0, 0, false, 960, false, true, 960);
+	selected = android_chiaki_video_decoder_select_operating_rate(0, false, 960, false, true, 960);
 	munit_assert_int(selected.rate, ==, 0);
 	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_NONE);
-
-	// PLE-635: the Qualcomm OMX profile's rate replaces the default path and the auto switch,
-	// but an explicit rate still wins.
-	selected = android_chiaki_video_decoder_select_operating_rate(1920, 240, true, 960, true, true, 960);
-	munit_assert_int(selected.rate, ==, 1920);
-	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_EXPLICIT);
-
-	selected = android_chiaki_video_decoder_select_operating_rate(0, 240, true, 960, true, true, 960);
-	munit_assert_int(selected.rate, ==, 240);
-	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_QCOM_PROFILE);
-
-	selected = android_chiaki_video_decoder_select_operating_rate(0, 240, false, 960, false, false, 960);
-	munit_assert_int(selected.rate, ==, 240);
-	munit_assert_int(selected.source, ==, ANDROID_CHIAKI_DECODER_OPERATING_RATE_QCOM_PROFILE);
 
 	return MUNIT_OK;
 }
