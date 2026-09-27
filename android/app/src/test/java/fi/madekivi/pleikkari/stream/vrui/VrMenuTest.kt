@@ -23,6 +23,7 @@ class VrMenuTest
 		override fun resume() { calls += "resume" }
 		override fun recentre() { calls += "recentre" }
 		override fun leave() { calls += "leave" }
+		override fun openSettings() { calls += "settings" }
 		override var room = VrEnvironmentKind.PLAIN
 		override var screenDistanceCm = 300
 		override var screenWidthCm = 419
@@ -30,7 +31,7 @@ class VrMenuTest
 		override var statsOverlay = false
 	}
 
-	private val text = VrMenuText("Pleikkari cinema", "Resume", "Recentre", "Disconnect", "Exit", "Room",
+	private val text = VrMenuText("Pleikkari cinema", "Resume", "Recentre", "Disconnect", "Exit", "Settings", "Room",
 		VrEnvironmentKind.values().associateWith { it.value.replaceFirstChar(Char::uppercase) },
 		"Distance", "Size", "Rooms only", "Match 60 Hz", "From the next stream", "Stats overlay")
 	private val model = Model()
@@ -74,8 +75,9 @@ class VrMenuTest
 	{
 		button("Resume").activate()
 		button("Recentre").activate()
+		button("Settings").activate()
 		button("Disconnect").activate()
-		assertEquals(listOf("resume", "recentre", "leave"), model.calls)
+		assertEquals(listOf("resume", "recentre", "settings", "leave"), model.calls)
 		model.leaveIsExit = true
 		assertEquals("Exit", VrMenu.build(model, text).all.filterIsInstance<VrButton>().last().text)
 	}
@@ -115,6 +117,8 @@ class VrMenuTest
 		assertTrue(focus.ringVisible)
 		focus.move(menu, 0, 1)
 		assertSame(button("Recentre"), focus.focused)
+		focus.move(menu, 0, 1)
+		assertSame(button("Settings"), focus.focused)
 		focus.move(menu, 0, 1)
 		assertSame(button("Disconnect"), focus.focused)
 		// Right from Resume reaches the room choice beside it.

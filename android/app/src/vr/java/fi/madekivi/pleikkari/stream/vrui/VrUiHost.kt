@@ -25,8 +25,9 @@ import kotlin.math.abs
  */
 class VrUiHost(
 	context: Context,
-	private val buildMenu: () -> VrScreen,
-	private val refreshMenu: (VrScreen) -> Unit,
+	/** PLE-732: the menu panel shows one [VrPage] at a time. */
+	private val buildMenu: (VrPage) -> VrScreen,
+	private val refreshMenu: (VrPage, VrScreen) -> Unit,
 	/** Main thread: the menu opened or closed (the activity neutralises the pad's console input). */
 	private val menuChanged: (Boolean) -> Unit,
 	/** Share and Options, as the console mapping has them: held together they open the menu. */
@@ -42,6 +43,7 @@ class VrUiHost(
 	private val painter = VrUiPainter(context)
 	private val surfaces = arrayOfNulls<Surface>(2)
 	private var menu: VrScreen? = null
+	private var page = VrPage.MENU
 	private val pointer = VrPointer()
 	private val focus = VrFocus()
 	private val stick = VrStickRepeat()
@@ -80,8 +82,8 @@ class VrUiHost(
 		surfaces[STATS] = statsSurface
 		Log.i(TAG, "Panels attached: menu ${menuSurface != null}, stats ${statsSurface != null}")
 		// Drawn once while closed, so the layer's first frame on opening already has its pixels.
-		val screen = menu ?: buildMenu().also { menu = it }
-		refreshMenu(screen)
+		val screen = menu ?: buildMenu(page).also { menu = it }
+		refreshMenu(page, screen)
 		redrawMenu()
 		if(statsOpen)
 			redrawStats()
@@ -127,8 +129,18 @@ class VrUiHost(
 		handler.post { pointerSample(sample) }
 	}
 
-	/** The remote's Back: opens the menu, or closes it (the only level so far). */
-	fun back() = handler.post { if(menuOpen) close("back") else open("back") }
+	/** The remote's Back: opens the menu, returns from Settings to it, or closes it. */
+	fun back() = handler.post {
+		when
+		{
+			!menuOpen -> open("back")
+			page != VrPage.MENU -> switchPage(VrPage.MENU)
+			else -> close("back")
+		}
+	}
+
+	/** PLE-732: swaps the menu panel to [target] (Settings and back), keeping it open where it is. */
+	fun showPage(target: VrPage) = handler.post { switchPage(target) }
 
 	fun takeRecentre() = recentreRequest.getAndSet(false)
 	fun takeEnvironmentChange() = environmentRequest.getAndSet(false)
@@ -215,6 +227,12 @@ class VrUiHost(
 			return@post
 		menuOpen = false
 		interactive = false
+		// The next open starts on the in-stream menu again.
+		if(page != VrPage.MENU)
+		{
+			page = VrPage.MENU
+			menu = null
+		}
 		pointer.reset(lastSelect)
 		focus.reset()
 		chordDown.clear()
@@ -232,12 +250,25 @@ class VrUiHost(
 
 	// ---- GoVrUi thread ----
 
+	private fun switchPage(target: VrPage)
+	{
+		if(page == target)
+			return
+		page = target
+		val screen = buildMenu(page).also { menu = it }
+		refreshMenu(page, screen)
+		pointer.reset(lastSelect)
+		focus.reset()
+		Log.i(TAG, "Menu page $page")
+		redrawMenu()
+	}
+
 	private fun open(reason: String)
 	{
 		if(menuOpen)
 			return
-		val screen = menu ?: buildMenu().also { menu = it }
-		refreshMenu(screen)
+		val screen = menu ?: buildMenu(page).also { menu = it }
+		refreshMenu(page, screen)
 		pointer.reset(lastSelect)
 		focus.reset()
 		menuOpen = true
@@ -262,7 +293,7 @@ class VrUiHost(
 		var changed = pointer.sample(screen, s) { widget, part ->
 			Log.i(TAG, "Activate ${name(widget)}${if(part != Part.WHOLE) " (${part.name.lowercase(Locale.US)})" else ""}")
 			widget.activate(part)
-			refreshMenu(screen)
+			refreshMenu(page, screen)
 		}
 		if(s.onPanel && focus.ringVisible && pointer.hovered != null && focus.hideRing())
 			changed = true
@@ -315,18 +346,21 @@ class VrUiHost(
 					focus.focused?.let { Log.i(TAG, "Activate ${name(it)} (pad)") }
 					if(focus.activate())
 					{
-						refreshMenu(screen)
+						refreshMenu(page, screen)
 						redrawMenu()
 					}
 				}
 			KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU ->
-				if(!down) close("pad")
+				if(!down)
+				{
+					if(page != VrPage.MENU) switchPage(VrPage.MENU) else close("pad")
+				}
 			KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 ->
 				if(down)
 				{
 					val list = focus.focused?.list ?: screen.lists.firstOrNull() ?: return
-					val page = list.viewport.height * if(code == KeyEvent.KEYCODE_BUTTON_L1) -1 else 1
-					if(list.scrollBy(page))
+					val pageHeight = list.viewport.height * if(code == KeyEvent.KEYCODE_BUTTON_L1) -1 else 1
+					if(list.scrollBy(pageHeight))
 						redrawMenu()
 				}
 		}
@@ -343,7 +377,7 @@ class VrUiHost(
 				Log.i(TAG, "Focus ${focus.focused?.let { name(it) } ?: "none"}")
 			else if(focus.focused is VrSlider)
 				Log.i(TAG, "Step ${name(focus.focused!!)}")
-			refreshMenu(screen)
+			refreshMenu(page, screen)
 			redrawMenu()
 		}
 	}
@@ -496,3 +530,6 @@ class VrUiHost(
 		private const val DEBUG_POINTER_POLL_MS = 250L
 	}
 }
+
+/** PLE-732: what the menu panel shows. */
+enum class VrPage { MENU, SETTINGS }
