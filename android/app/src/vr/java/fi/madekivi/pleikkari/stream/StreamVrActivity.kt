@@ -6,7 +6,9 @@ import android.opengl.GLES20
 import android.opengl.GLUtils
 import android.os.Bundle
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
+import android.os.Process
 import android.util.Log
 import android.view.*
 import android.widget.Toast
@@ -23,6 +25,7 @@ import fi.madekivi.pleikkari.session.*
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /** VrApi owns the display; Android's SurfaceView is only the native-window handoff. */
 class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
@@ -149,6 +152,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var native = 0L
             var texture: SurfaceTexture? = null
             var decoder: Surface? = null
+            var listenerThread: HandlerThread? = null
             try {
                 // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
                 val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
@@ -164,10 +168,20 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
                 }
                 val frameReady = AtomicBoolean(false)
+                // PLE-673: count every signal, so the window log separates frames the decoder
+                // delivered from frames the render loop latched.
+                val available = AtomicInteger(0)
                 val consumer = SurfaceTexture(VrCinemaNative.videoTexture(native))
                 texture = consumer
                 consumer.setDefaultBufferSize(info?.videoProfile?.width ?: PREVIEW_WIDTH, info?.videoProfile?.height ?: PREVIEW_HEIGHT)
-                consumer.setOnFrameAvailableListener({ frameReady.set(true) }, main)
+                // PLE-673: off (the default) keeps the listener on the main looper, as PLE-654 measured.
+                val listenerHandler = if(Preferences(this@StreamVrActivity).goVrFrameListenerThread) {
+                    val thread = HandlerThread("GoCinemaFrames", Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
+                    listenerThread = thread
+                    Log.i("GoCinema", "Frame-available listener on its own thread")
+                    Handler(thread.looper)
+                } else main
+                consumer.setOnFrameAvailableListener({ available.incrementAndGet(); frameReady.set(true) }, listenerHandler)
                 val output = Surface(consumer)
                 decoder = output
                 val picture = if(preview) PreviewPicture(output) else null
@@ -227,8 +241,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     if(nowNs - windowStartNs >= VIDEO_STATS_WINDOW_NS) {
                         val seconds = (nowNs - windowStartNs) / 1e9
                         Log.i("GoCinema", String.format(Locale.US,
-                            "Cinema video: %d decoder frames latched in %.1f s (%.1f fps), %d of %d submitted frames showed video",
-                            latched, seconds, latched / seconds, shown, submitted))
+                            "Cinema video: %d decoder frames latched in %.1f s (%.1f fps), %d of %d submitted frames showed video, %d frame signals",
+                            latched, seconds, latched / seconds, shown, submitted, available.getAndSet(0)))
                         windowStartNs = nowNs
                         latched = 0
                         submitted = 0
@@ -243,6 +257,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // An error may reach here while the decoder still holds the output. The main
                 // thread stops it before signalling detached; never free a live producer's target.
                 detached.await()
+                listenerThread?.quitSafely()
                 decoder?.release()
                 texture?.release()
                 if(native != 0L) VrCinemaNative.destroy(native)
