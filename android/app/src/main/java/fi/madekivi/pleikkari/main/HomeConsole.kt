@@ -21,6 +21,15 @@ data class HomeConsole(
 	val manualDisplayHost: ManualDisplayHost? = displayHost as? ManualDisplayHost
 )
 
+/**
+ * PLE-291: a console found on the network in rest mode that is not linked yet. It cannot
+ * be woken over the LAN without a registration key, but the PSN link wakes it, so the card
+ * offers "Wake and link" and says it is resting instead of a bare "Link".
+ */
+val HomeConsole.isUnlinkedResting: Boolean
+	get() = status == HomeConsoleStatus.REGISTRATION_REQUIRED &&
+		(displayHost as? DiscoveredDisplayHost)?.discoveredHost?.state == DiscoveryHost.State.STANDBY
+
 private data class LocalConsoleGroup(
 	val hosts: MutableList<DisplayHost>,
 	val identities: MutableSet<String>

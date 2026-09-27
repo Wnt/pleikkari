@@ -159,14 +159,18 @@ class DisplayHostRecyclerViewAdapter(
 			// Link button once both named the unlinked state, so it is dropped here; the
 			// other statuses (On/Standby/Remote) still carry information the button and
 			// tag do not, so they stay.
-			statusTextView.isVisible = linked
+			// PLE-291: an unlinked console in rest mode still says so, since the button
+			// wakes it as well as linking it.
+			val resting = console.isUnlinkedResting
+			statusTextView.isVisible = linked || resting
 			statusTextView.setText(when(console.status)
 			{
 				HomeConsoleStatus.ON -> R.string.console_status_on
 				HomeConsoleStatus.STANDBY -> R.string.console_status_standby
 				HomeConsoleStatus.REMOTE -> if(console.psnConsole != null)
 					R.string.console_status_remote_psn else R.string.console_status_remote
-				HomeConsoleStatus.REGISTRATION_REQUIRED -> R.string.console_status_registration_required
+				HomeConsoleStatus.REGISTRATION_REQUIRED -> if(resting)
+					R.string.console_status_standby else R.string.console_status_registration_required
 			})
 			val consoleProgress = if(thisBusy) progress else null
 			detailTextView.text = console.detail
@@ -186,7 +190,12 @@ class DisplayHostRecyclerViewAdapter(
 				if(console.displayHost?.isPS5 != false) R.drawable.ic_console_ps5 else R.drawable.ic_console
 			)
 			actionProgressBar.isVisible = thisBusy
-			playButton.setText(if(linked) R.string.action_connect else R.string.action_link)
+			playButton.setText(when
+			{
+				linked -> R.string.action_connect
+				resting -> R.string.action_wake_and_link
+				else -> R.string.action_link
+			})
 			playButton.isEnabled = !anyBusy
 			playButton.setOnClickListener { play(console) }
 			wakeButton.isVisible = console.status == HomeConsoleStatus.STANDBY
