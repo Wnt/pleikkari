@@ -26,10 +26,12 @@ import kotlinx.coroutines.launch
  * with LAN discovery (waking it from rest mode), and shows the in-VR chooser and messages through
  * [show]; [connect] starts the stream on the same StreamSession path as Connect. Main thread only.
  * With [chooseFirst] (after a Disconnect) it opens the chooser instead of streaming on its own.
+ * With [noConsoles] (PLE-739, debug builds only) it ignores every linked console.
  */
 internal class GoVrLibraryFlow(
     private val activity: ComponentActivity,
     private val chooseFirst: Boolean,
+    private val noConsoles: Boolean,
     private val show: (String) -> Unit,
     private val connect: (ConnectInfo) -> Unit,
     private val openPanel: () -> Unit,
@@ -69,7 +71,7 @@ internal class GoVrLibraryFlow(
         discovery.active = true
         jobs += activity.lifecycleScope.launch {
             val database = getDatabase(activity)
-            registered = database.registeredHostDao().getAll().first()
+            registered = if(noConsoles) emptyList() else database.registeredHostDao().getAll().first()
             manual = database.manualHostDao().getAll().first()
             begin()
         }

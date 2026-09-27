@@ -2,7 +2,10 @@
 package fi.madekivi.pleikkari.stream
 
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.*
 import android.opengl.GLES20
 import android.opengl.GLUtils
@@ -15,6 +18,7 @@ import android.util.Log
 import android.view.*
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.os.BundleCompat
 import androidx.lifecycle.ViewModelProvider
@@ -49,6 +53,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var libraryFlow: GoVrLibraryFlow? = null
     /** PLE-690: a Library launch before its stream; touchpad clicks drive the chooser, not recentre. */
     @Volatile private var picking = false
+    /** PLE-739: debug builds only; VrApi input bits fed by [DEBUG_INPUT_ACTION], OR'd into the next poll. */
+    private val debugInput = AtomicInteger(0)
+    private var debugInputReceiver: BroadcastReceiver? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,7 +95,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             // launch opens its chooser instead of streaming on its own, so the entry can be proven on the
             // Go without connecting to a console (third_party/ovr_sdk_mobile/README.md).
             val chooseFirst = chooser || BuildConfig.DEBUG && debugProperty(CHOOSE_PROPERTY) == "1"
-            libraryFlow = GoVrLibraryFlow(this, chooseFirst, ::showStatus, ::libraryConnect, ::openPanel, ::finish)
+            // PLE-739: debug builds only, `adb shell setprop debug.pleikkari.go_entry_no_console 1`: the
+            // Library flow sees no linked PS5, so its no-console message shows without clearing app data.
+            val noConsoles = BuildConfig.DEBUG && debugProperty(NO_CONSOLE_PROPERTY) == "1"
+            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, ::showStatus, ::libraryConnect, ::openPanel, ::finish)
                 .also { it.start() }
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -167,12 +177,45 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         super.onResume()
         resumed = true
         libraryFlow?.resume()
+        if(BuildConfig.DEBUG) registerDebugInput()
         startCinema()
+    }
+
+    /**
+     * PLE-739: debug builds only. The Go's `input keyevent` has no source argument, so neither the
+     * chooser nor the VrApi-polled menu can be driven over adb. This feeds the Go remote's own input
+     * bits into the render loop, the same path as the touchpad and Back button:
+     * `adb shell am broadcast -a fi.madekivi.pleikkari.DEBUG_GO_VR_INPUT --es key <back|left|centre|right>`.
+     * Back toggles the menu; Disconnect is back then right.
+     */
+    private fun registerDebugInput() {
+        if(debugInputReceiver != null) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val key = intent.getStringExtra(EXTRA_DEBUG_KEY)
+                val bits = when(key) {
+                    "back" -> MENU
+                    "left" -> CLICK
+                    "centre", "center" -> CLICK or CENTRE
+                    "right" -> CLICK or RIGHT
+                    else -> {
+                        Log.w(TAG_ENTRY, "Debug input: unknown key $key")
+                        return
+                    }
+                }
+                Log.i(TAG_ENTRY, "Debug input: $key")
+                debugInput.accumulateAndGet(bits) { a, b -> a or b }
+            }
+        }
+        ContextCompat.registerReceiver(this, receiver, IntentFilter(DEBUG_INPUT_ACTION), ContextCompat.RECEIVER_EXPORTED)
+        debugInputReceiver = receiver
     }
 
     override fun onPause() {
         resumed = false
         libraryFlow?.pause()
+        debugInputReceiver?.let { unregisterReceiver(it) }
+        debugInputReceiver = null
         stopCinema()
         super.onPause()
     }
@@ -334,7 +377,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val submitTiming = LongArray(2)
                 var latencyWindowStartNs = windowStartNs
                 while(running.get()) {
-                    val input = VrCinemaNative.input(native)
+                    val input = VrCinemaNative.input(native) or debugInput.getAndSet(0)
                     if(input and MENU != 0) menu = !menu
                     if(input and CLICK != 0) {
                         if(!menu && picking) {
@@ -498,6 +541,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
         /** PLE-690: debug builds only; a Library launch opens its chooser instead of connecting. */
         private const val CHOOSE_PROPERTY = "debug.pleikkari.go_entry_choose"
+        /** PLE-739: debug builds only; a Library launch sees no linked console. */
+        private const val NO_CONSOLE_PROPERTY = "debug.pleikkari.go_entry_no_console"
+        /** PLE-739: debug builds only; see [registerDebugInput]. */
+        private const val DEBUG_INPUT_ACTION = "fi.madekivi.pleikkari.DEBUG_GO_VR_INPUT"
+        private const val EXTRA_DEBUG_KEY = "key"
         /** PLE-690: set only by [leave]; the activity is not exported. */
         private const val EXTRA_LIBRARY_CHOOSER = "library_chooser"
         private const val TAG_ENTRY = "GoVrEntry"
