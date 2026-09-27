@@ -15,6 +15,7 @@
 #           on display 0, tap playButton, wait for StreamVrActivity, stream $SECS s with logcat
 #           dumps and screencaps, force-stop (never BACK: the cinema turns it into its menu, and on
 #           display 0 it arms vrshell's exit dialog), pull the session log, prefs back
+#  (setup and restore print a WARNING when the snapshot APK lacks auto_connect_host, i.e. predates PLE-659)
 #  restore  force-stop, reinstall the snapshot APK if the installed one differs, snapshot prefs
 #           back byte-identically
 # Values: key=true|false, key=s:<string>.
@@ -75,9 +76,14 @@ open(dst, "w").write(text)
 EOF
 }
 
+stale_warn() { # <apk> <what>: PLE-769, a snapshot older than PLE-659 ignores auto_connect_host
+	[ "$(unzip -p "$1" 'classes*.dex' 2>/dev/null | grep -ac auto_connect_host)" -gt 0 ] && return 0
+	say "WARNING: $2 has no auto_connect_host in its dex: it predates PLE-659, so go_stream.sh start stalls on it; do not treat it as the resident build"
+}
+
 step_setup() {
 	local cur path
-	if [ -s "$BACKUP/base.apk" ]; then say "backup in $BACKUP exists; keeping the first snapshot"; return 0; fi
+	if [ -s "$BACKUP/base.apk" ]; then say "backup in $BACKUP exists; keeping the first snapshot"; stale_warn "$BACKUP/base.apk" "the kept snapshot APK"; return 0; fi
 	cur=$(resumed)
 	case "$cur" in *Stream*) say "abort: a stream is live ($cur), not ours"; exit 2 ;; esac
 	mkdir -p "$BACKUP/databases"
@@ -92,6 +98,7 @@ step_setup() {
 	a pull "$path" "$BACKUP/base.apk" >/dev/null || { say "abort: cannot pull $path"; exit 2; }
 	a shell dumpsys package $PKG | tr -d '\r' | grep -E "versionCode|lastUpdateTime" > "$BACKUP/package.txt"
 	say "backup: prefs $(wc -c < "$BACKUP/prefs.xml") B, db $(ls "$BACKUP/databases" | tr '\n' ' '), appdata $(wc -c < "$BACKUP/appdata.tar") B, apk $(sha256sum "$BACKUP/base.apk" | cut -c1-16); $(tr '\n' ' ' < "$BACKUP/package.txt")"
+	stale_warn "$BACKUP/base.apk" "the snapshot APK"
 }
 
 step_ensure() { # <apk>
@@ -186,6 +193,7 @@ step_restore() {
 	a shell am force-stop $PKG
 	now=$(a shell md5sum "$(a shell pm path $PKG | tr -d '\r' | sed -n 's/^package://p' | head -1)" | tr -d '\r' | cut -d' ' -f1)
 	if [ "$now" != "$(md5sum < "$BACKUP/base.apk" | cut -d' ' -f1)" ]; then
+		stale_warn "$BACKUP/base.apk" "the snapshot APK being restored"
 		a install -r "$BACKUP/base.apk" 2>&1 | tail -1 | tee -a "$LOG"
 	fi
 	now=$(a shell md5sum "$(a shell pm path $PKG | tr -d '\r' | sed -n 's/^package://p' | head -1)" | tr -d '\r' | cut -d' ' -f1)
