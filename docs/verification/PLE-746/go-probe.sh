@@ -55,6 +55,11 @@ PADS=${PADS:-}
 STEP_WAIT=${STEP_WAIT:-1.5}
 BASELINE_DROP=${BASELINE_DROP:-stream_go_vr_match_60hz stream_go_vr_room_high_gpu stream_go_vr_frame_listener_thread stream_decoder_qcom_vt_low_latency}
 DEADLINE=${DEADLINE:-$(( $(date +%s) + 570 ))}
+# PLE-815: an A/B arm on top of the baseline. ARM_PREFS="key=value ..." (true/false -> boolean, anything
+# else -> string) replaces or adds those prefs; ARM_PROPS="prop=value ..." is set before the launch and
+# cleared with the other props. Both empty (the default) is the baseline.
+ARM_PREFS=${ARM_PREFS:-}
+ARM_PROPS=${ARM_PROPS:-}
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
 a() { echo "$(date -u +%T) adb $*" >>"$OUT/adb.txt"; timeout 120 "$A" -s "$G" "$@"; }
@@ -83,12 +88,14 @@ write_prefs() { # <file>
 cleanup_props() {
 	a shell setprop debug.pleikkari.vr_full_pose 0
 	a shell setprop debug.pleikkari.go_entry_choose 0
+	local kv
+	for kv in $ARM_PROPS; do a shell setprop "${kv%%=*}" "''"; done
 }
 
 step_prefs() {
-	python3 - "$BACKUP/prefs.xml" "$OUT/prefs-run.xml" "$BASELINE_DROP" <<'EOF' | tee -a "$LOG"
+	python3 - "$BACKUP/prefs.xml" "$OUT/prefs-run.xml" "$BASELINE_DROP" "$ARM_PREFS" <<'EOF' | tee -a "$LOG"
 import re, sys
-src, dst, drop = sys.argv[1:]
+src, dst, drop, arm = sys.argv[1:]
 text = open(src).read()
 for key in drop.split():
     found = re.search(r'<(boolean|string) name="%s"[^\n]*' % re.escape(key), text)
@@ -99,6 +106,14 @@ for key in drop.split():
 for key in ("stream_feedback_stats_log", "stream_go_vr_enabled", "stream_go_vr_latency_probe"):
     text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % key, "", text)
     text = text.replace("</map>", '    <boolean name="%s" value="true" />\n</map>' % key)
+for item in arm.split():
+    key, value = item.split("=", 1)
+    text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % re.escape(key), "", text)
+    text = re.sub(r'\s*<string name="%s">[^<]*</string>' % re.escape(key), "", text)
+    entry = ('<boolean name="%s" value="%s" />' % (key, value) if value in ("true", "false")
+             else '<string name="%s">%s</string>' % (key, value))
+    text = text.replace("</map>", "    %s\n</map>" % entry)
+    print("arm: %s" % entry)
 open(dst, "w").write(text)
 # The stream's own settings, for the summary's setup section.
 for line in text.splitlines():
@@ -121,6 +136,8 @@ step_launch() {
 	entry=$(a shell "cmd package resolve-activity -a android.intent.action.MAIN -c android.intent.category.INFO $PKG" 2>&1 | tr -d '\r' | grep -o 'name=fi\.madekivi\.pleikkari\.stream\.GoVrLibraryEntry' | head -1 | sed 's/^name=fi\.madekivi\.pleikkari//')
 	[ -n "$entry" ] || { say "abort: MAIN/INFO does not resolve to the Library entry (.stream.GoVrLibraryEntry)"; return 5; }
 	a shell setprop debug.pleikkari.vr_full_pose 1
+	local kv
+	for kv in $ARM_PROPS; do a shell setprop "${kv%%=*}" "${kv#*=}"; say "arm prop: $kv"; done
 	"$ROOT/scripts/dev/go-keepawake.sh" wake 2>&1 | tail -1 | tee -a "$LOG"
 	mark_since
 	echo "== launch $since" >> "$OUT/markers.txt"
