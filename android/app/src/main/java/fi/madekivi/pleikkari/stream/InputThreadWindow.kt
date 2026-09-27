@@ -4,6 +4,7 @@ package fi.madekivi.pleikkari.stream
 import android.app.Activity
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
@@ -11,6 +12,7 @@ import android.os.Looper
 import android.os.Process
 import android.util.Log
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -30,9 +32,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * window is the main thread's, and `Window.takeInputQueue` does not change that: ViewRootImpl still
  * reads each event on the main looper, then forwards it to the queue. So this adds a second window
  * from a [HandlerThread] of its own. It is a 1x1 sub-window of the activity's, with alpha 0 so
- * SurfaceFlinger has no layer to composite. It is focusable, because key and joystick events go to
- * the focused window, but not touchable, so touches still reach the activity. It is not an IME
- * target, so no key takes a round trip through the keyboard's process first.
+ * SurfaceFlinger has no layer to composite (on Android 14+ it is off the screen instead: [add]). It is
+ * focusable, because key and joystick events go to the focused window, but not touchable, so touches
+ * still reach the activity. It is not an IME target, so no key takes a round trip through the
+ * keyboard's process first.
  *
  * [Router.key] and [Router.motion] see each event on that thread. An event they do not take goes
  * back to the main thread, which gives it the activity window's own handling ([handBack]). Its
@@ -45,8 +48,29 @@ import java.util.concurrent.atomic.AtomicBoolean
  * after a newer event handled here: the console then holds the older state (a stick position, or a
  * re-pressed button released) until the pad's next event of that kind. Once this window has the
  * focus, events arrive in order on one thread.
+ *
+ * PLE-829: the phone's StreamActivity uses it too, with [hideSystemBars] and [unbufferedJoystick],
+ * because the focused window is also the one the navigation bar (Android 11 to 13) and the
+ * joystick's batching follow.
  */
-class InputThreadWindow(private val activity: Activity, private val router: Router)
+class InputThreadWindow(
+	private val activity: Activity,
+	private val router: Router,
+	/** The thread's name, the window's title and the log tag. */
+	private val name: String = TAG,
+	/**
+	 * PLE-829: keep the system bars hidden while this window has the focus, revealed by a swipe for a
+	 * moment as the stream's own window has them. On Android 11 to 13 the focused window controls the
+	 * navigation bar (InsetsPolicy.getNavControlTarget), so a window that asks nothing would show it
+	 * mid-stream; 14 leaves it to the full-screen activity window while that hides it. Off, the window
+	 * copies only the activity window's legacy flags, as the Go does.
+	 */
+	private val hideSystemBars: Boolean = false,
+	/**
+	 * PLE-829: PLE-91's `stream_gamepad_unbuffered`, requested on this window (Android 11+), since it
+	 * is the one that takes the joystick's events.
+	 */
+	private val unbufferedJoystick: Boolean = false)
 {
 	interface Router
 	{
@@ -75,9 +99,11 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 			return true
 		val decor = activity.window.decorView
 		val token = decor.windowToken ?: return false
-		// The focused window's system UI flags are the screen's; keep the activity's.
-		@Suppress("DEPRECATION") val systemUi = decor.systemUiVisibility
-		val thread = HandlerThread(THREAD_NAME, Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
+		// The focused window's system UI flags are the screen's; keep the activity's. Before the window is
+		// added, so that it never asks for the bars, even for a moment. Android 11+ reads the legacy flags
+		// into the window's requested insets, and IMMERSIVE_STICKY is BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE.
+		@Suppress("DEPRECATION") val systemUi = decor.systemUiVisibility or (if(hideSystemBars) HIDDEN_SYSTEM_BARS else 0)
+		val thread = HandlerThread(name, Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
 		val handler = Handler(thread.looper)
 		this.thread = thread
 		this.handler = handler
@@ -117,19 +143,36 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 			PixelFormat.TRANSLUCENT).apply {
 			this.token = token
 			gravity = Gravity.TOP or Gravity.START
-			alpha = 0f
-			title = THREAD_NAME
+			title = name
+			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+			{
+				// PLE-829: from Android 14, SurfaceFlinger gives no input to a layer that has drawn a buffer
+				// at alpha 0 (Layer::canReceiveInput). An alpha-0 window never gets the focus: the input
+				// dispatcher dropped every key and raised an ANR on the API 36 emulator. So the window keeps
+				// its alpha and sits off the screen, where SurfaceFlinger composites nothing
+				// (Output::ensureOutputLayerIfVisible). It draws nothing anyway. A multi-window task
+				// ignores NO_LIMITS and pulls it back onto the display, where it is a transparent pixel.
+				flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+				y = OFF_SCREEN_Y
+			}
+			else
+				alpha = 0f
 		}
 		try
 		{
 			activity.windowManager.addView(view, params)
 			this.view = view
-			Log.i(TAG, "Input window added; key and joystick events arrive on $THREAD_NAME")
+			// A request that lasts; the activity's own window asks again on each joystick event.
+			if(unbufferedJoystick && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+				view.requestUnbufferedDispatch(InputDevice.SOURCE_CLASS_JOYSTICK)
+			Log.i(name, "Input window added; key and joystick events arrive on $name" +
+				(if(hideSystemBars) ", system bars hidden" else "") +
+				(if(unbufferedJoystick && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ", joystick unbuffered" else ""))
 		}
 		catch(e: RuntimeException)
 		{
 			// WindowManager.BadTokenException (the activity's window went first) or InvalidDisplayException.
-			Log.e(TAG, "Input window refused; input stays on the main thread", e)
+			Log.e(name, "Input window refused; input stays on the main thread", e)
 		}
 	}
 
@@ -140,7 +183,7 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 		try
 		{
 			activity.windowManager.removeViewImmediate(view)
-			Log.i(TAG, "Input window removed; input is back on the main thread")
+			Log.i(name, "Input window removed; input is back on the main thread")
 		}
 		catch(e: IllegalArgumentException)
 		{
@@ -170,7 +213,7 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 			{
 				if(claimed.compareAndSet(false, true))
 				{
-					Log.w(TAG, "Main thread did not take a handed-back event within $HAND_BACK_TIMEOUT_MS ms")
+					Log.w(name, "Main thread did not take a handed-back event within $HAND_BACK_TIMEOUT_MS ms")
 					false
 				}
 				else
@@ -210,14 +253,18 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 		override fun onWindowFocusChanged(hasWindowFocus: Boolean)
 		{
 			super.onWindowFocusChanged(hasWindowFocus)
-			Log.i(TAG, "Input window ${if(hasWindowFocus) "has the focus" else "lost the focus"}")
+			Log.i(name, "Input window ${if(hasWindowFocus) "has the focus" else "lost the focus"}")
 		}
 	}
 
 	companion object
 	{
 		const val TAG = "GoPadInput"
-		private const val THREAD_NAME = "GoPadInput"
+		/** Far above any display the window's parent can start on; WindowLayout clamps to -100000. */
+		private const val OFF_SCREEN_Y = -10000
+		@Suppress("DEPRECATION")
+		private const val HIDDEN_SYSTEM_BARS = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
+			View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 		private const val HAND_BACK_TIMEOUT_MS = 1000L
 	}
 }

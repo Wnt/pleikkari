@@ -59,7 +59,7 @@ static MunitResult test_press_from_key_event_to_packet(const MunitParameter para
 	AndroidChiakiLatencyProbe *probe = start_probe(&files);
 	// Sticks moving before the press send packets without Cross: none completes anything.
 	android_chiaki_latency_probe_history_sent(probe, 0, 3, MS(990));
-	android_chiaki_latency_probe_press(probe, MS(1000), MS(1002));
+	android_chiaki_latency_probe_press(probe, CROSS, MS(1000), MS(1002));
 	android_chiaki_latency_probe_history_sent(probe, 0, 4, MS(1003)); // still the old state
 	android_chiaki_latency_probe_controller_state(probe, CROSS, MS(1004));
 	android_chiaki_latency_probe_history_sent(probe, CROSS, 5, MS(1006));
@@ -86,15 +86,15 @@ static MunitResult test_press_without_key_event_and_unsent(const MunitParameter 
 	android_chiaki_latency_probe_history_sent(probe, CROSS, 9, MS(2001));
 	android_chiaki_latency_probe_controller_state(probe, 0, MS(2100));
 	// A KeyEvent whose state never came is written unsent when the next press arrives.
-	android_chiaki_latency_probe_press(probe, MS(3000), MS(3001));
-	android_chiaki_latency_probe_press(probe, MS(4000), MS(4002));
+	android_chiaki_latency_probe_press(probe, CROSS, MS(3000), MS(3001));
+	android_chiaki_latency_probe_press(probe, CROSS, MS(4000), MS(4002));
 	android_chiaki_latency_probe_controller_state(probe, CROSS, MS(4003));
 	// Cross held while another button changes is not a new press.
 	android_chiaki_latency_probe_controller_state(probe, CROSS | CHIAKI_CONTROLLER_BUTTON_MOON, MS(4004));
 	android_chiaki_latency_probe_history_sent(probe, CROSS | CHIAKI_CONTROLLER_BUTTON_MOON, 10, MS(4005));
 	// A press still on its way when the probe stops is written unsent.
 	android_chiaki_latency_probe_controller_state(probe, 0, MS(4100));
-	android_chiaki_latency_probe_press(probe, MS(5000), MS(5001));
+	android_chiaki_latency_probe_press(probe, CROSS, MS(5000), MS(5001));
 	stop_probe(probe, 4, 0);
 	munit_assert_string_equal(files.presses, ANDROID_CHIAKI_LATENCY_PROBE_PRESSES_HEADER
 			"1,0,0,2000000000,2001000000,9\n"
@@ -152,7 +152,7 @@ static MunitResult test_not_started(const MunitParameter params[], void *user)
 	AndroidChiakiLatencyProbe probe;
 	munit_assert_int(android_chiaki_latency_probe_init(&probe), ==, CHIAKI_ERR_SUCCESS);
 	// Everything is a no-op before a start, and a start without both files records nothing.
-	android_chiaki_latency_probe_press(&probe, MS(1), MS(2));
+	android_chiaki_latency_probe_press(&probe, CROSS, MS(1), MS(2));
 	android_chiaki_latency_probe_controller_state(&probe, CROSS, MS(3));
 	android_chiaki_latency_probe_history_sent(&probe, CROSS, 1, MS(4));
 	char *buf = NULL;
@@ -179,9 +179,20 @@ static MunitResult test_press_buttons_mask(const MunitParameter params[], void *
 	android_chiaki_latency_probe_history_sent(probe, CROSS, 1, MS(1001));
 	android_chiaki_latency_probe_controller_state(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, MS(2000));
 	android_chiaki_latency_probe_history_sent(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, 2, MS(2002));
-	stop_probe(probe, 1, 0);
+	android_chiaki_latency_probe_controller_state(probe, 0, MS(2100));
+	// PLE-829: the mask decides for KeyEvents too. R3 (the phone's stimulus) does not open a press here,
+	// and nothing it could complete is left pending; Create's KeyEvent does.
+	munit_assert_false(android_chiaki_latency_probe_press(probe, CHIAKI_CONTROLLER_BUTTON_R3, MS(2999), MS(3000)));
+	android_chiaki_latency_probe_controller_state(probe, CHIAKI_CONTROLLER_BUTTON_R3, MS(3001));
+	android_chiaki_latency_probe_history_sent(probe, CHIAKI_CONTROLLER_BUTTON_R3, 3, MS(3002));
+	android_chiaki_latency_probe_controller_state(probe, 0, MS(3100));
+	munit_assert_true(android_chiaki_latency_probe_press(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, MS(4000), MS(4001)));
+	android_chiaki_latency_probe_controller_state(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, MS(4002));
+	android_chiaki_latency_probe_history_sent(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, 4, MS(4004));
+	stop_probe(probe, 2, 0);
 	munit_assert_string_equal(files.presses, ANDROID_CHIAKI_LATENCY_PROBE_PRESSES_HEADER
-			"1,0,0,2000000000,2002000000,2\n");
+			"1,0,0,2000000000,2002000000,2\n"
+			"2,4000000000,4001000000,4002000000,4004000000,4\n");
 	free_files(&files);
 	return MUNIT_OK;
 }

@@ -59,6 +59,7 @@ import fi.madekivi.pleikkari.databinding.ActivityStreamBinding
 import fi.madekivi.pleikkari.lib.Codec
 import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.ConnectVideoProfile
+import fi.madekivi.pleikkari.lib.LatencyProbe
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
 import fi.madekivi.pleikkari.touchcontrols.DefaultTouchControlsFragment
@@ -68,7 +69,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -107,6 +112,8 @@ class StreamActivity : AppCompatActivity()
 		private const val HIDE_UI_TIMEOUT_MS = 3500L
 		/** How often the connect overlay's second count is redrawn (PLE-337). */
 		private const val CONNECT_PROGRESS_TICK_MS = 500L
+		/** PLE-829: the input window's thread, window title and log tag. */
+		private const val PAD_INPUT_THREAD = "PadInput"
 
 		internal fun shouldRequestUnbufferedGamepadDispatch(source: Int, sdkInt: Int, enabled: Boolean): Boolean
 		{
@@ -149,6 +156,15 @@ class StreamActivity : AppCompatActivity()
 	private var lastWindowInsets: WindowInsetsCompat? = null
 	private var lastLayoutBoundsLog: String? = null
 	private var quitReasonInjector: BroadcastReceiver? = null
+	/**
+	 * PLE-829: with stream_pad_input_thread, the window that takes the pad's key and joystick events
+	 * off the main looper while the stream is resumed; null otherwise. Touch stays on main.
+	 */
+	private var inputWindow: InputThreadWindow? = null
+	/** PLE-829: the event [inputWindow] handed back, while it gets only the activity's own handling. */
+	private var handedBack: InputEvent? = null
+	/** PLE-829: this activity started [LatencyProbe] (stream_input_latency_probe). */
+	private var latencyProbeStarted = false
 
 	private val uiVisibilityHandler = Handler(Looper.getMainLooper())
 
@@ -593,10 +609,19 @@ class StreamActivity : AppCompatActivity()
 		}
 		viewModel.resume()
 		registerDisplayListener()
+		// PLE-829: A/B the pad read off the main looper, and the probe that times it, while resumed.
+		val preferences = Preferences(this)
+		if(preferences.inputLatencyProbe)
+			startLatencyProbe()
+		if(preferences.padInputThreadEnabled)
+			startInputWindow(retry = true)
 	}
 
 	override fun onPause()
 	{
+		// PLE-829: the pad goes back to the main looper before the session pauses.
+		stopInputWindow()
+		stopLatencyProbe()
 		unregisterDisplayListener()
 		configureWifiLock(false)
 		super.onPause()
@@ -753,6 +778,7 @@ class StreamActivity : AppCompatActivity()
 			if(preferences.streamWindowOptimizationsEnabled) add("window")
 			if(preferences.controllerInputCoalescingEnabled) add("input-coal")
 			if(preferences.gamepadUnbufferedDispatchEnabled) add("gamepad-unbuf")
+			if(preferences.padInputThreadEnabled) add("pad-thread")
 		}
 		return StreamDiagnosticsUiState(
 			display = StreamDiagnosticsDisplay(
@@ -1379,7 +1405,30 @@ class StreamActivity : AppCompatActivity()
 
 	private fun adjustStreamViewAspect() = adjustSurfaceViewAspect()
 
-	override fun dispatchKeyEvent(event: KeyEvent) = viewModel.input.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+	override fun dispatchKeyEvent(event: KeyEvent): Boolean
+	{
+		// PLE-829: an event the input thread handed back has been through the stream's routing already.
+		if(event === handedBack)
+			return super.dispatchKeyEvent(event)
+		return routeKey(event) || super.dispatchKeyEvent(event)
+	}
+
+	/** The stream's key routing, on the main thread or on PLE-829's [inputWindow] thread. */
+	private fun routeKey(event: KeyEvent): Boolean
+	{
+		// PLE-746: the key's dispatch in the app, for the probe's atrace capture.
+		if(!LatencyProbe.active)
+			return viewModel.input.dispatchKeyEvent(event)
+		Trace.beginSection("PLE746 input dispatchKeyEvent")
+		try
+		{
+			return viewModel.input.dispatchKeyEvent(event)
+		}
+		finally
+		{
+			Trace.endSection()
+		}
+	}
 
 	override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean
 	{
@@ -1387,7 +1436,107 @@ class StreamActivity : AppCompatActivity()
 		return super.dispatchGenericMotionEvent(event)
 	}
 
-	override fun onGenericMotionEvent(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)
+	override fun onGenericMotionEvent(event: MotionEvent): Boolean
+	{
+		if(event === handedBack)
+			return super.onGenericMotionEvent(event)
+		return viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)
+	}
+
+	/**
+	 * PLE-829: the pad's key and joystick events on a thread of their own, through PLE-802's
+	 * [InputThreadWindow]. [retry]: the first onResume comes before the activity's window is added, so
+	 * with no window token yet it tries once more when the window is attached.
+	 */
+	private fun startInputWindow(retry: Boolean)
+	{
+		if(inputWindow != null)
+			return
+		val input = InputThreadWindow(this, PadRouter(), PAD_INPUT_THREAD, hideSystemBars = true,
+			unbufferedJoystick = Preferences(this).gamepadUnbufferedDispatchEnabled)
+		if(input.start())
+		{
+			inputWindow = input
+			return
+		}
+		if(!retry)
+		{
+			Log.w(PAD_INPUT_THREAD, "No window token; input stays on the main thread")
+			return
+		}
+		// A view's post waits for its window to be attached.
+		window.decorView.post {
+			if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+				startInputWindow(retry = false)
+		}
+	}
+
+	private fun stopInputWindow()
+	{
+		inputWindow?.stop()
+		inputWindow = null
+	}
+
+	/**
+	 * PLE-829: [inputWindow]'s routing, on its PadInput thread. The stream goes first, as in
+	 * [dispatchKeyEvent] and [onGenericMotionEvent]: StreamInput locks its own state (PLE-802), and
+	 * [viewModel] is set before the thread starts. Touch, the on-screen controls and the sensors stay on
+	 * main. What the stream does not take goes through the activity's window as if it had arrived there
+	 * (Activity's and PhoneWindow's handling: Back, volume, media keys), without reaching the stream a
+	 * second time.
+	 */
+	private inner class PadRouter: InputThreadWindow.Router
+	{
+		override fun key(event: KeyEvent) = routeKey(event)
+		override fun motion(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event)
+		override fun unhandledKey(event: KeyEvent) = handBack(event) { window.decorView.dispatchKeyEvent(event) }
+		override fun unhandledMotion(event: MotionEvent) =
+			handBack(event) { window.decorView.dispatchGenericMotionEvent(event) }
+	}
+
+	/** Main thread. */
+	private fun handBack(event: InputEvent, dispatch: () -> Boolean): Boolean
+	{
+		handedBack = event
+		try
+		{
+			return dispatch()
+		}
+		finally
+		{
+			handedBack = null
+		}
+	}
+
+	/**
+	 * PLE-829: PLE-746's probe on the phone (stream_input_latency_probe). presses.csv times each press
+	 * from its KeyEvent to the history packet that carried it, in a directory of its own per resume,
+	 * under getExternalFilesDir so adb pulls it without run-as. frames.csv stays empty: only the Go's
+	 * cinema feeds it.
+	 */
+	private fun startLatencyProbe()
+	{
+		if(LatencyProbe.active)
+			return
+		val stamp = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())
+		val directory = getExternalFilesDir(null)?.let { File(it, "latency-probe/$stamp") }
+		if(directory == null || !(directory.isDirectory || directory.mkdirs()))
+		{
+			Log.e("StreamActivity", "Latency probe: no directory for its files ($directory)")
+			return
+		}
+		latencyProbeStarted = LatencyProbe.start(directory.path)
+		if(latencyProbeStarted)
+			Log.i("StreamActivity", "Latency probe: writing ${directory.path}")
+	}
+
+	private fun stopLatencyProbe()
+	{
+		if(!latencyProbeStarted)
+			return
+		latencyProbeStarted = false
+		LatencyProbe.stop()
+	}
 
 	// PLE-91: on the buffered path Android holds a joystick axis change for up to one input-batch
 	// interval (8-16 ms) before dispatchGenericMotionEvent sees it; requesting unbuffered dispatch

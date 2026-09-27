@@ -63,6 +63,7 @@ class PreferenceKeyContractTest
 			"@string/preferences_log_verbose_key",
 			"@string/preferences_motion_enabled_key",
 			"@string/preferences_packet_loss_max_percent_key",
+			"@string/preferences_pad_input_thread_enabled_key",
 			"@string/preferences_performance_mode_enabled_key",
 			"@string/preferences_psn_remote_play_enabled_key",
 			"@string/preferences_psn_sign_in_enabled_key",

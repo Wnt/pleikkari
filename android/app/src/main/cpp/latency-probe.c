@@ -111,12 +111,15 @@ bool android_chiaki_latency_probe_enabled(AndroidChiakiLatencyProbe *probe)
 	return enabled;
 }
 
-void android_chiaki_latency_probe_press(AndroidChiakiLatencyProbe *probe, int64_t event_ns, int64_t received_ns)
+bool android_chiaki_latency_probe_press(AndroidChiakiLatencyProbe *probe, uint32_t buttons, int64_t event_ns,
+		int64_t received_ns)
 {
 	chiaki_mutex_lock(&probe->mutex);
-	if(probe->enabled)
+	bool opened = probe->enabled && (buttons & probe->press_buttons);
+	if(opened)
 		open_press_locked(probe, event_ns, received_ns);
 	chiaki_mutex_unlock(&probe->mutex);
+	return opened;
 }
 
 void android_chiaki_latency_probe_controller_state(AndroidChiakiLatencyProbe *probe, uint32_t buttons, int64_t now_ns)

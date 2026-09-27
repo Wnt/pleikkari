@@ -181,6 +181,8 @@
     <string name="preferences_controller_input_coalescing_enabled_summary">Merge controller updates into one native call per display frame (applies to the next stream)</string>
     <string name="preferences_gamepad_unbuffered_dispatch_enabled_title">Unbuffered gamepad dispatch</string>
     <string name="preferences_gamepad_unbuffered_dispatch_enabled_summary">Ask Android not to batch physical-controller joystick events on Android 11+, so an axis change reaches the coalescer as soon as it arrives instead of waiting for the next input batch</string>
+    <string name="preferences_pad_input_thread_enabled_title">Controller input off the main thread</string>
+    <string name="preferences_pad_input_thread_enabled_summary">Read a physical controller\'s buttons and sticks on their own thread instead of the app\'s main thread, so a press never waits behind other work there. The on-screen controls stay on the main thread</string>
     <string name="preferences_gamepad_trigger_fallback_enabled_title">Alternate gamepad trigger axes</string>
     <string name="preferences_gamepad_trigger_fallback_enabled_summary">Use brake/gas for L2/R2 when a controller reports trigger axes that stay at zero (applies to the next stream)</string>
     <string name="preferences_feedback_reduced_interval_enabled_title">Reduced feedback interval (experimental)</string>
@@ -333,6 +335,7 @@
     <string name="preferences_takion_video_packet_reordering_disabled_key">stream_takion_video_packet_reordering_disabled</string>
     <string name="preferences_controller_input_coalescing_enabled_key">stream_controller_input_coalescing</string>
     <string name="preferences_gamepad_unbuffered_dispatch_enabled_key">stream_gamepad_unbuffered</string>
+    <string name="preferences_pad_input_thread_enabled_key">stream_pad_input_thread</string>
     <string name="preferences_gamepad_trigger_fallback_enabled_key">stream_gamepad_trigger_fallback</string>
     <string name="preferences_feedback_reduced_interval_enabled_key">stream_feedback_reduced_interval</string>
     <string name="preferences_feedback_stats_log_enabled_key">stream_feedback_stats_log</string>

@@ -434,6 +434,19 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(gamepadUnbufferedDispatchEnabledKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(gamepadUnbufferedDispatchEnabledKey, value).apply() }
 
+	// PLE-829: A/B the phone's pad and key input read on its own thread (a window of its own) instead of the main looper.
+	val padInputThreadEnabledKey get() = resources.getString(R.string.preferences_pad_input_thread_enabled_key)
+	var padInputThreadEnabled
+		get() = sharedPreferences.getBoolean(padInputThreadEnabledKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(padInputThreadEnabledKey, value).apply() }
+
+	// PLE-829: PLE-746's probe on the phone, presses.csv only (KeyEvent to packet sent). Measurement
+	// only, set by the A/B script; no Settings switch.
+	val inputLatencyProbeKey get() = "stream_input_latency_probe"
+	var inputLatencyProbe
+		get() = sharedPreferences.getBoolean(inputLatencyProbeKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(inputLatencyProbeKey, value).apply() }
+
 	val gamepadTriggerFallbackEnabledKey get() = resources.getString(R.string.preferences_gamepad_trigger_fallback_enabled_key)
 	var gamepadTriggerFallbackEnabled
 		get() = sharedPreferences.getBoolean(gamepadTriggerFallbackEnabledKey, false)

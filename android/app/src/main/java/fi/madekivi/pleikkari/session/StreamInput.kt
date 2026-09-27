@@ -308,9 +308,10 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			else -> return false
 		}
 
-		// PLE-746: the probe times a Cross press from its KeyEvent; a no-op unless it runs.
-		if(action && buttonMask == ControllerState.BUTTON_CROSS && event.repeatCount == 0 && LatencyProbe.active)
-			LatencyProbe.press(event.eventTime)
+		// PLE-746: the probe times a press (Cross unless PLE-803's mask says otherwise) from its KeyEvent;
+		// a no-op unless it runs.
+		if(action && event.repeatCount == 0 && LatencyProbe.active)
+			LatencyProbe.press(event.eventTime, buttonMask)
 
 		keyControllerState.buttons = keyControllerState.buttons.run {
 			if(action) this or buttonMask else this and buttonMask.inv()
