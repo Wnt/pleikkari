@@ -179,6 +179,27 @@ in … s (… fps), X of Y submitted frames showed video`. Read it next to the s
 72 Hz, and 9-12 % at 60 Hz (`docs/verification/PLE-654.md`). PLE-623 once saw vrshell's
 `ClearActivity` cover a display-0 `MainActivity`; seven PLE-654 arms did not.
 
+PLE-698 times each video frame's own path through the cinema in software, **only with the stats
+log on** (`stream_feedback_stats_log`). It does not show the PS5 or the network. Every second,
+`chiaki-jni` logs a `Cinema latency:` line to logcat (tag `Chiaki`) and to the session log. The
+line gives p50/p95/max/mean for each stage, all on `CLOCK_MONOTONIC`:
+* arrival→decoded: from chiaki completing the frame to the decoder output being dequeued;
+* decoded→latched: to the cinema's `updateTexImage`;
+* latched→submitted: to its `vrapi_SubmitFrame2` call;
+* submitted→predicted photon: to that submit's `vrapi_GetPredictedDisplayTime`;
+* the total, from arrival to predicted photon.
+
+The line also counts frames a later frame replaced before any latch. Frames are joined by their
+SurfaceTexture buffer timestamp: `video-presenter.c` records it on release and the cinema reads
+it back with `getTimestamp()`. At start the cinema logs `GoCinema: VrApi clock minus
+CLOCK_MONOTONIC`. `scripts/dev/go-latency/run.sh native --start-stream` reports all of it;
+`docs/verification/PLE-698.md` has the first Go numbers.
+
+The debug preview times its synthetic picture the same way when the stats log is on, and the
+cinema logs the line itself every second, because there is no session. With no decoder, every
+latch is `unmatched`, so the preview gives only latched→submitted and submitted→predicted photon.
+With `stream_go_vr_match_60hz` on, the preview runs the panel at 60 Hz, as a 60 fps stream would.
+
 ## Required device validation
 
 Built with SDK 1.35.0 (PLE-617, PLE-623). A live PS5 stream plays through the cinema on

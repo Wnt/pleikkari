@@ -17,6 +17,7 @@
 #include <cstring>
 #include <cstdint>
 #include <memory>
+#include <time.h>
 #include <vector>
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "GoCinema", __VA_ARGS__)
@@ -91,6 +92,13 @@ void columnMajor(float out[16], const ovrMatrix4f &matrix) {
         for(int col = 0; col < 4; ++col) out[col * 4 + row] = matrix.M[row][col];
 }
 
+// PLE-698: the clock chiaki and the presenter stamp frames with; VrApi's is System.nanoTime.
+int64_t monotonicNs() {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+}
+
 void matrixUniform(GLint location, const ovrMatrix4f &matrix) {
     float columns[16];
     columnMajor(columns, matrix);
@@ -127,6 +135,9 @@ struct Cinema {
     // PLE-652: GPU clock level while a room is drawn; 2 (the PLE-623 baseline) unless the A/B setting raises it.
     int roomGpuLevel = 2;
     int skyVariant = PLEIKKARI_VR_SKY_DOME; // PLE-666: debug sky draw, kept across environment rebuilds
+    // PLE-698: the last vrapi_SubmitFrame2 call (CLOCK_MONOTONIC ns) and its predicted display time.
+    int64_t submitNs = 0;
+    int64_t predictedDisplayNs = 0;
 
     Cinema() { pleikkari_vr_screen_placement_init(&placement); }
 
@@ -198,6 +209,13 @@ struct Cinema {
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
         applyClockLevels();
+        {
+            // PLE-698: per-frame latency mixes both clocks; log how far apart they are (expected ~0).
+            const int64_t before = monotonicNs();
+            const double vrapiSeconds = vrapi_GetTimeInSeconds();
+            const int64_t after = monotonicNs();
+            LOGI("VrApi clock minus CLOCK_MONOTONIC: %.3f ms", (vrapiSeconds * 1e9 - static_cast<double>(before + after) / 2) / 1e6);
+        }
         width = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH);
         height = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT);
         if(width <= 0 || height <= 0) return false;
@@ -443,6 +461,8 @@ struct Cinema {
         frame.DisplayTime = time;
         frame.LayerCount = 1;
         frame.Layers = layers;
+        submitNs = monotonicNs();
+        predictedDisplayNs = std::llround(time * 1e9);
         const int result = vrapi_SubmitFrame2(vr, &frame);
         for(auto &eye : eyes) eye.index = (eye.index + 1) % eye.fbos.size();
         return result;
@@ -469,6 +489,11 @@ extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h
     env->GetFloatArrayRegion(transform, 0, 16, matrix);
     if(env->ExceptionCheck()) return -1;
     return cinema(h)->draw(matrix, video, menu, newFrame);
+}
+// PLE-698: {submit call, predicted display time} of the last draw, CLOCK_MONOTONIC ns.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(submitTiming)(JNIEnv *env, jobject, jlong h, jlongArray out) {
+    const jlong timing[] = {cinema(h)->submitNs, cinema(h)->predictedDisplayNs};
+    env->SetLongArrayRegion(out, 0, 2, timing);
 }
 // PLE-603: Preferences.vrEnvironmentConfig().toNative(), in metres and unit fractions.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(setEnvironment)(JNIEnv *, jobject, jlong h, jint environment, jfloat distance,

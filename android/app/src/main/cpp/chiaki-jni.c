@@ -17,12 +17,14 @@
 #include <errno.h>
 #include <sched.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/resource.h>
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <arpa/inet.h>
 
 #include "video-decoder.h"
+#include "video-frame-latency.h"
 #include "audio-decoder.h"
 #include "audio-output.h"
 #include "log.h"
@@ -82,6 +84,32 @@ static jobject get_kotlin_global_object(JNIEnv *env, const char *id)
 static ChiakiLog global_log;
 JavaVM *global_vm;
 
+// PLE-698: the Go cinema's per-frame latency. One per process, not per session: the cinema thread
+// reports its latches through a static JNI call and can outlive the session it streams (StreamVrActivity
+// pauses the session before it joins the cinema thread), so it never holds a session pointer.
+static AndroidChiakiVideoFrameLatency cinema_frame_latency;
+static bool cinema_frame_latency_ready = false;
+
+static int64_t monotonic_ns(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+
+/** PLE-698: logs the cinema's "Cinema latency:" window since the last call, if it recorded a frame. */
+static void log_cinema_frame_latency(ChiakiLog *log)
+{
+	AndroidChiakiVideoFrameLatencyWindow window;
+	if(!cinema_frame_latency_ready
+			|| !android_chiaki_video_frame_latency_take_window(&cinema_frame_latency, monotonic_ns(), &window)
+			|| !(window.decoded || window.latched))
+		return;
+	char line[512];
+	android_chiaki_video_frame_latency_format(&window, line, sizeof(line));
+	CHIAKI_LOGI(log, "%s", line);
+}
+
 // Off by default: current behavior is unchanged until a session enables it via
 // ConnectInfo.threadPriorityBoostEnabled (see the "Thread priority boost" setting).
 static bool g_thread_priority_boost_enabled = false;
@@ -125,6 +153,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
 	ChiakiErrorCode err = chiaki_lib_init();
 	CHIAKI_LOGI(&global_log, "Chiaki Library Init Result: %s\n", chiaki_error_string(err));
 	chiaki_thread_set_affinity_cb(android_chiaki_thread_affinity_cb, NULL);
+	cinema_frame_latency_ready = android_chiaki_video_frame_latency_init(&cinema_frame_latency) == CHIAKI_ERR_SUCCESS;
 	return JNI_VERSION;
 }
 
@@ -455,6 +484,8 @@ static void android_chiaki_event_cb(ChiakiEvent *event, void *user)
 					(unsigned long long)(diagnostics.decode_mean_us % 1000),
 					(unsigned long long)(diagnostics.decode_p95_us / 1000),
 					(unsigned long long)(diagnostics.decode_p95_us % 1000), performance_status);
+				// PLE-698: the Go cinema's per-frame latency over the same window; only while a cinema records.
+				log_cinema_frame_latency(session->log);
 			}
 			E->CallVoidMethod(env, session->java_session,
 					session->java_session_event_stream_stats_meth,
@@ -777,6 +808,9 @@ static void session_create(JNIEnv *env, jobject result, jobject connect_info_obj
 	session->java_session_performance_hint_thread_stopped_meth = E->GetMethodID(env, session->java_session_class, "performanceHintThreadStopped", "(I)V");
 	session->java_session_is_adpf_performance_mode_live_meth = E->GetMethodID(env, session->java_session_class, "isAdpfPerformanceModeLive", "()Z");
 	session->java_session_is_sustained_performance_mode_live_meth = E->GetMethodID(env, session->java_session_class, "isSustainedPerformanceModeLive", "()Z");
+	// PLE-698: measurement only, behind the stats log like the Feedback stats line it rides on.
+	if(cinema_frame_latency_ready && session->stream_stats_log_enabled)
+		android_chiaki_video_presenter_set_frame_latency(&session->video_decoder.presenter, &cinema_frame_latency);
 	if(performance_mode && android_get_device_api_level() >= 31)
 	{
 		android_chiaki_video_presenter_set_performance_hint_callbacks(&session->video_decoder.presenter,
@@ -870,6 +904,28 @@ JNIEXPORT void JNICALL JNI_FCN(sessionFree)(JNIEnv *env, jobject obj, jlong ptr)
 	android_chiaki_file_log_fini(session->log);
 	free(session->log);
 	free(session);
+}
+
+// PLE-698: the Go cinema turns recording on while it runs with the stats log on, and off when it stops.
+JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyEnable)(JNIEnv *env, jobject obj, jboolean enabled)
+{
+	if(cinema_frame_latency_ready)
+		android_chiaki_video_frame_latency_set_enabled(&cinema_frame_latency, enabled, monotonic_ns());
+}
+
+// PLE-698: one call per frame the cinema latched; all times are CLOCK_MONOTONIC ns, submit 0 when not shown.
+JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyLatched)(JNIEnv *env, jobject obj, jlong buffer_timestamp_ns,
+		jlong latched_ns, jlong submitted_ns, jlong predicted_display_ns)
+{
+	if(cinema_frame_latency_ready)
+		android_chiaki_video_frame_latency_record_latched(&cinema_frame_latency, buffer_timestamp_ns,
+				latched_ns, submitted_ns, predicted_display_ns);
+}
+
+// PLE-698: the debug preview has no session and so no stats window; its cinema logs one itself, once a second.
+JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyLog)(JNIEnv *env, jobject obj)
+{
+	log_cinema_frame_latency(&global_log);
 }
 
 JNIEXPORT jint JNICALL JNI_FCN(sessionStart)(JNIEnv *env, jobject obj, jlong ptr)

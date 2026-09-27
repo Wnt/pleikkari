@@ -22,6 +22,7 @@ extern MunitTest tests_aia[];
 #endif
 extern MunitTest tests_bitstream[];
 extern MunitTest tests_video_presenter[];
+extern MunitTest tests_video_frame_latency[];
 extern MunitTest tests_video_decoder_operating_rate[];
 extern MunitTest tests_video_decoder_codec_header[];
 extern MunitTest tests_vr_screen_placement[];
@@ -147,6 +148,13 @@ static MunitSuite suites[] = {
 	{
 		"/video_presenter",
 		tests_video_presenter,
+		NULL,
+		1,
+		MUNIT_SUITE_OPTION_NONE
+	},
+	{
+		"/video_frame_latency",
+		tests_video_frame_latency,
 		NULL,
 		1,
 		MUNIT_SUITE_OPTION_NONE

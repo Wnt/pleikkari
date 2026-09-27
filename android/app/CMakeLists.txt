@@ -27,6 +27,8 @@ add_library(chiaki-jni SHARED
         src/main/cpp/video-presenter-timing.h
         src/main/cpp/video-presenter-timing.c
         src/main/cpp/video-presenter.c
+        src/main/cpp/video-frame-latency.h
+        src/main/cpp/video-frame-latency.c
         src/main/cpp/audio-decoder.h
         src/main/cpp/audio-decoder.c
         src/main/cpp/audio-output.h

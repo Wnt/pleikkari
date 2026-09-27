@@ -22,6 +22,7 @@ import fi.madekivi.pleikkari.BuildConfig
 import fi.madekivi.pleikkari.R
 import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
+import fi.madekivi.pleikkari.lib.CinemaFrameLatency
 import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.ConnectVideoProfile
 import fi.madekivi.pleikkari.remote.PsnDevice
@@ -201,7 +202,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // PLE-690: a Library launch enters the cinema before it has a session; it will stream the
         // profile its ConnectInfo is built from.
         val profile = vm?.connectInfo?.videoProfile ?: if(library) Preferences(this).videoProfile else null
-        cinema = CinemaThread(surface, profile).also { it.status = statusText; it.start() }
+        // PLE-698: per-frame latency is measurement, so only with the stats log on. The preview and a
+        // Library launch have no session yet; a Library stream's ConnectInfo takes it from the same setting.
+        val frameLatency = vm?.connectInfo?.let { it.feedbackStatsLogIntervalMs > 0 } ?: Preferences(this).feedbackStatsLogEnabled
+        cinema = CinemaThread(surface, profile, frameLatency).also { it.status = statusText; it.start() }
     }
 
     /** Hands the cinema's decoder surface to the session: when the cinema starts, or when a Library launch connects. */
@@ -254,12 +258,15 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         model?.input?.onGenericMotionEvent(event) == true || super.onGenericMotionEvent(event)
 
     /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
-    private inner class CinemaThread(private val surface: Surface, private val videoProfile: ConnectVideoProfile?) : Thread("GoCinema") {
+    private inner class CinemaThread(private val surface: Surface, private val videoProfile: ConnectVideoProfile?,
+                                     private val frameLatency: Boolean) : Thread("GoCinema") {
         val running = AtomicBoolean(true)
         val detached = CountDownLatch(1)
         @Volatile var status = ""
-        // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
-        val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && videoProfile?.maxFPS == 60) 60f else 72f
+        // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps. PLE-698: the
+        // preview stands in for a 60 fps stream, so it can time both panel rates.
+        private val streamFps = if(preview) 60 else videoProfile?.maxFPS
+        val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && streamFps == 60) 60f else 72f
         /** The decoder's target, once the GL thread has made it; read on the main thread. */
         @Volatile var output: Surface? = null
 
@@ -268,6 +275,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var texture: SurfaceTexture? = null
             var decoder: Surface? = null
             var listenerThread: HandlerThread? = null
+            // PLE-698: [frameLatency] times each frame (arrival, decode, latch, submit, predicted photon)
+            // for the stats log's "Cinema latency" line. The debug preview has no decoder: its frames
+            // time the latch, submit and predicted photon only.
             try {
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
@@ -303,6 +313,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 consumer.setOnFrameAvailableListener({ available.incrementAndGet(); frameReady.set(true) }, listenerHandler)
                 val output = Surface(consumer)
                 decoder = output
+                // Before the output is published: a Library launch attaches its session as soon as it is.
+                if(frameLatency) CinemaFrameLatency.enable(true)
                 this.output = output
                 val picture = if(preview) PreviewPicture(output) else null
                 if(picture != null)
@@ -318,6 +330,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 var latched = 0
                 var submitted = 0
                 var shown = 0
+                var latchedNs = 0L
+                val submitTiming = LongArray(2)
+                var latencyWindowStartNs = windowStartNs
                 while(running.get()) {
                     val input = VrCinemaNative.input(native)
                     if(input and MENU != 0) menu = !menu
@@ -340,6 +355,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val newFrame = frameReady.getAndSet(false)
                     if(newFrame) {
                         consumer.updateTexImage()
+                        latchedNs = System.nanoTime()
                         consumer.getTransformMatrix(transform)
                         hasFrame = true
                         latched++
@@ -361,7 +377,17 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     }
                     submitted++
                     if(video) shown++
+                    if(newFrame && frameLatency) {
+                        if(video) VrCinemaNative.submitTiming(native, submitTiming)
+                        CinemaFrameLatency.latched(consumer.timestamp, latchedNs,
+                            if(video) submitTiming[0] else 0L, if(video) submitTiming[1] else 0L)
+                    }
                     val nowNs = System.nanoTime()
+                    // PLE-698: a stream logs the latency with its 1 s stats window; the preview has no session.
+                    if(preview && frameLatency && nowNs - latencyWindowStartNs >= LATENCY_WINDOW_NS) {
+                        CinemaFrameLatency.logWindow()
+                        latencyWindowStartNs = nowNs
+                    }
                     if(nowNs - windowStartNs >= VIDEO_STATS_WINDOW_NS) {
                         val seconds = (nowNs - windowStartNs) / 1e9
                         Log.i("GoCinema", String.format(Locale.US,
@@ -381,6 +407,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // An error may reach here while the decoder still holds the output. The main
                 // thread stops it before signalling detached; never free a live producer's target.
                 detached.await()
+                if(frameLatency) CinemaFrameLatency.enable(false)
                 listenerThread?.quitSafely()
                 decoder?.release()
                 texture?.release()
@@ -478,6 +505,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val PREVIEW_WIDTH = 1280
         private const val PREVIEW_HEIGHT = 720
         private const val VIDEO_STATS_WINDOW_NS = 5_000_000_000L
+        /** PLE-698: the preview's "Cinema latency" window, the stats log's 1 s (Preferences.feedbackStatsLogIntervalMs). */
+        private const val LATENCY_WINDOW_NS = 1_000_000_000L
     }
 }
 
@@ -489,6 +518,8 @@ internal object VrCinemaNative {
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
     external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
+    /** PLE-698: the last draw's {vrapi_SubmitFrame2 call, predicted display time}, CLOCK_MONOTONIC ns. */
+    external fun submitTiming(handle: Long, out: LongArray)
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
     external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,

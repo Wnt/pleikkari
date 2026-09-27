@@ -133,6 +133,22 @@ data class VideoStats(
 	val dejitterBufferNanos: Long
 )
 
+/**
+ * PLE-698: the Oculus Go cinema's per-frame latency. The presenter records when each frame
+ * arrived and was decoded, the cinema reports when it latched and submitted it, and chiaki-jni
+ * logs a "Cinema latency:" line with every stats-log window. All times are CLOCK_MONOTONIC ns
+ * (System.nanoTime); the frame is identified by its SurfaceTexture buffer timestamp.
+ */
+object CinemaFrameLatency
+{
+	fun enable(enabled: Boolean) = ChiakiNative.cinemaFrameLatencyEnable(enabled)
+	/** [submittedNs] and [predictedDisplayNs] are 0 when the submit did not show the video. */
+	fun latched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long, predictedDisplayNs: Long) =
+		ChiakiNative.cinemaFrameLatencyLatched(bufferTimestampNs, latchedNs, submittedNs, predictedDisplayNs)
+	/** Logs the window since the last call; only for a cinema with no session (the debug preview). */
+	fun logWindow() = ChiakiNative.cinemaFrameLatencyLog()
+}
+
 private class ChiakiNative
 {
 	data class CreateResult(var errorCode: Int, var ptr: Long)
@@ -163,6 +179,10 @@ private class ChiakiNative
 		@JvmStatic external fun sessionGetVideoStats(ptr: Long): VideoStats
 		@JvmStatic external fun sessionSetControllerState(ptr: Long, controllerState: ControllerState)
 		@JvmStatic external fun sessionSetLoginPin(ptr: Long, pin: String)
+		@JvmStatic external fun cinemaFrameLatencyEnable(enabled: Boolean)
+		@JvmStatic external fun cinemaFrameLatencyLatched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long,
+			predictedDisplayNs: Long)
+		@JvmStatic external fun cinemaFrameLatencyLog()
 		@JvmStatic external fun discoveryServiceCreate(result: CreateResult, options: DiscoveryServiceOptions, javaService: DiscoveryService)
 		@JvmStatic external fun discoveryServiceFree(ptr: Long)
 		@JvmStatic external fun discoveryServiceWakeup(ptr: Long, host: String, userCredential: Long, ps5: Boolean)
