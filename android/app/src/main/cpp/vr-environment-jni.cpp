@@ -70,6 +70,12 @@ JNIEXPORT void JNICALL JNI_METHOD(drawEye)(JNIEnv *jni, jclass, jlong handle, jf
 	pleikkari_vr_environment_draw_eye(env_of(handle), v, p, static_cast<uint32_t>(texture), t, hasVideo ? 1 : 0);
 }
 
+// PLE-650: debug preview only.
+JNIEXPORT void JNICALL JNI_METHOD(debugSetSkyVariant)(JNIEnv *, jclass, jlong handle, jint variant)
+{
+	pleikkari_vr_environment_debug_set_sky_variant(env_of(handle), variant);
+}
+
 // out[0] = gpu ns, out[1] = draw calls, out[2] = triangles, out[3] = room vertex bytes.
 JNIEXPORT void JNICALL JNI_METHOD(stats)(JNIEnv *jni, jclass, jlong handle, jlongArray out)
 {

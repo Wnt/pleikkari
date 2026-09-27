@@ -73,6 +73,34 @@ void mat4_multiply(float out[16], const float a[16], const float b[16])
 	memcpy(out, r, sizeof(r));
 }
 
+// General 4x4 inverse (column-major), cofactor expansion. Returns false when singular.
+bool mat4_invert(float out[16], const float m[16])
+{
+	float inv[16];
+	inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+	inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+	inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+	inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+	inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+	inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+	inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+	inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+	inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+	inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+	inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+	inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+	inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+	inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+	inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+	inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+	float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+	if(det == 0.0f)
+		return false;
+	for(int i = 0; i < 16; ++i)
+		out[i] = inv[i] / det;
+	return true;
+}
+
 const float kIdentity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 
 // Deterministic hash for procedural placement (stars, seat shade variation).
@@ -222,6 +250,31 @@ void main() {
 	vec3 c = mix(up >= 0.0 ? uZenith : uGround, uHorizon, band);
 	float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 	fragColor = vec4(c + (n - 0.5) / 255.0, 1.0);
+}
+)";
+
+// PLE-650 sky variant: one fullscreen triangle per eye at the far plane, the view
+// direction rebuilt from the inverse view-projection. Same fragment shader as the dome.
+const char *kSkyFullscreenVertex = R"(#version 300 es
+uniform mat4 uInvViewProj;
+out mediump vec3 vDir;
+void main() {
+	vec2 p = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
+	vec4 far = uInvViewProj * vec4(p, 1.0, 1.0);
+	vec4 near = uInvViewProj * vec4(p, -1.0, 1.0);
+	// Scaled down: the far plane is hundreds of metres away and the fragment shader's
+	// mediump dot(vDir, vDir) overflows past about 250.
+	vDir = (far.xyz / far.w - near.xyz / near.w) * 0.01;
+	gl_Position = vec4(p, 1.0, 1.0);
+}
+)";
+
+// PLE-650 sky variant: constant colour, no varyings. The floor of what any sky draw costs.
+const char *kSkyConstantFragment = R"(#version 300 es
+precision mediump float;
+out vec4 fragColor;
+void main() {
+	fragColor = vec4(0.02, 0.025, 0.04, 1.0);
 }
 )";
 
@@ -718,6 +771,12 @@ struct PleikkariVrEnvironment
 	GLuint roomProgram = 0, skyProgram = 0, starProgram = 0, haloProgram = 0, screenProgram = 0, glowProgram = 0;
 	GLuint roomVao = 0, roomVbo = 0, roomIbo = 0;
 	GLuint skyVao = 0, skyVbo = 0;
+	// PLE-650 debug sky variants (pleikkari_vr_environment_debug_set_sky_variant).
+	GLuint skyFullscreenProgram = 0, skyConstantProgram = 0, skyFullscreenConstantProgram = 0;
+	GLint skyFullscreenInvViewProj = -1, skyFullscreenZenith = -1, skyFullscreenHorizon = -1, skyFullscreenGround = -1,
+			skyFullscreenHorizonWidth = -1, skyConstantViewProj = -1;
+	GLsizei skyCoarseFirst = 0, skyCoarseCount = 0;
+	int skyVariant = 0;
 	GLuint starVao = 0, starVbo = 0;
 	GLuint haloVao = 0, haloVbo = 0;
 	GLuint screenVao = 0, screenVbo = 0;
@@ -802,6 +861,9 @@ bool PleikkariVrEnvironment::init()
 	haloProgram = link(kHaloVertex, kHaloFragment);
 	screenProgram = link(kScreenVertex, external ? kScreenFragmentExternal : kScreenFragment2D);
 	glowProgram = link(kGlowVertex, external ? kGlowFragmentExternal : kGlowFragment2D);
+	skyFullscreenProgram = link(kSkyFullscreenVertex, kSkyFragment);
+	skyConstantProgram = link(kSkyVertex, kSkyConstantFragment);
+	skyFullscreenConstantProgram = link(kSkyFullscreenVertex, kSkyConstantFragment);
 	if(!roomProgram || !skyProgram || !starProgram || !haloProgram || !screenProgram || !glowProgram)
 		return false;
 
@@ -819,6 +881,16 @@ bool PleikkariVrEnvironment::init()
 	sky.horizon = glGetUniformLocation(skyProgram, "uHorizon");
 	sky.ground = glGetUniformLocation(skyProgram, "uGround");
 	sky.horizonWidth = glGetUniformLocation(skyProgram, "uHorizonWidth");
+	if(skyFullscreenProgram)
+	{
+		skyFullscreenInvViewProj = glGetUniformLocation(skyFullscreenProgram, "uInvViewProj");
+		skyFullscreenZenith = glGetUniformLocation(skyFullscreenProgram, "uZenith");
+		skyFullscreenHorizon = glGetUniformLocation(skyFullscreenProgram, "uHorizon");
+		skyFullscreenGround = glGetUniformLocation(skyFullscreenProgram, "uGround");
+		skyFullscreenHorizonWidth = glGetUniformLocation(skyFullscreenProgram, "uHorizonWidth");
+	}
+	if(skyConstantProgram)
+		skyConstantViewProj = glGetUniformLocation(skyConstantProgram, "uViewProj");
 	star.viewProj = glGetUniformLocation(starProgram, "uViewProj");
 	star.brightness = glGetUniformLocation(starProgram, "uBrightness");
 	halo.viewProj = glGetUniformLocation(haloProgram, "uViewProj");
@@ -879,6 +951,11 @@ bool PleikkariVrEnvironment::init()
 	{
 		std::vector<float> dome = build_dome(32, 12, 60.0f);
 		skyVertexCount = static_cast<GLsizei>(dome.size() / 3);
+		// PLE-650: a coarse 8x4 dome after the shipped one, for the debug variants only.
+		std::vector<float> coarse = build_dome(8, 4, 60.0f);
+		skyCoarseFirst = skyVertexCount;
+		skyCoarseCount = static_cast<GLsizei>(coarse.size() / 3);
+		dome.insert(dome.end(), coarse.begin(), coarse.end());
 		glBindVertexArray(skyVao);
 		glBindBuffer(GL_ARRAY_BUFFER, skyVbo);
 		glBufferData(GL_ARRAY_BUFFER, dome.size() * sizeof(float), dome.data(), GL_STATIC_DRAW);
@@ -1305,27 +1382,79 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		glDepthFunc(GL_LEQUAL);
 		glDepthMask(GL_FALSE);
 		glDisable(GL_CULL_FACE);
-		glUseProgram(env->skyProgram);
-		glUniformMatrix4fv(env->sky.viewProj, 1, GL_FALSE, viewProj);
 		glActiveTexture(GL_TEXTURE0);
+		const int variant = env->skyVariant;
+		const bool fullscreen = variant == PLEIKKARI_VR_SKY_FULLSCREEN || variant == PLEIKKARI_VR_SKY_FULLSCREEN_CONSTANT;
+		GLuint program = env->skyProgram;
+		GLint zenith = env->sky.zenith, horizon = env->sky.horizon, ground = env->sky.ground, width = env->sky.horizonWidth;
+		if(variant == PLEIKKARI_VR_SKY_FULLSCREEN)
+		{
+			program = env->skyFullscreenProgram;
+			zenith = env->skyFullscreenZenith;
+			horizon = env->skyFullscreenHorizon;
+			ground = env->skyFullscreenGround;
+			width = env->skyFullscreenHorizonWidth;
+		}
+		else if(variant == PLEIKKARI_VR_SKY_FULLSCREEN_CONSTANT)
+			program = env->skyFullscreenConstantProgram;
+		else if(variant == PLEIKKARI_VR_SKY_DOME_CONSTANT)
+			program = env->skyConstantProgram;
+		glUseProgram(program);
+		if(fullscreen)
+		{
+			float invViewProj[16];
+			if(!mat4_invert(invViewProj, viewProj))
+				memcpy(invViewProj, kIdentity, sizeof(invViewProj));
+			if(variant == PLEIKKARI_VR_SKY_FULLSCREEN)
+				glUniformMatrix4fv(env->skyFullscreenInvViewProj, 1, GL_FALSE, invViewProj);
+			else
+				glUniformMatrix4fv(glGetUniformLocation(program, "uInvViewProj"), 1, GL_FALSE, invViewProj);
+		}
+		else if(variant == PLEIKKARI_VR_SKY_DOME_CONSTANT)
+			glUniformMatrix4fv(env->skyConstantViewProj, 1, GL_FALSE, viewProj);
+		else
+			glUniformMatrix4fv(env->sky.viewProj, 1, GL_FALSE, viewProj);
 		const float rl = cfg.room_light;
 		if(cfg.environment == PLEIKKARI_VR_ENVIRONMENT_VOID)
 		{
-			glUniform3f(env->sky.zenith, 0.006f, 0.008f, 0.016f);
-			glUniform3f(env->sky.horizon, 0.05f + 0.06f * rl, 0.06f + 0.07f * rl, 0.10f + 0.10f * rl);
-			glUniform3f(env->sky.ground, 0.014f, 0.014f, 0.020f);
-			glUniform1f(env->sky.horizonWidth, 0.25f);
+			glUniform3f(zenith, 0.006f, 0.008f, 0.016f);
+			glUniform3f(horizon, 0.05f + 0.06f * rl, 0.06f + 0.07f * rl, 0.10f + 0.10f * rl);
+			glUniform3f(ground, 0.014f, 0.014f, 0.020f);
+			glUniform1f(width, 0.25f);
 		}
 		else
 		{
-			glUniform3f(env->sky.zenith, 0.008f, 0.010f, 0.026f);
-			glUniform3f(env->sky.horizon, 0.11f + 0.08f * rl, 0.075f + 0.05f * rl, 0.065f + 0.04f * rl);
-			glUniform3f(env->sky.ground, 0.016f, 0.016f, 0.016f);
-			glUniform1f(env->sky.horizonWidth, 0.12f);
+			glUniform3f(zenith, 0.008f, 0.010f, 0.026f);
+			glUniform3f(horizon, 0.11f + 0.08f * rl, 0.075f + 0.05f * rl, 0.065f + 0.04f * rl);
+			glUniform3f(ground, 0.016f, 0.016f, 0.016f);
+			glUniform1f(width, 0.12f);
 		}
 		glBindVertexArray(env->skyVao);
-		glDrawArrays(GL_TRIANGLES, 0, env->skyVertexCount);
-		env->draw_call(env->skyVertexCount / 3);
+		if(variant == PLEIKKARI_VR_SKY_DOME_CULLED)
+		{
+			// build_dome winds its triangles to face the centre.
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+			glFrontFace(GL_CCW);
+		}
+		if(variant == PLEIKKARI_VR_SKY_NONE)
+			;
+		else if(fullscreen)
+		{
+			glDrawArrays(GL_TRIANGLES, 0, 3);
+			env->draw_call(1);
+		}
+		else if(variant == PLEIKKARI_VR_SKY_DOME_COARSE)
+		{
+			glDrawArrays(GL_TRIANGLES, env->skyCoarseFirst, env->skyCoarseCount);
+			env->draw_call(env->skyCoarseCount / 3);
+		}
+		else
+		{
+			glDrawArrays(GL_TRIANGLES, 0, env->skyVertexCount);
+			env->draw_call(env->skyVertexCount / 3);
+		}
+		glDisable(GL_CULL_FACE);
 		if(cfg.environment == PLEIKKARI_VR_ENVIRONMENT_TERRACE)
 		{
 			glUseProgram(env->starProgram);
@@ -1398,7 +1527,8 @@ void pleikkari_vr_environment_destroy(PleikkariVrEnvironment *env)
 		return;
 	if(env->timerAvailable && env->pDeleteQueries)
 		env->pDeleteQueries(kTimerRing, env->timerQueries);
-	GLuint programs[] = {env->roomProgram, env->skyProgram, env->starProgram, env->haloProgram, env->screenProgram, env->glowProgram};
+	GLuint programs[] = {env->roomProgram, env->skyProgram, env->starProgram, env->haloProgram, env->screenProgram, env->glowProgram,
+			env->skyFullscreenProgram, env->skyConstantProgram, env->skyFullscreenConstantProgram};
 	for(GLuint p : programs)
 		if(p) glDeleteProgram(p);
 	GLuint vaos[] = {env->roomVao, env->skyVao, env->starVao, env->haloVao, env->screenVao, env->glowVao};
@@ -1409,6 +1539,14 @@ void pleikkari_vr_environment_destroy(PleikkariVrEnvironment *env)
 	if(env->glowTexture) glDeleteTextures(1, &env->glowTexture);
 	if(env->depthRenderbuffer) glDeleteRenderbuffers(1, &env->depthRenderbuffer);
 	delete env;
+}
+
+void pleikkari_vr_environment_debug_set_sky_variant(PleikkariVrEnvironment *env, int variant)
+{
+	if(!env)
+		return;
+	env->skyVariant = variant >= 0 && variant < PLEIKKARI_VR_SKY_COUNT ? variant : PLEIKKARI_VR_SKY_DOME;
+	LOGI("sky variant %d", env->skyVariant);
 }
 
 const char *pleikkari_vr_environment_name(PleikkariVrEnvironmentKind kind)

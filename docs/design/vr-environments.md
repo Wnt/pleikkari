@@ -263,6 +263,38 @@ warnings, and against 1.50.0's headers too (PLE-623).
   culling-off mesh on the far plane with depth test on and depth writes off). Single
   back-to-back runs drift by up to 1 ms as the GPU warms, so compare variants only
   interleaved in one session.
+
+  PLE-650 put the sky's draw variants behind a debug switch
+  (`pleikkari_vr_environment_debug_set_sky_variant`, `PLEIKKARI_VR_SKY_*` in
+  `vr-environment.h`; the shipped dome is variant 0 and the only one outside the preview)
+  and measured them interleaved on the Go (serial 1KWPH802EW8203, same preview,
+  `--ei sky_variant N` sent to the running preview every 5 s, four rounds per room, the
+  first sample after each switch dropped, two sessions). Medians of ~17 to 24 one-second
+  `gpu=` samples each, session 1 / session 2, per stereo frame:
+
+  | Sky variant | void | terrace |
+  | --- | ---: | ---: |
+  | 0: 32x12 dome, culling off (shipped) | 4.95 / 5.00 ms | 5.28 / 5.32 ms |
+  | 1: same dome, back faces culled | 5.04 / 4.96 ms | 5.38 / 5.39 ms |
+  | 2: 8x4 dome | 4.87 / 4.91 ms | 5.30 / 5.36 ms |
+  | 3: one fullscreen triangle, direction from the inverse view-projection | 4.99 / 4.99 ms | 5.40 / 5.29 ms |
+  | 5: shipped dome, constant colour | 3.43 / 3.50 ms | 4.61 / 4.48 ms |
+  | 6: fullscreen triangle, constant colour | 3.29 / 3.39 ms | 4.51 / 4.38 ms |
+  | 4: no sky drawn | 2.65 / 2.56 ms | 3.99 / 4.01 ms |
+
+  The geometry is not the cost: culling, a quarter of the triangles or a single
+  fullscreen triangle all land within 0.1 ms of the shipped dome (the dome already
+  covers each sky pixel exactly once from the centre, so culling removes no fragments).
+  The dome's 2.4 ms (void) / 1.3 ms (terrace) splits into about 0.8 / 0.5 ms of plain
+  fill for the uncovered pixels, which any per-pixel sky pays, and about 1.5 / 0.85 ms of
+  gradient maths (`inversesqrt`, `exp`, the dither hash) on those pixels. This
+  contradicts PLE-630's table above (constant colour only 0.8 ms under the gradient, and
+  1.6 ms above no sky); both PLE-650 sessions agree with each other within 0.15 ms, and
+  PLE-630's constant-colour build was a temporary one that was not kept, so its exact
+  shader is unknown. So a cheaper sky shader *is* the lever: the per-pixel maths
+  can move to the vertices (only the elevation matters, and the dome's stacks follow
+  it), and the fill floor goes only if a flat sky colour is folded into the clear the eye
+  already does.
 - Device, inside the VrApi cinema (PLE-623): the debug preview of `StreamVrActivity`
   (`third_party/ovr_sdk_mobile/README.md`, "Debug preview") runs the real cinema with a
   synthetic 60 fps picture through the decoder's `SurfaceTexture`. On the Go on
@@ -308,8 +340,10 @@ warnings, and against 1.50.0's headers too (PLE-623).
 ## 9. Open points
 
 - The void and the terrace cost 6 to 8.5 ms of GPU per stereo frame on the Adreno 530
-  (§8) before PLE-622 and about 5 ms after it; PLE-630 showed the remaining sky cost
-  is the dome draw, not its shader (§8), so a cheaper sky shader will not fix it.
+  (§8) before PLE-622 and about 5 ms after it; PLE-650 showed the remaining sky cost is
+  about a third fill and two thirds gradient maths, and none of it geometry (§8), so a
+  cheaper sky shader (the gradient per vertex) is the next step, not a cheaper mesh
+  (this supersedes PLE-630's reading that the shader is not the lever).
   Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
   GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
   (§8, PLE-623, and on a live stream PLE-654); 4x MSAA is 4 to 5.5 ms of that (§8,

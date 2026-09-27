@@ -32,12 +32,16 @@ import kotlin.math.sin
  * The eye buffers are 1024x1024 each (the Go's suggested eye texture size) regardless of
  * the window, so a frame time measured here is the cost the VrApi activity will pay.
  * A second am start with another environment while the preview runs switches to it.
+ * PLE-650: `--ei sky_variant N` picks a debug sky draw for the void and terrace (0 is the
+ * shipped dome; see PLEIKKARI_VR_SKY_* in vr-environment.h). Sent alone to a running
+ * preview it switches the variant in place, without rebuilding, for interleaved A/B.
  */
 class VrEnvironmentPreviewActivity : Activity()
 {
 	companion object
 	{
 		const val EXTRA_ENVIRONMENT = "environment"
+		const val EXTRA_SKY_VARIANT = "sky_variant"
 		private const val TAG = "VrEnvPreview"
 		private const val EYE_SIZE = 1024
 	}
@@ -64,7 +68,7 @@ class VrEnvironmentPreviewActivity : Activity()
 			setEGLContextClientVersion(3)
 			setEGLConfigChooser(8, 8, 8, 8, 16, 0)
 			holder.setFixedSize(EYE_SIZE * 2, EYE_SIZE)
-			val r = PreviewRenderer(config)
+			val r = PreviewRenderer(config, intent.getIntExtra(EXTRA_SKY_VARIANT, 0))
 			renderer = r
 			setRenderer(r)
 			renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
@@ -81,6 +85,11 @@ class VrEnvironmentPreviewActivity : Activity()
 		setIntent(intent)
 		if(intent.hasExtra(EXTRA_ENVIRONMENT))
 			recreate()
+		else if(intent.hasExtra(EXTRA_SKY_VARIANT))
+		{
+			val variant = intent.getIntExtra(EXTRA_SKY_VARIANT, 0)
+			surfaceView?.queueEvent { renderer?.setSkyVariant(variant) }
+		}
 	}
 
 	override fun onResume()
@@ -97,8 +106,15 @@ class VrEnvironmentPreviewActivity : Activity()
 		super.onPause()
 	}
 
-	private class PreviewRenderer(private val config: VrEnvironmentConfig) : GLSurfaceView.Renderer
+	private class PreviewRenderer(private val config: VrEnvironmentConfig, private var skyVariant: Int) : GLSurfaceView.Renderer
 	{
+		fun setSkyVariant(variant: Int)
+		{
+			skyVariant = variant
+			if(handle != 0L)
+				VrEnvironmentNative.debugSetSkyVariant(handle, variant)
+		}
+
 		private var handle = 0L
 		private var texture = 0
 		private var width = 0
@@ -119,6 +135,8 @@ class VrEnvironmentPreviewActivity : Activity()
 			handle = VrEnvironmentNative.create(config.toNative(), VrEnvironmentNative.TEXTURE_2D)
 			if(handle == 0L)
 				Log.e(TAG, "environment create failed")
+			else
+				VrEnvironmentNative.debugSetSkyVariant(handle, skyVariant)
 			frames = 0
 			lastLogNs = System.nanoTime()
 		}
@@ -157,8 +175,8 @@ class VrEnvironmentPreviewActivity : Activity()
 				val cpuMs = (now - lastLogNs) / 72 / 1e6
 				lastLogNs = now
 				VrEnvironmentNative.stats(handle, stats)
-				Log.i(TAG, String.format("env=%s eyes=%dx%d gpu=%.2f ms frame=%.2f ms draws=%d tris=%d vertexBytes=%d",
-					config.environment.value, eyeWidth, height, stats[0] / 1e6, cpuMs, stats[1], stats[2], stats[3]))
+				Log.i(TAG, String.format("env=%s sky=%d eyes=%dx%d gpu=%.2f ms frame=%.2f ms draws=%d tris=%d vertexBytes=%d",
+					config.environment.value, skyVariant, eyeWidth, height, stats[0] / 1e6, cpuMs, stats[1], stats[2], stats[3]))
 			}
 		}
 
