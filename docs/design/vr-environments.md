@@ -297,6 +297,11 @@ warnings, and against 1.50.0's headers too (PLE-623).
   4x MSAA is about 4 to 5.5 ms of the 7 to 8 ms room cost, well over half; without it a
   room costs about 3 ms over the plain screen's 0.55 ms and drops almost no frames.
   Logs under `build/ple-653/go/` of the workspace.
+- Device, live PS5 stream (PLE-654, `docs/verification/PLE-654.md`): the cinema room
+  with a live 1080p60 picture measured VrApi `App=` 8.02 ms (median) and 3.0 stale
+  frames/s (max 26), as in PLE-623's preview. `Environment frame: gpu` still read 2.40
+  to 2.90 ms with PLE-651's change in the build, so it still reads about a third of
+  `App=`.
 - Unit: `VrEnvironmentConfigTest` pins the defaults to PLE-602's screen, the clamps and
   the native enum values.
 
@@ -307,9 +312,10 @@ warnings, and against 1.50.0's headers too (PLE-623).
   is the dome draw, not its shader (§8), so a cheaper sky shader will not fix it.
   Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
   GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
-  (§8, PLE-623); 4x MSAA is 4 to 5.5 ms of that (§8, PLE-653), so a lower sample count
-  (2x) or MSAA off is the first lever; a higher GPU level while a room is on, and a timer
-  that covers the whole frame are open.
+  (§8, PLE-623, and on a live stream PLE-654); 4x MSAA is 4 to 5.5 ms of that (§8,
+  PLE-653), so a lower sample count (2x) or MSAA off is the first lever; a higher GPU
+  level while a room is on, and a timer that covers the whole frame are open (PLE-651's
+  timer change still reads 2.4 to 2.9 ms against `App=` 8.0 ms, PLE-654).
 - Eye buffer size belongs to PLE-602's swapchain. MSAA is done (PLE-615): while an
   environment is active the VrApi cinema renders its eyes through
   `GL_EXT_multisampled_render_to_texture` at 4x, like Skybox, with a matching
