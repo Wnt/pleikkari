@@ -31,3 +31,23 @@ not on vrshell's home.
 
 **APK restored:** at 13:57 UTC, `go-probe.sh … restore` with `BACKUP=/home/wnt/gta6/build/ple746/backup2`
 reinstalled the snapshot APK the Go had at 13:42 UTC and put its prefs back byte-identically.
+
+## PLE-803: faster stimuli (`STIMULUS=`)
+
+High Contrast costs about 190 ms of the 265 ms p50 per press in the PS5's own Settings UI and its fade.
+`go-probe.sh` now takes `STIMULUS=`:
+
+* `high-contrast` (default, the fallback): Cross on the High Contrast toggle, as above.
+* `create`: the Create button (the debug pad's new `create`), on any screen; the Create menu opens over
+  a dimmed picture, and the next press closes it.
+* `home-focus`: D-pad right then left on the PS5 home screen, between two game tiles.
+
+The script sets `debug.pleikkari.probe_buttons` (a chiaki button mask) for the session, so the
+probe's `presses.csv` times that button instead of Cross, and clears it at the end.
+`input_to_photon.py` needs no change for `create`. Its `MIN_STEP` of 10 luma levels may be too
+large for `home-focus`, whose art change depends on the installed games. Check `frames.csv` first.
+
+**Not measured yet.** Press → first changed frame p50/p95 for `create` and `home-focus` is open. At
+14:40 UTC 2026-09-27 the Go was still at 7 % with no charger (`dumpsys battery`: AC/USB powered
+false), so no session ran. Run `STIMULUS=create PRESSES=32 … go-probe.sh <out> <apk> rounds`, then
+`input_to_photon.py`, and set it against High Contrast's 265.5 ms p50 / 378.4 ms p95.

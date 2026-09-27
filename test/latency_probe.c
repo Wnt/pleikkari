@@ -166,7 +166,28 @@ static MunitResult test_not_started(const MunitParameter params[], void *user)
 	return MUNIT_OK;
 }
 
+static MunitResult test_press_buttons_mask(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	ProbeFiles files;
+	AndroidChiakiLatencyProbe *probe = start_probe(&files);
+	// PLE-803: another stimulus button (Create) opens presses; Cross then does not, and 0 changes nothing.
+	android_chiaki_latency_probe_set_press_buttons(probe, CHIAKI_CONTROLLER_BUTTON_SHARE);
+	android_chiaki_latency_probe_set_press_buttons(probe, 0);
+	android_chiaki_latency_probe_controller_state(probe, CROSS, MS(1000));
+	android_chiaki_latency_probe_history_sent(probe, CROSS, 1, MS(1001));
+	android_chiaki_latency_probe_controller_state(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, MS(2000));
+	android_chiaki_latency_probe_history_sent(probe, CHIAKI_CONTROLLER_BUTTON_SHARE, 2, MS(2002));
+	stop_probe(probe, 1, 0);
+	munit_assert_string_equal(files.presses, ANDROID_CHIAKI_LATENCY_PROBE_PRESSES_HEADER
+			"1,0,0,2000000000,2002000000,2\n");
+	free_files(&files);
+	return MUNIT_OK;
+}
+
 MunitTest tests_latency_probe[] = {
+	{ "/press_buttons_mask", test_press_buttons_mask, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/press_from_key_event_to_packet", test_press_from_key_event_to_packet, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/press_without_key_event_and_unsent", test_press_without_key_event_and_unsent, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/frame_rows_from_the_join", test_frame_rows_from_the_join, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },

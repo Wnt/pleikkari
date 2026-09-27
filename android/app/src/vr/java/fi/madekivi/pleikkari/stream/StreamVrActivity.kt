@@ -980,7 +980,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             "up" to ControllerState.BUTTON_DPAD_UP, "down" to ControllerState.BUTTON_DPAD_DOWN,
             "left" to ControllerState.BUTTON_DPAD_LEFT, "right" to ControllerState.BUTTON_DPAD_RIGHT,
             "l1" to ControllerState.BUTTON_L1, "r1" to ControllerState.BUTTON_R1,
-            "options" to ControllerState.BUTTON_OPTIONS, "ps" to ControllerState.BUTTON_PS)
+            "options" to ControllerState.BUTTON_OPTIONS, "ps" to ControllerState.BUTTON_PS,
+            "create" to ControllerState.BUTTON_SHARE, "touchpad" to ControllerState.BUTTON_TOUCHPAD)
         /** PLE-746: probe records taken per render loop; a loop normally has one or none. */
         private const val PROBE_ROWS = 8
         /** PLE-690: set only by [leave]; the activity is not exported. */
