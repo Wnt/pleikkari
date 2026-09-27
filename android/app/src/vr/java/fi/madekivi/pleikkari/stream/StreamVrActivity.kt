@@ -31,6 +31,7 @@ import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.ConnectVideoProfile
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
+import fi.madekivi.pleikkari.stream.vrui.*
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -46,7 +47,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var statusText = ""
     private val main = Handler(Looper.getMainLooper())
     private var preview = false
-    private var previewEnvironment: String? = null
+    /** With the preview, the room its extra asked for, until the VR menu picks another (PLE-722). */
+    @Volatile private var previewEnvironment: String? = null
     private var environmentSamples = DEFAULT_ENVIRONMENT_SAMPLES
     /** PLE-690: started by the Go Library through the exported alias (or back in its chooser), not by Connect. */
     private var library = false
@@ -56,6 +58,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** PLE-739: debug builds only; VrApi input bits fed by [DEBUG_INPUT_ACTION], OR'd into the next poll. */
     private val debugInput = AtomicInteger(0)
     private var debugInputReceiver: BroadcastReceiver? = null
+    /** PLE-722: when the remote's Back went down, as Android saw it (a long press recentres). */
+    private var backDownMs = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,6 +126,12 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     else -> getString(R.string.go_vr_connecting)
                 }
                 cinema?.status = statusText
+            }
+            // PLE-722: the VR menu's stats overlay, once a second while it is on.
+            vm.session.streamStats.observe(this) { stats ->
+                val thread = cinema ?: return@observe
+                val ui = thread.ui ?: return@observe
+                if(ui.statsOpen) ui.stats(VrStatsPanel.lines(stats, thread.refreshHz, false))
             }
         }
     }
@@ -248,7 +258,90 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // PLE-698: per-frame latency is measurement, so only with the stats log on. The preview and a
         // Library launch have no session yet; a Library stream's ConnectInfo takes it from the same setting.
         val frameLatency = vm?.connectInfo?.let { it.feedbackStatsLogIntervalMs > 0 } ?: Preferences(this).feedbackStatsLogEnabled
-        cinema = CinemaThread(surface, profile, frameLatency).also { it.status = statusText; it.start() }
+        // PLE-722: the VR UI toolkit's menu unless the switch keeps PLE-602's strip menu.
+        val prefs = Preferences(this)
+        val ui = if(prefs.goVrUi) createUi(prefs) else null
+        cinema = CinemaThread(surface, profile, frameLatency, ui).also { it.status = statusText; it.start() }
+    }
+
+    /** The stored room and screen, or with the preview the room its extra asked for. */
+    private fun storedEnvironment(): VrEnvironmentConfig {
+        val stored = Preferences(this).vrEnvironmentConfig()
+        return previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
+    }
+
+    /** PLE-722: the in-stream VR menu's host; its GoVrUi thread lives as long as one cinema. */
+    private fun createUi(prefs: Preferences): VrUiHost {
+        val model = MenuModel()
+        val text = VrMenuText(
+            title = getString(R.string.go_vr_menu),
+            resume = getString(R.string.go_vr_resume),
+            recentre = getString(R.string.go_vr_recentre),
+            disconnect = getString(R.string.go_vr_disconnect),
+            exit = getString(R.string.go_vr_exit),
+            room = getString(R.string.go_vr_ui_room),
+            rooms = VrEnvironmentKind.values().associateWith {
+                if(it == VrEnvironmentKind.PLAIN) getString(R.string.go_vr_ui_room_plain) else getString(it.title)
+            },
+            distance = getString(R.string.go_vr_ui_distance),
+            size = getString(R.string.go_vr_ui_size),
+            roomsOnly = getString(R.string.go_vr_ui_rooms_only),
+            match60Hz = getString(R.string.go_vr_ui_match_60hz),
+            match60HzDetail = getString(R.string.go_vr_ui_match_60hz_detail),
+            statsOverlay = getString(R.string.go_vr_ui_stats))
+        // Debug builds only: `adb shell setprop debug.pleikkari.vr_pointer x,y` aims a synthetic ray x degrees
+        // right and y up of the open menu's middle, so screencaps can show hover and press (third_party README).
+        val debugPointer: (() -> String)? = if(BuildConfig.DEBUG) { { debugProperty(POINTER_PROPERTY) } } else null
+        val host = VrUiHost(this, { VrMenu.build(model, text) }, { VrMenu.refresh(it, model) }, ::menuChanged,
+            prefs.mappingShare, prefs.mappingOptions, debugPointer)
+        model.host = host
+        host.showStats(prefs.streamDiagnosticsOverlayEnabled)
+        return host
+    }
+
+    /** PLE-722: while the VR menu is open the pad drives it, so the console sees it at rest. */
+    private fun menuChanged(open: Boolean) {
+        if(open) model?.input?.releasePad()
+    }
+
+    /** PLE-722: the VR menu's view of the stored Go settings; its setters run on the GoVrUi thread. */
+    private inner class MenuModel : VrMenuModel {
+        @Volatile var host: VrUiHost? = null
+        private val prefs = Preferences(this@StreamVrActivity)
+        override val leaveIsExit get() = picking
+        override fun resume() { host?.close("resume") }
+        override fun recentre() { host?.recentre() }
+        override fun leave() { main.post { if(cinema?.ui === host) this@StreamVrActivity.leave() } }
+        override var room: VrEnvironmentKind
+            get() = previewEnvironment?.let { VrEnvironmentKind.fromValue(it) } ?: prefs.vrEnvironment
+            set(value) {
+                previewEnvironment = null
+                prefs.vrEnvironment = value
+                host?.requestEnvironment()
+            }
+        override var screenDistanceCm: Int
+            get() = prefs.vrScreenDistanceCm
+            set(value) {
+                // A screen curved around the viewer stays curved around the viewer.
+                if(prefs.vrScreenCurveRadiusCm == prefs.vrScreenDistanceCm) prefs.vrScreenCurveRadiusCm = value
+                prefs.vrScreenDistanceCm = value
+                host?.requestEnvironment()
+            }
+        override var screenWidthCm: Int
+            get() = prefs.vrScreenWidthCm
+            set(value) {
+                prefs.vrScreenWidthCm = value
+                host?.requestEnvironment()
+            }
+        override var match60Hz: Boolean
+            get() = prefs.goVrMatch60Hz
+            set(value) { prefs.goVrMatch60Hz = value }
+        override var statsOverlay: Boolean
+            get() = prefs.streamDiagnosticsOverlayEnabled
+            set(value) {
+                prefs.streamDiagnosticsOverlayEnabled = value
+                host?.showStats(value)
+            }
     }
 
     /** Hands the cinema's decoder surface to the session: when the cinema starts, or when a Library launch connects. */
@@ -264,6 +357,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun stopCinema() {
         val thread = cinema ?: return
+        thread.ui?.close("cinema stopping")
         // Stop the producer and detach before releasing its SurfaceTexture on the GL thread.
         thread.running.set(false)
         model?.pause()
@@ -287,22 +381,38 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // Bluetooth pads retain the existing StreamInput mapping, including their Back key.
         val gamepad = event.isFromSource(InputDevice.SOURCE_GAMEPAD) || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
+        val ui = cinema?.ui
         if(!gamepad && event.keyCode == KeyEvent.KEYCODE_BACK) {
             // The Go remote is polled by VrApi. Do not toggle twice if Android also
             // delivers its Back event; its press edge will open the cinema menu.
+            // PLE-722: VrApi reports only short presses; a long one reaching Android recentres (§10.6).
+            if(ui != null) {
+                if(event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) backDownMs = event.eventTime
+                if(event.action == KeyEvent.ACTION_UP && backDownMs > 0) {
+                    val held = event.eventTime - backDownMs
+                    backDownMs = 0
+                    Log.i(VrUiHost.TAG, "Remote Back held $held ms")
+                    if(held >= LONG_BACK_MS) ui.recentre()
+                }
+            }
             return true
         }
+        // PLE-722: the VR menu takes the pad while it is open, and opens on Menu or Share+Options held.
+        if(ui?.key(event) == true) return true
         // PLE-690: before a Library launch's stream the pad drives the chooser; no session has its keys yet.
         if(gamepad && libraryFlow?.key(event) == true) return true
         return model?.input?.dispatchKeyEvent(event) == true || super.dispatchKeyEvent(event)
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean =
-        model?.input?.onGenericMotionEvent(event) == true || super.onGenericMotionEvent(event)
+        cinema?.ui?.motion(event) == true || model?.input?.onGenericMotionEvent(event) == true ||
+            super.onGenericMotionEvent(event)
 
     /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
     private inner class CinemaThread(private val surface: Surface, private val videoProfile: ConnectVideoProfile?,
-                                     private val frameLatency: Boolean) : Thread("GoCinema") {
+                                     private val frameLatency: Boolean, ui: VrUiHost?) : Thread("GoCinema") {
+        /** PLE-722: the VR menu, or null for PLE-602's strip menu (or when its panels cannot be made). */
+        @Volatile var ui: VrUiHost? = ui
         val running = AtomicBoolean(true)
         val detached = CountDownLatch(1)
         @Volatile var status = ""
@@ -330,14 +440,25 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
                 // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
                 if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
-                val stored = Preferences(this@StreamVrActivity).vrEnvironmentConfig()
-                val environment = previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
+                val environment = storedEnvironment()
                 // PLE-666: with the preview, `--ei sky_variant N` draws a PLE-650 debug sky in the VrApi cinema.
                 if(preview && intent.hasExtra(EXTRA_SKY_VARIANT))
                     VrCinemaNative.debugSetSkyVariant(native, intent.getIntExtra(EXTRA_SKY_VARIANT, 0))
-                environment.toNative().let {
-                    VrCinemaNative.setEnvironment(native, it.environment, it.screenDistanceM, it.screenWidthM,
-                        it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
+                applyEnvironment(native, environment)
+                ui?.let { host ->
+                    // PLE-722: one Canvas-drawn Surface per panel, latched by the compositor itself.
+                    val menuSurface = VrCinemaNative.createPanel(native, VrUiHost.MENU, VrMenu.WIDTH, VrMenu.HEIGHT,
+                        VrUi.BORDER, VrUi.PANEL_CORNER, ANCHOR_GAZE)
+                    val statsSurface = VrCinemaNative.createPanel(native, VrUiHost.STATS, VrStatsPanel.WIDTH, VrStatsPanel.HEIGHT,
+                        VrUi.BORDER, VrUi.PANEL_CORNER, ANCHOR_PICTURE)
+                    if(menuSurface == null) {
+                        Log.e("GoCinema", "No VR UI panel; keeping the strip menu")
+                        ui = null
+                        host.shutdown()
+                    } else {
+                        host.attach(menuSurface, statsSurface)
+                        host.stats(VrStatsPanel.lines(null, refreshHz, preview))
+                    }
                 }
                 // PLE-715: when each frame starts relative to VrApi's release. The late start is an A/B
                 // setting; a debug build also takes `adb shell setprop debug.pleikkari.vr_pacing <experiments>`
@@ -382,24 +503,53 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 var latchedNs = 0L
                 val submitTiming = LongArray(2)
                 var latencyWindowStartNs = windowStartNs
+                val uiControl = FloatArray(VrUiHost.CONTROL_SIZE)
+                val uiOut = FloatArray(VrUiHost.OUTPUT_SIZE)
+                var environmentFrame = 0L
+                var frame = 0L
                 while(running.get()) {
                     VrCinemaNative.pace(native)
+                    frame++
                     val input = VrCinemaNative.input(native) or debugInput.getAndSet(0)
-                    if(input and MENU != 0) menu = !menu
-                    if(input and CLICK != 0) {
-                        if(!menu && picking) {
-                            // PLE-690: a Library launch's chooser and messages take the touchpad until it streams.
+                    val host = ui
+                    if(host != null) {
+                        // PLE-722: Back opens and closes the VR menu; a click with no menu opens it (the
+                        // host sees it in the frame's output), except while a Library launch picks its
+                        // console, whose chooser keeps the touchpad thirds.
+                        if(input and MENU != 0) host.back()
+                        host.clickOpensMenu = !picking
+                        if(input and CLICK != 0 && picking && !host.menuOpen) {
                             val touch = when {
                                 input and CENTRE != 0 -> GoVrLibraryFlow.Touch.CENTRE
                                 input and RIGHT != 0 -> GoVrLibraryFlow.Touch.RIGHT
                                 else -> GoVrLibraryFlow.Touch.LEFT
                             }
                             main.post { if(cinema === this) libraryFlow?.click(touch) }
-                        } else if(!menu || input and CENTRE != 0) VrCinemaNative.recentre(native)
-                        if(menu && input and RIGHT != 0) {
-                            main.post { if(cinema === this) leave() }
                         }
-                        menu = false
+                        if(host.takeRecentre()) VrCinemaNative.recentre(native)
+                        // Settings from the menu; a dragged slider rebuilds the room at most ~12 times a second.
+                        if(frame - environmentFrame >= ENVIRONMENT_APPLY_FRAMES && host.takeEnvironmentChange()) {
+                            environmentFrame = frame
+                            applyEnvironment(native, storedEnvironment())
+                        }
+                        host.control(uiControl)
+                    } else {
+                        if(input and MENU != 0) menu = !menu
+                        if(input and CLICK != 0) {
+                            if(!menu && picking) {
+                                // PLE-690: a Library launch's chooser and messages take the touchpad until it streams.
+                                val touch = when {
+                                    input and CENTRE != 0 -> GoVrLibraryFlow.Touch.CENTRE
+                                    input and RIGHT != 0 -> GoVrLibraryFlow.Touch.RIGHT
+                                    else -> GoVrLibraryFlow.Touch.LEFT
+                                }
+                                main.post { if(cinema === this) libraryFlow?.click(touch) }
+                            } else if(!menu || input and CENTRE != 0) VrCinemaNative.recentre(native)
+                            if(menu && input and RIGHT != 0) {
+                                main.post { if(cinema === this) leave() }
+                            }
+                            menu = false
+                        }
                     }
                     picture?.post()
                     val newFrame = frameReady.getAndSet(false)
@@ -422,9 +572,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         previousText = text
                     }
                     val video = hasFrame && text.isEmpty()
-                    check(VrCinemaNative.draw(native, transform, video, menu, newFrame) >= 0) {
+                    check(VrCinemaNative.draw(native, transform, video, menu, newFrame,
+                            if(host != null) uiControl else null, if(host != null) uiOut else null) >= 0) {
                         "vrapi_SubmitFrame2 failed"
                     }
+                    host?.frame(uiOut, System.nanoTime())
                     submitted++
                     if(video) shown++
                     if(newFrame && frameLatency) {
@@ -457,11 +609,25 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // An error may reach here while the decoder still holds the output. The main
                 // thread stops it before signalling detached; never free a live producer's target.
                 detached.await()
+                // PLE-722: no Canvas may touch a panel Surface once its swapchain goes with the cinema.
+                ui?.shutdown()
                 if(frameLatency) CinemaFrameLatency.enable(false)
                 listenerThread?.quitSafely()
                 decoder?.release()
                 texture?.release()
                 if(native != 0L) VrCinemaNative.destroy(native)
+            }
+        }
+
+        /** The room and screen, and (PLE-722) where the VR UI's panels go for them. */
+        private fun applyEnvironment(native: Long, environment: VrEnvironmentConfig) {
+            environment.toNative().let {
+                VrCinemaNative.setEnvironment(native, it.environment, it.screenDistanceM, it.screenWidthM,
+                    it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
+            }
+            ui?.let {
+                it.radius = VrUi.panelRadius(environment)
+                it.statsAnchor = VrStatsPanel.anchor(environment)
             }
         }
 
@@ -548,6 +714,14 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
         /** PLE-715: debug builds only; frame pacing experiments, see vr-frame-pacing.h. */
         private const val PACING_PROPERTY = "debug.pleikkari.vr_pacing"
+        /** PLE-722: debug builds only; "x,y" degrees from the open menu's middle for a synthetic pointer. */
+        private const val POINTER_PROPERTY = "debug.pleikkari.vr_pointer"
+        /** PLE-722: vr-ui-layers.h's VrUiAnchor*. */
+        private const val ANCHOR_GAZE = 0
+        private const val ANCHOR_PICTURE = 1
+        /** PLE-722: a remote Back held this long recentres (Skybox's 0.75 s). */
+        private const val LONG_BACK_MS = 750L
+        private const val ENVIRONMENT_APPLY_FRAMES = 6
         /** PLE-690: debug builds only; a Library launch opens its chooser instead of connecting. */
         private const val CHOOSE_PROPERTY = "debug.pleikkari.go_entry_choose"
         /** PLE-739: debug builds only; a Library launch sees no linked console. */
@@ -585,7 +759,11 @@ internal object VrCinemaNative {
     external fun setPacing(handle: Long, mode: Int, log: Boolean, spec: String, refreshHz: Float)
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
-    external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
+    /** PLE-722: [uiControl] null keeps the strip menu; otherwise VrUiHost's control slots in, its output slots in [uiOut]. */
+    external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean,
+        uiControl: FloatArray?, uiOut: FloatArray?): Int
+    /** PLE-722: a VR UI panel's Surface (vr-ui-layers.h), or null when the UI cannot run. */
+    external fun createPanel(handle: Long, index: Int, width: Int, height: Int, inset: Float, corner: Float, anchor: Int): Surface?
     /** PLE-698: the last draw's {vrapi_SubmitFrame2 call, predicted display time}, CLOCK_MONOTONIC ns. */
     external fun submitTiming(handle: Long, out: LongArray)
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
