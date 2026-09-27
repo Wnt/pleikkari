@@ -13,6 +13,16 @@ import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.lib.ControllerState
 import fi.madekivi.pleikkari.lib.LatencyProbe
 
+/**
+ * PLE-802: thread safety. Key and joystick events arrive on the main thread, or with Go's
+ * `stream_go_vr_input_thread` on its GoPadInput thread; sensors, [touchControllerState],
+ * [releasePad] and the coalesced flush stay on the main thread. [stateLock] guards the four partial
+ * states, [displayRotation], [controllerStateDirty] and every call of [controllerStateChangedCallback]:
+ * each change and the state it sends are one critical section. So a read-modify-write of a partial
+ * state never loses another thread's change, and the state sent last is always computed after the
+ * last change: the console ends on the newest state whichever thread changed it. With a single thread
+ * the lock is uncontended and the states sent are the same as before.
+ */
 class StreamInput(val context: Context, val preferences: Preferences)
 {
 	companion object
@@ -20,7 +30,9 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		private const val FRAME_FALLBACK_DELAY_MS = 16L
 	}
 
-	var controllerStateChangedCallback: ((ControllerState) -> Unit)? = null
+	/** Called with [stateLock] held, on whichever thread changed the state (see the class comment). */
+	@Volatile var controllerStateChangedCallback: ((ControllerState) -> Unit)? = null
+	private val stateLock = Any()
 	private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 	private var displayRotation = currentDisplayRotation()
 	private val coalesceControllerInput = preferences.controllerInputCoalescingEnabled
@@ -44,7 +56,9 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	private val frameCallback = Choreographer.FrameCallback { flushControllerState() }
 	private val frameFallback = Runnable { flushControllerState() }
 
-	val controllerState: ControllerState get()
+	val controllerState: ControllerState get() = synchronized(stateLock) { mergedControllerState() }
+
+	private fun mergedControllerState(): ControllerState
 	{
 		val controllerState = sensorControllerState or keyControllerState or motionControllerState
 
@@ -75,10 +89,14 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	private val keyControllerState = ControllerState() // from KeyEvents
 	private val motionControllerState = ControllerState() // from MotionEvents
 	var touchControllerState = ControllerState()
+		get() = synchronized(stateLock) { field }
 		set(value)
 		{
-			field = value
-			controllerStateUpdated()
+			synchronized(stateLock)
+			{
+				field = value
+				controllerStateUpdated()
+			}
 		}
 
 	private val swapCrossMoon = preferences.swapCrossMoon
@@ -86,29 +104,32 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	private val sensorEventListener = object: SensorEventListener {
 		override fun onSensorChanged(event: SensorEvent)
 		{
-			when(event.sensor.type)
+			synchronized(stateLock)
 			{
-				Sensor.TYPE_ACCELEROMETER -> {
-					sensorControllerState.accelX = event.values[1] / SensorManager.GRAVITY_EARTH
-					sensorControllerState.accelY = event.values[2] / SensorManager.GRAVITY_EARTH
-					sensorControllerState.accelZ = event.values[0] / SensorManager.GRAVITY_EARTH
+				when(event.sensor.type)
+				{
+					Sensor.TYPE_ACCELEROMETER -> {
+						sensorControllerState.accelX = event.values[1] / SensorManager.GRAVITY_EARTH
+						sensorControllerState.accelY = event.values[2] / SensorManager.GRAVITY_EARTH
+						sensorControllerState.accelZ = event.values[0] / SensorManager.GRAVITY_EARTH
+					}
+					Sensor.TYPE_GYROSCOPE -> {
+						sensorControllerState.gyroX = event.values[1]
+						sensorControllerState.gyroY = event.values[2]
+						sensorControllerState.gyroZ = event.values[0]
+					}
+					Sensor.TYPE_ROTATION_VECTOR -> {
+						val q = floatArrayOf(0f, 0f, 0f, 0f)
+						SensorManager.getQuaternionFromVector(q, event.values)
+						sensorControllerState.orientX = q[2]
+						sensorControllerState.orientY = q[3]
+						sensorControllerState.orientZ = q[1]
+						sensorControllerState.orientW = q[0]
+					}
+					else -> return
 				}
-				Sensor.TYPE_GYROSCOPE -> {
-					sensorControllerState.gyroX = event.values[1]
-					sensorControllerState.gyroY = event.values[2]
-					sensorControllerState.gyroZ = event.values[0]
-				}
-				Sensor.TYPE_ROTATION_VECTOR -> {
-					val q = floatArrayOf(0f, 0f, 0f, 0f)
-					SensorManager.getQuaternionFromVector(q, event.values)
-					sensorControllerState.orientX = q[2]
-					sensorControllerState.orientY = q[3]
-					sensorControllerState.orientZ = q[1]
-					sensorControllerState.orientW = q[0]
-				}
-				else -> return
+				controllerStateUpdated()
 			}
-			controllerStateUpdated()
 		}
 
 		override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
@@ -169,14 +190,16 @@ class StreamInput(val context: Context, val preferences: Preferences)
 
 	fun refreshDisplayRotation()
 	{
-		displayRotation = currentDisplayRotation()
+		val rotation = currentDisplayRotation()
+		synchronized(stateLock) { displayRotation = rotation }
 	}
 
+	/** With [stateLock] held, right after the change it reports. */
 	private fun controllerStateUpdated()
 	{
 		if(!coalesceControllerInput)
 		{
-			controllerStateChangedCallback?.let { it(controllerState) }
+			controllerStateChangedCallback?.let { it(mergedControllerState()) }
 			return
 		}
 
@@ -202,13 +225,18 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	{
 		mainHandler.removeCallbacks(frameFallback)
 		controllerStateFlushScheduled = false
-		if(!controllerStateDirty)
-			return
-		controllerStateDirty = false
-		controllerStateChangedCallback?.let { it(controllerState) }
+		synchronized(stateLock)
+		{
+			if(!controllerStateDirty)
+				return
+			controllerStateDirty = false
+			controllerStateChangedCallback?.let { it(mergedControllerState()) }
+		}
 	}
 
-	fun dispatchKeyEvent(event: KeyEvent): Boolean
+	fun dispatchKeyEvent(event: KeyEvent): Boolean = synchronized(stateLock) { mapKeyEvent(event) }
+
+	private fun mapKeyEvent(event: KeyEvent): Boolean
 	{
 		//Log.i("StreamSession", "key event $event")
 		if(event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP)
@@ -261,7 +289,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	 * PLE-722: the Go's VR menu took the pad. The console sees every pad button up and both
 	 * sticks and triggers at rest until the pad's next event after the menu closes.
 	 */
-	fun releasePad()
+	fun releasePad() = synchronized(stateLock)
 	{
 		for(state in listOf(keyControllerState, motionControllerState))
 		{
@@ -284,16 +312,24 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	fun debugPress(buttons: UInt, holdMs: Long)
 	{
 		mainHandler.post {
-			keyControllerState.buttons = keyControllerState.buttons or buttons
-			controllerStateUpdated()
+			synchronized(stateLock)
+			{
+				keyControllerState.buttons = keyControllerState.buttons or buttons
+				controllerStateUpdated()
+			}
 		}
 		mainHandler.postDelayed({
-			keyControllerState.buttons = keyControllerState.buttons and buttons.inv()
-			controllerStateUpdated()
+			synchronized(stateLock)
+			{
+				keyControllerState.buttons = keyControllerState.buttons and buttons.inv()
+				controllerStateUpdated()
+			}
 		}, holdMs)
 	}
 
-	fun onGenericMotionEvent(event: MotionEvent): Boolean
+	fun onGenericMotionEvent(event: MotionEvent): Boolean = synchronized(stateLock) { mapMotionEvent(event) }
+
+	private fun mapMotionEvent(event: MotionEvent): Boolean
 	{
 		if(event.source and InputDevice.SOURCE_CLASS_JOYSTICK != InputDevice.SOURCE_CLASS_JOYSTICK)
 			return false

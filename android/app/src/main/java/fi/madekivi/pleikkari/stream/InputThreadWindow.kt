@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
+package fi.madekivi.pleikkari.stream
+
+import android.app.Activity
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.IBinder
+import android.os.Looper
+import android.os.Process
+import android.util.Log
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
+/**
+ * PLE-802: an activity's key and joystick input, read on a thread of its own instead of the main looper.
+ *
+ * A window's input events arrive on the looper of the thread that added the window: ViewRootImpl
+ * reads the window's input channel on the `Looper.myLooper()` of its setView. An activity's own
+ * window is the main thread's, and `Window.takeInputQueue` does not change that: ViewRootImpl still
+ * reads each event on the main looper, then forwards it to the queue. So this adds a second window
+ * from a [HandlerThread] of its own. It is a 1x1 sub-window of the activity's, with alpha 0 so
+ * SurfaceFlinger has no layer to composite. It is focusable, because key and joystick events go to
+ * the focused window, but not touchable, so touches still reach the activity. It is not an IME
+ * target, so no key takes a round trip through the keyboard's process first.
+ *
+ * [Router.key] and [Router.motion] see each event on that thread. An event they do not take goes
+ * back to the main thread, which gives it the activity window's own handling ([handBack]). Its
+ * answer is this window's answer, so the system's fallback keys (a pad's B as Back, volume) behave
+ * as they did.
+ *
+ * One ordering caveat, at [start] only: an event the activity window took just before this window
+ * had the focus can still be waiting on the main looper when a newer one arrives here. Keys cannot
+ * cross over, because the input dispatcher cancels a key held down in the window that loses focus.
+ * A joystick move can: if one crosses over, the stick shows the older position until the pad's next
+ * joystick event.
+ */
+class InputThreadWindow(private val activity: Activity, private val router: Router)
+{
+	interface Router
+	{
+		/** Input thread: true when the stream took the event. */
+		fun key(event: KeyEvent): Boolean
+		fun motion(event: MotionEvent): Boolean
+		/** Main thread: the activity's own handling of an event the stream did not take. */
+		fun unhandledKey(event: KeyEvent): Boolean
+		fun unhandledMotion(event: MotionEvent): Boolean
+	}
+
+	private val main = Handler(Looper.getMainLooper())
+	// Main thread.
+	private var thread: HandlerThread? = null
+	private var handler: Handler? = null
+	// Input thread.
+	private var view: View? = null
+
+	/**
+	 * Main thread, with the activity's window attached. False when it has no window token yet: the
+	 * input then stays on the main looper.
+	 */
+	fun start(): Boolean
+	{
+		if(thread != null)
+			return true
+		val decor = activity.window.decorView
+		val token = decor.windowToken ?: return false
+		// The focused window's system UI flags are the screen's; keep the activity's.
+		@Suppress("DEPRECATION") val systemUi = decor.systemUiVisibility
+		val thread = HandlerThread(THREAD_NAME, Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
+		val handler = Handler(thread.looper)
+		this.thread = thread
+		this.handler = handler
+		handler.post { add(token, systemUi) }
+		return true
+	}
+
+	/** Main thread. It never waits for the input thread, which may be waiting for the main thread in [handBack]. */
+	fun stop()
+	{
+		val thread = thread ?: return
+		val handler = handler ?: return
+		this.thread = null
+		this.handler = null
+		// quitSafely still runs the removal: it is due now.
+		handler.post { remove() }
+		thread.quitSafely()
+	}
+
+	private fun add(token: IBinder, systemUi: Int)
+	{
+		val view = InputView(activity)
+		@Suppress("DEPRECATION")
+		view.systemUiVisibility = systemUi
+		val params = WindowManager.LayoutParams(1, 1, WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+			WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+				WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+			PixelFormat.TRANSLUCENT).apply {
+			this.token = token
+			gravity = Gravity.TOP or Gravity.START
+			alpha = 0f
+			title = THREAD_NAME
+		}
+		try
+		{
+			activity.windowManager.addView(view, params)
+			this.view = view
+			Log.i(TAG, "Input window added; key and joystick events arrive on $THREAD_NAME")
+		}
+		catch(e: RuntimeException)
+		{
+			// WindowManager.BadTokenException (the activity's window went first) or InvalidDisplayException.
+			Log.e(TAG, "Input window refused; input stays on the main thread", e)
+		}
+	}
+
+	private fun remove()
+	{
+		val view = view ?: return
+		this.view = null
+		try
+		{
+			activity.windowManager.removeViewImmediate(view)
+			Log.i(TAG, "Input window removed; input is back on the main thread")
+		}
+		catch(e: IllegalArgumentException)
+		{
+			// Already gone with the activity's window.
+		}
+	}
+
+	/**
+	 * Input thread: [unhandled] on the main thread, returning its answer. After [HAND_BACK_TIMEOUT_MS]
+	 * without one, the event counts as not handled: this window's own fallback handling (volume,
+	 * media keys) then still acts on it.
+	 */
+	private fun handBack(unhandled: () -> Boolean): Boolean
+	{
+		val task = FutureTask(unhandled)
+		if(!main.post(task))
+			return false
+		return try
+		{
+			task.get(HAND_BACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+		}
+		catch(e: TimeoutException)
+		{
+			task.cancel(false)
+			Log.w(TAG, "Main thread did not take a handed-back event within $HAND_BACK_TIMEOUT_MS ms")
+			false
+		}
+		catch(e: ExecutionException)
+		{
+			// As the exception would have been on the main thread.
+			throw e.cause ?: e
+		}
+	}
+
+	private inner class InputView(context: Context) : View(context)
+	{
+		override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+			router.key(event) || handBack { router.unhandledKey(event) }
+
+		override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean
+		{
+			if(router.motion(event))
+				return true
+			// The dispatcher recycles its MotionEvent once this returns, which a timeout could make too soon.
+			val copy = MotionEvent.obtain(event)
+			return handBack {
+				try
+				{
+					router.unhandledMotion(copy)
+				}
+				finally
+				{
+					copy.recycle()
+				}
+			}
+		}
+
+		override fun onWindowFocusChanged(hasWindowFocus: Boolean)
+		{
+			super.onWindowFocusChanged(hasWindowFocus)
+			Log.i(TAG, "Input window ${if(hasWindowFocus) "has the focus" else "lost the focus"}")
+		}
+	}
+
+	companion object
+	{
+		const val TAG = "GoPadInput"
+		private const val THREAD_NAME = "GoPadInput"
+		private const val HAND_BACK_TIMEOUT_MS = 1000L
+	}
+}

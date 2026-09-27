@@ -42,6 +42,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain
 		preferences.goVrLatchOnSignalKey -> preferences.goVrLatchOnSignal
 		preferences.goVrWarmUpKey -> preferences.goVrWarmUp
+		preferences.goVrInputThreadKey -> preferences.goVrInputThread
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -96,6 +97,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain = value
 			preferences.goVrLatchOnSignalKey -> preferences.goVrLatchOnSignal = value
 			preferences.goVrWarmUpKey -> preferences.goVrWarmUp = value
+			preferences.goVrInputThreadKey -> preferences.goVrInputThread = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
@@ -331,6 +333,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				title = getString(R.string.go_vr_frame_listener_thread_title)
 				summary = getString(R.string.go_vr_frame_listener_thread_summary)
 				isChecked = preferences.goVrFrameListenerThread
+			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrInputThreadKey
+				title = getString(R.string.go_vr_input_thread_title)
+				summary = getString(R.string.go_vr_input_thread_summary)
+				isChecked = preferences.goVrInputThread
 			})
 			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
 				key = preferences.goVrLateStartKey
