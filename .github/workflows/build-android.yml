@@ -119,12 +119,10 @@ jobs:
   # it with a read-only deploy key on that repo, secret OVR_SDK_DEPLOY_KEY. Pushes to
   # android-port only, so a pull request (from a fork or not) never runs with the key; the
   # job gets no write token, and publishing is the separate job below.
-  # PLE-749: the job runs in the `ovr-sdk` environment. Once the secret is moved from the
-  # repository into that environment and the environment's deployment branch policy allows
-  # only android-port, GitHub itself refuses the key to any other ref, even if a workflow on
-  # another branch drops the `if:` below. Until then the repo-level secret still resolves here.
-  # Operator steps: Settings > Environments > New `ovr-sdk`, Deployment branches: selected,
-  # add `android-port`; add secret OVR_SDK_DEPLOY_KEY there; delete the repository secret.
+  # PLE-749: the job runs in the `ovr-sdk` environment, whose deployment branch policy allows
+  # only android-port, so GitHub itself refuses the key to any other ref, even if a workflow
+  # on another branch drops the `if:` below. PLE-825 rotated the key into that environment's
+  # OVR_SDK_DEPLOY_KEY secret; there is no repository-level copy any more.
   build-android-go-vr:
     if: github.repository == 'Wnt/pleikkari' && github.event_name == 'push' && github.ref == 'refs/heads/android-port'
     environment: ovr-sdk
