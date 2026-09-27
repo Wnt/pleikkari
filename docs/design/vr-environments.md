@@ -98,12 +98,16 @@ with a CPU readback, and pre-baked masks decide where it lands.
 
 ## 4. Performance budget observed
 
-Per eye and frame on the Go (Adreno 530, 72 Hz, 1024x1024 eye buffers with 4x MSAA):
+Per eye and frame on the Go (Adreno 530, 72 Hz, 4x MSAA; the eye buffers are 1.4 times the
+runtime's 1024x1024, because `MainProcedure` sets `eyeTextureResolutionScale` 1.4 on an
+Oculus Go, as PLE-721 found):
 about 60k to 90k triangles for the rooms, 12 to 20 draw calls, 11 to 21 MB of ASTC
 textures resident, one 8x8 downsample blit every third frame, one CPU readback of 64
 pixels every third frame. The video itself is drawn on a mesh (a quad reshaped into a
-cylinder section); the compositor-layer path (`OVROverlay`, shape "Cylinder" appears in
-the code) is used for the UI panel (8.36 x 3.19 units at 5.8 m), not for the picture.
+cylinder section). PLE-721 corrected an earlier reading: the menus do not use a compositor
+layer either. The `OVROverlay` cylinder prefab (8.36 x 3.19 units at 5.8 m) is compiled in
+but switched off by a hard-coded `false`. The UI is world-space canvases in the eye buffers,
+which Skybox renders 1.4 times larger on the Go (`vr-ui.md` §8).
 
 Thin geometry: the transparent light fixtures are separate meshes with their own
 lightmaps and MSAA does the rest; there are no sub-pixel bars in the hall, the sconces
