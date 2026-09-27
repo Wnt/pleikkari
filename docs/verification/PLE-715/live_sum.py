@@ -3,7 +3,9 @@
 import os, re, sys, statistics
 for path in sys.argv[1:]:
     txt = open(path, errors='replace').read().splitlines()
-    pid = next((l.split()[2] for l in txt if ' GoPacing: ' in l), None)
+    # GoCinema lines are always logged; GoPacing only with the per-frame trace.
+    pid = next((l.split()[2] for l in txt if re.search(r' GoCinema *: ', l)), None) or \
+        next((l.split()[2] for l in txt if re.search(r' GoPacing *: ', l)), None)
     lat = [l for l in txt if 'Cinema latency:' in l]
     def fig(l, name):
         m = re.search(name + r' ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)', l); return tuple(float(x) for x in m.groups()) if m else None
