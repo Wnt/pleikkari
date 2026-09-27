@@ -19,6 +19,18 @@
 // VrApi stops throttling after a late frame. After a late frame the next one waits for that point
 // rather than going into the same refresh, and when every frame of half a second shows a refresh
 // early, one release is skipped (a repeated frame) so the lead falls back to 0.
+//
+// PLE-801: the latch on the frame signal (config.latch_on_signal) keeps VrApi's release pacing but
+// stops a frame decoded during the submit's wait from waiting out the whole next frame too. After a
+// submit VrApi held to its release, a loop with no new video frame waits for the decoder's frame
+// signal until [budget] before the next release (pleikkari_vr_pacing_latch_deadline_ns), then
+// latches and draws at once; at the deadline it draws the last frame. A frame decoded in that window
+// goes out one release sooner. The loop never waits after a late frame, and never past a release it
+// could still make. When a frame it made wait comes late anyway, the next frame is held to the
+// release after it, as with the hold, so a second submit never goes into the same refresh (which
+// would add a refresh of lead). Under the late start it does nothing: that frame already starts at
+// the same point, and waking it early on a frame would give VrApi a longer prediction and undo its
+// hold and drain.
 
 #ifndef PLEIKKARI_VR_FRAME_PACING_H
 #define PLEIKKARI_VR_FRAME_PACING_H
@@ -62,6 +74,8 @@ typedef struct pleikkari_vr_pacing_config_t
 	PleikkariVrPacingMode mode;
 	int64_t period_ns;
 	int64_t budget_ns;
+	// PLE-801: in PLEIKKARI_VR_PACING_VRAPI, wait for the decoder's frame signal before the latch.
+	bool latch_on_signal;
 	// Debug experiments (a debug build's debug.pleikkari.vr_pacing property), all off by default.
 	bool trace;               // one GoPacing line per frame
 	bool hold;                // in PLEIKKARI_VR_PACING_VRAPI too: hold the frame after a late one
@@ -97,6 +111,13 @@ typedef struct pleikkari_vr_pacing_window_t
 	uint32_t leads[3];     // frames at lead 0, 1, and 2 or more
 	uint32_t drains;       // releases skipped to drain the lead
 	int64_t period_ns;     // the measured refresh period at the window's end
+	// PLE-801: frames that waited for the frame signal, of those the ones it woke, the wait, and the
+	// frames that waited and still came late (the next one is held).
+	uint32_t latch_waits;
+	uint32_t latch_signalled;
+	int64_t latch_wait_sum_ns;
+	int64_t latch_wait_max_ns;
+	uint32_t latch_late;
 } PleikkariVrPacingWindow;
 
 typedef struct pleikkari_vr_pacing_t
@@ -112,12 +133,14 @@ typedef struct pleikkari_vr_pacing_t
 	uint32_t lead_frames;    // frames in a row at a lead of 1 or more
 	int64_t drain_ns;        // the last drain, 0 for none
 	bool draining;           // the frame being started skips a release
+	bool latch_waited;       // PLE-801: the frame being started waited for the frame signal
+	bool latch_hold;         // PLE-801: the last frame waited and came late; hold the next one
 	int64_t sweep_sleep_ns;  // the sweep's current sleep
 	PleikkariVrPacingWindow window;
 } PleikkariVrPacing;
 
 void pleikkari_vr_pacing_config_default(PleikkariVrPacingConfig *config, float refresh_hz);
-// "trace,hold,drain=N,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,budget=US": the debug
+// "trace,hold,drain=N,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,budget=US,signal": the debug
 // property's experiments, on top of the config. Unknown items are ignored; returns how many were read.
 int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char *spec);
 
@@ -126,6 +149,11 @@ void pleikkari_vr_pacing_init(PleikkariVrPacing *pacing, const PleikkariVrPacing
 int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns);
 // VrApi's next release after now on the measured grid, or 0 before the first throttled submit.
 int64_t pleikkari_vr_pacing_next_release_ns(const PleikkariVrPacing *pacing, int64_t now_ns);
+// PLE-801: after the top of the loop, with no new video frame: the CLOCK_MONOTONIC time until which
+// the loop may wait for the decoder's frame signal before it latches, or 0 to latch at once.
+int64_t pleikkari_vr_pacing_latch_deadline_ns(const PleikkariVrPacing *pacing, int64_t now_ns);
+// PLE-801: the loop waited waited_ns for the frame signal; signalled if a frame came before the deadline.
+void pleikkari_vr_pacing_latch_waited(PleikkariVrPacing *pacing, int64_t waited_ns, bool signalled);
 // After vrapi_SubmitFrame2 returns: start is the frame's start after any sleep, submit and
 // returned bracket the submit call, predicted is its vrapi_GetPredictedDisplayTime.
 void pleikkari_vr_pacing_frame(PleikkariVrPacing *pacing, int64_t start_ns, int64_t slept_ns,

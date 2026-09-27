@@ -148,6 +148,8 @@ struct Cinema {
     PleikkariVrPacing pacing;
     // The mode asked for; the late start is for the plain cinema only (see applyPacingMode).
     PleikkariVrPacingMode pacingRequested = PLEIKKARI_VR_PACING_VRAPI;
+    // PLE-801: the latch on the frame signal asked for; the plain cinema only too.
+    bool latchRequested = false;
     bool pacingLog = false;
     int64_t frameStartNs = 0;
     int64_t frameSleptNs = 0;
@@ -235,7 +237,7 @@ struct Cinema {
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
-        setPacing(PLEIKKARI_VR_PACING_VRAPI, false, nullptr, refreshHz);
+        setPacing(PLEIKKARI_VR_PACING_VRAPI, false, false, nullptr, refreshHz);
         applyClockLevels();
         {
             // PLE-698: per-frame latency mixes both clocks; log how far apart they are (expected ~0).
@@ -392,31 +394,55 @@ struct Cinema {
     }
 
     // PLE-715: mode and the stats log from the settings; spec is a debug build's experiments.
-    void setPacing(PleikkariVrPacingMode mode, bool log, const char *spec, float refreshHz) {
+    // PLE-801: latchOnSignal from its setting (or the spec's "signal"); returns whether it is asked for.
+    bool setPacing(PleikkariVrPacingMode mode, bool latchOnSignal, bool log, const char *spec, float refreshHz) {
         PleikkariVrPacingConfig config;
         pleikkari_vr_pacing_config_default(&config, refreshHz);
         config.mode = mode;
+        config.latch_on_signal = latchOnSignal;
         const int read = pleikkari_vr_pacing_config_parse(&config, spec);
         pleikkari_vr_pacing_init(&pacing, &config);
         pacingRequested = config.mode;
+        latchRequested = config.latch_on_signal;
         pacingLog = log || config.trace;
         pacingWindowStartNs = 0;
-        if(read || mode != PLEIKKARI_VR_PACING_VRAPI)
-            LOGI("Frame pacing: %s, budget %.1f ms, period %.3f ms%s%s", pleikkari_vr_pacing_mode_name(config.mode),
-                config.budget_ns / 1e6, config.period_ns / 1e6, read ? "; debug experiments: " : "", read ? spec : "");
+        if(read || mode != PLEIKKARI_VR_PACING_VRAPI || config.latch_on_signal)
+            LOGI("Frame pacing: %s, budget %.1f ms, period %.3f ms%s%s%s", pleikkari_vr_pacing_mode_name(config.mode),
+                config.budget_ns / 1e6, config.period_ns / 1e6,
+                !config.latch_on_signal ? "" : config.mode == PLEIKKARI_VR_PACING_LATE
+                    ? "; latch on the frame signal (inert: the late start already latches at its deadline)" : "; latch on the frame signal",
+                read ? "; debug experiments: " : "", read ? spec : "");
         applyPacingMode();
+        return config.latch_on_signal;
     }
 
     // PLE-715: a room's eye frame takes about 8 ms of GPU (VrApi App=, PLE-623), which the late
     // start's budget does not leave, and the rooms were never measured with it: they keep VrApi's
-    // release, today's loop.
+    // release, today's loop. PLE-801: the latch on the frame signal draws within the same budget.
     void applyPacingMode() {
         const PleikkariVrPacingMode mode = pacingRequested == PLEIKKARI_VR_PACING_LATE && environment
             ? PLEIKKARI_VR_PACING_VRAPI : pacingRequested;
-        if(pacing.config.mode == mode) return;
+        const bool latch = latchRequested && !environment;
+        if(pacing.config.mode == mode && pacing.config.latch_on_signal == latch) return;
+        const bool modeChanged = pacing.config.mode != mode;
         pacing.config.mode = mode;
-        LOGI("Frame pacing: %s%s", pleikkari_vr_pacing_mode_name(mode),
-            mode != pacingRequested ? " (late start is for the plain cinema; a room is drawn)" : "");
+        pacing.config.latch_on_signal = latch;
+        if(modeChanged)
+            LOGI("Frame pacing: %s%s", pleikkari_vr_pacing_mode_name(mode),
+                mode != pacingRequested ? " (late start is for the plain cinema; a room is drawn)" : "");
+        if(latchRequested)
+            LOGI("Frame pacing: latch on the frame signal %s", latch ? "on" : "off (it is for the plain cinema; a room is drawn)");
+    }
+
+    // PLE-801: with no new video frame, until when the loop may wait for the decoder's frame signal; 0 latches now.
+    int64_t latchDeadline() const { return pleikkari_vr_pacing_latch_deadline_ns(&pacing, monotonicNs()); }
+
+    // PLE-801: the wait is the loop's own sleep; the frame starts at the latch that follows it.
+    void latchWaited(int64_t waitStartNs, bool signalled) {
+        const int64_t now = monotonicNs();
+        pleikkari_vr_pacing_latch_waited(&pacing, now - waitStartNs, signalled);
+        frameSleptNs += now - waitStartNs;
+        frameStartNs = now;
     }
 
     // PLE-715: at the top of the loop, before input and the video latch.
@@ -458,6 +484,13 @@ struct Cinema {
             w.leads[0], w.leads[1], w.leads[2], w.drains, w.period_ns / 1e6,
             vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_EARLY_FRAMES_PER_SECOND),
             vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_STALE_FRAMES_PER_SECOND));
+        // PLE-801: only with the latch on the frame signal, so today's line stays as it was.
+        if(pacing.config.latch_on_signal)
+            LOGI("Frame pacing latch on signal: %u of %u frames waited, %u woken by a frame, %u by the deadline"
+                " | wait mean/max %.2f/%.2f ms | %u waited and came late (next held)",
+                w.latch_waits, w.frames, w.latch_signalled, w.latch_waits - w.latch_signalled,
+                w.latch_waits ? w.latch_wait_sum_ns / static_cast<double>(w.latch_waits) / 1e6 : 0.0,
+                w.latch_wait_max_ns / 1e6, w.latch_late);
         pacingWindowStartNs = returnedNs;
     }
 
@@ -680,10 +713,19 @@ extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) 
 // PLE-715: the top of every render loop iteration; sleeps when the pacing mode asks.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(pace)(JNIEnv *, jobject, jlong h) { cinema(h)->pace(); }
 // PLE-715: mode 0 is VrApi's own release (the default), 1 the late start; spec a debug build's experiments.
-extern "C" JNIEXPORT void JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jboolean log, jstring spec, jfloat refreshHz) {
+// PLE-801: latchOnSignal is the latch on the frame signal; returns it, or the spec's "signal".
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jboolean latchOnSignal,
+        jboolean log, jstring spec, jfloat refreshHz) {
     const char *chars = spec ? env->GetStringUTFChars(spec, nullptr) : nullptr;
-    cinema(h)->setPacing(mode == PLEIKKARI_VR_PACING_LATE ? PLEIKKARI_VR_PACING_LATE : PLEIKKARI_VR_PACING_VRAPI, log, chars, refreshHz);
+    const bool latch = cinema(h)->setPacing(mode == PLEIKKARI_VR_PACING_LATE ? PLEIKKARI_VR_PACING_LATE : PLEIKKARI_VR_PACING_VRAPI,
+        latchOnSignal, log, chars, refreshHz);
     if(chars) env->ReleaseStringUTFChars(spec, chars);
+    return latch;
+}
+// PLE-801: CLOCK_MONOTONIC ns to wait for the frame signal until before the latch, or 0 to latch now.
+extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(latchDeadline)(JNIEnv *, jobject, jlong h) { return cinema(h)->latchDeadline(); }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(latchWaited)(JNIEnv *, jobject, jlong h, jlong waitStartNs, jboolean signalled) {
+    cinema(h)->latchWaited(waitStartNs, signalled);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(warmUp)(JNIEnv *, jobject, jlong h) { cinema(h)->warmUp(); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { pleikkari_vr_screen_placement_request(&cinema(h)->placement); }
