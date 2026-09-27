@@ -61,6 +61,8 @@ int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char
 			config->mode = PLEIKKARI_VR_PACING_LATE;
 		else if(strcmp(item, "holddrain") == 0)
 			config->mode = PLEIKKARI_VR_PACING_HOLD;
+		else if(strcmp(item, "flusheyes") == 0)
+			config->flush_eyes = true;
 		else if(strncmp(item, "sleep=", 6) == 0)
 			config->sleep_ns = parse_us(value, NULL);
 		else if(strncmp(item, "budget=", 7) == 0)

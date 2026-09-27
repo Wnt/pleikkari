@@ -74,6 +74,7 @@ typedef struct pleikkari_vr_pacing_config_t
 	// Debug experiments (a debug build's debug.pleikkari.vr_pacing property), all off by default.
 	bool trace;               // one GoPacing line per frame
 	bool hold;                // in PLEIKKARI_VR_PACING_VRAPI too: hold the frame after a late one
+	bool flush_eyes;          // PLE-753: glFlush after the first eye too, so the GPU starts it sooner
 	uint32_t drain_refreshes; // the skip out of a lead of 1 or more (late start, hold and drain); 0 turns it off
 	int64_t sleep_ns;         // a fixed sleep at the top of every frame
 	int64_t sweep_step_ns;    // added to that sleep every sweep_frames frames, up to sweep_max_ns
@@ -126,7 +127,7 @@ typedef struct pleikkari_vr_pacing_t
 } PleikkariVrPacing;
 
 void pleikkari_vr_pacing_config_default(PleikkariVrPacingConfig *config, float refresh_hz);
-// "trace,hold,drain=N,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,holddrain,budget=US":
+// "trace,hold,drain=N,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,holddrain,flusheyes,budget=US":
 // the debug property's experiments, on top of the config. Unknown items are ignored; returns how many were read.
 int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char *spec);
 

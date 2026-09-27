@@ -152,6 +152,10 @@ struct Cinema {
     bool pacingLog = false;
     int64_t frameStartNs = 0;
     int64_t frameSleptNs = 0;
+    // PLE-753: for the debug trace, when draw() was entered and when its glFlush began and returned.
+    int64_t drawNs = 0;
+    int64_t flushNs = 0;
+    int64_t flushedNs = 0;
     int64_t pacingWindowStartNs = 0;
     // PLE-722: the VR UI's panels and pointer; idle (no layer, no draw) until a panel opens.
     pleikkari::VrUiLayers ui;
@@ -402,11 +406,13 @@ struct Cinema {
     void recordPacing(int64_t returnedNs) {
         const int64_t start = frameStartNs ? frameStartNs : submitNs;
         pleikkari_vr_pacing_frame(&pacing, start, frameSleptNs, submitNs, returnedNs, predictedDisplayNs);
+        // PLE-753: d frame start to draw(), g draw() to its glFlush, f the glFlush itself (us).
         if(pacing.config.trace)
-            LOGP("F %llu s=%lld z=%lld u=%lld r=%lld p=%lld", static_cast<unsigned long long>(pacing.frames),
+            LOGP("F %llu s=%lld z=%lld u=%lld r=%lld p=%lld d=%lld g=%lld f=%lld", static_cast<unsigned long long>(pacing.frames),
                 static_cast<long long>(start / 1000), static_cast<long long>(frameSleptNs / 1000),
                 static_cast<long long>((submitNs - start) / 1000), static_cast<long long>((returnedNs - submitNs) / 1000),
-                static_cast<long long>((predictedDisplayNs - returnedNs) / 1000));
+                static_cast<long long>((predictedDisplayNs - returnedNs) / 1000), static_cast<long long>((drawNs - start) / 1000),
+                static_cast<long long>((flushNs - drawNs) / 1000), static_cast<long long>((flushedNs - flushNs) / 1000));
         frameStartNs = 0;
         frameSleptNs = 0;
         if(!pacingLog) return;
@@ -479,6 +485,7 @@ struct Cinema {
     // uiControl: PLE-722's panels (null with the strip menu); uiOut receives the pointer's hit.
     int draw(const float *textureTransform, bool showVideo, bool menu, bool newFrame,
              const pleikkari::VrUiControl *uiControl, float *uiOut) {
+        drawNs = monotonicNs();
         ++frameIndex;
         double time = vrapi_GetPredictedDisplayTime(vr, frameIndex);
         ovrTracking2 tracking = vrapi_GetPredictedTracking2(vr, time);
@@ -592,6 +599,8 @@ struct Cinema {
                 const GLenum depth = GL_DEPTH_ATTACHMENT;
                 glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &depth);
             }
+            // PLE-753: a debug experiment; the first eye's pass goes to the GPU while the second is built.
+            if(eyeIndex == 0 && pacing.config.flush_eyes) glFlush();
             layer.Textures[eyeIndex].ColorSwapChain = eye.chain;
             layer.Textures[eyeIndex].SwapChainIndex = eye.index;
             layer.Textures[eyeIndex].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection(&projection);
@@ -607,7 +616,9 @@ struct Cinema {
             LOGI("Environment frame: gpu %.3f ms, %u draws, %u triangles", stats.gpu_ns / 1e6, stats.draw_calls, stats.triangles);
             environmentStatsFrame = frameIndex;
         }
+        flushNs = monotonicNs();
         glFlush();
+        flushedNs = monotonicNs();
         ovrLayerCylinder2 panelLayers[pleikkari::VrUiMaxPanels];
         const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
         const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 1];

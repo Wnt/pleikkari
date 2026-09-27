@@ -241,8 +241,10 @@ static MunitResult test_hold_drain(const MunitParameter params[], void *user)
 	(void)user;
 	PleikkariVrPacingConfig config;
 	pleikkari_vr_pacing_config_default(&config, 72.0f);
-	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "holddrain"), ==, 1);
+	munit_assert_false(config.flush_eyes);
+	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "holddrain,flusheyes"), ==, 2);
 	munit_assert_int(config.mode, ==, PLEIKKARI_VR_PACING_HOLD);
+	munit_assert_true(config.flush_eyes);
 	munit_assert_string_equal(pleikkari_vr_pacing_mode_name(PLEIKKARI_VR_PACING_HOLD), "hold and drain");
 	PleikkariVrPacing pacing;
 	pleikkari_vr_pacing_init(&pacing, &config);
