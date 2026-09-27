@@ -269,9 +269,10 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(decoderLateFrameRecoveryEnabledKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(decoderLateFrameRecoveryEnabledKey, value).apply() }
 
+	// PLE-689: the native cinema is the product on the Go; the Oculus TV panel path is the opt-out.
 	val goVrEnabledKey get() = "stream_go_vr_enabled"
 	var goVrEnabled
-		get() = sharedPreferences.getBoolean(goVrEnabledKey, false)
+		get() = sharedPreferences.getBoolean(goVrEnabledKey, GoDecoderProfile.eligible())
 		set(value) { sharedPreferences.edit().putBoolean(goVrEnabledKey, value).apply() }
 
 	// PLE-636: native Go cinema at 60 Hz for a 60 fps stream; off keeps PLE-602's 72 Hz.
