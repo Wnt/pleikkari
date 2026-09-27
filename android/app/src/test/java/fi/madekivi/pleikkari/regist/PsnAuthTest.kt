@@ -33,6 +33,21 @@ class PsnAuthTest
 	}
 
 	@Test
+	fun redirectParser_treatsSignInPageCloseAsCancel()
+	{
+		for(error in listOf("login_required", "consent_required", "interaction_required", "user_cancel", "cancel"))
+			assertSame(
+				error,
+				PsnRedirect.Cancelled,
+				parsePsnRedirect("https://remoteplay.dl.playstation.net/remoteplay/redirect?error=$error")
+			)
+		assertSame(
+			PsnRedirect.Invalid,
+			parsePsnRedirect("https://remoteplay.dl.playstation.net/remoteplay/redirect?error=invalid_request")
+		)
+	}
+
+	@Test
 	fun redirectParser_recognizesUserCancel()
 	{
 		assertSame(
