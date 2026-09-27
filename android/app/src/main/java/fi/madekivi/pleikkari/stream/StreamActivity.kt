@@ -707,6 +707,7 @@ class StreamActivity : AppCompatActivity()
 		)
 		val flags = buildList {
 			if(connectInfo.decoderLowLatencyEnabled) add("lowlat")
+			if(connectInfo.decoderQcomVtLowLatency) add("qcom-vt")
 			if(preferences.wifiLowLatencyLockEnabled) add("wifi-lowlat")
 			if(preferences.realVideoTimestamps) add("pts")
 			if(preferences.decoderInputThreadEnabled) add("in-thread")

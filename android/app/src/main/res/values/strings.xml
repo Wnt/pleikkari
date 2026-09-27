@@ -167,6 +167,8 @@
     <string name="preferences_decoder_operating_rate_auto_summary">With frame-index timestamps on, request operating-rate 960 for the fastest measured Exynos decoder level (ignored when an explicit or default-path operating rate is set; reconnect required)</string>
     <string name="preferences_decoder_realtime_priority_title">Decoder realtime priority</string>
     <string name="preferences_decoder_realtime_priority_summary">Configure the decoder with priority = 0 (realtime) instead of leaving it unset (experiment; reconnect required)</string>
+    <string name="preferences_decoder_qcom_vt_low_latency_title">Qualcomm low-latency decode (Oculus Go)</string>
+    <string name="preferences_decoder_qcom_vt_low_latency_summary">Configure the Go\'s OMX.qcom decoder with vt-low-latency = 1, its video-call mode: frames come out in decode order, with no display-order hold (experiment; reconnect required)</string>
     <string name="preferences_video_timestamp_rate_hz_title">Frame-index timestamp rate</string>
     <string name="preferences_video_timestamp_rate_hz_summary">Timeline rate (Hz) used for frame-index video timestamps; 0 = stream fps (experiment; reconnect required)</string>
     <string name="preferences_video_timestamp_rate_hz_value">%d Hz (0 = stream fps)</string>
@@ -321,6 +323,7 @@
     <string name="preferences_decoder_operating_rate_default_key">stream_decoder_operating_rate_default</string>
     <string name="preferences_decoder_operating_rate_auto_key">stream_decoder_operating_rate_auto</string>
     <string name="preferences_decoder_realtime_priority_key">stream_decoder_realtime_priority</string>
+    <string name="preferences_decoder_qcom_vt_low_latency_key">stream_decoder_qcom_vt_low_latency</string>
     <string name="preferences_video_timestamp_rate_hz_key">stream_video_timestamp_rate_hz</string>
     <string name="preferences_takion_video_packet_reordering_disabled_key">stream_takion_video_packet_reordering_disabled</string>
     <string name="preferences_controller_input_coalescing_enabled_key">stream_controller_input_coalescing</string>
@@ -398,6 +401,8 @@
     <string name="go_vr_summary">Head-tracked cinema at 72 Hz. Turn off to use the Oculus TV screen.</string>
     <string name="go_vr_match_60hz_title">Match panel to stream (60 Hz)</string>
     <string name="go_vr_match_60hz_summary">Run the Go panel at 60 Hz when the stream is 60 fps, instead of 72 Hz.</string>
+    <string name="go_vr_room_high_gpu_title">Higher GPU clock in rooms</string>
+    <string name="go_vr_room_high_gpu_summary">Raise the Go GPU clock level from 2 to 4 while a cinema room is drawn, to cut stale frames at some battery and heat cost.</string>
     <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>
     <string name="go_vr_connecting">Connecting to PlayStation…</string>
     <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
