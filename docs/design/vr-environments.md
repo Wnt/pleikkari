@@ -190,7 +190,12 @@ decoder's external texture, and since this ticket calls the renderer as follows:
   PLE-602's own strip pass then draws only when there is a message or the menu, on top.
 - Every 720 frames (10 s at 72 Hz) `Cinema` logs `Environment frame: gpu … ms, … draws,
   … triangles` from `pleikkari_vr_environment_stats` (`GL_EXT_disjoint_timer_query`, one
-  frame late). PLE-601's rounds should read it next to the frame timing.
+  frame late). PLE-601's rounds should read it next to the frame timing. Since PLE-651
+  `Cinema` calls `pleikkari_vr_environment_end_frame` after the eye loop (before
+  `glFlush`), so the figure spans the whole eye frame, strip, border clears and MSAA
+  resolves included; before it stopped after the second `draw_eye` and under-reported
+  (~2.5 ms against VrApi `App=` 7.5-8.6 ms, PLE-623). The host tool never calls it and
+  keeps the old span.
 - `pleikkari_vr_environment_destroy` runs in `Cinema`'s destructor, on the GL thread,
   before `vrapi_LeaveVrMode`.
 

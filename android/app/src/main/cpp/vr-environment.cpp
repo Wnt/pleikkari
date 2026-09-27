@@ -758,6 +758,8 @@ struct PleikkariVrEnvironment
 	// Timer queries
 	bool timerAvailable = false;
 	bool timerActive = false;
+	// Set once the caller uses end_frame: the query then spans its whole frame, not just draw_eye.
+	bool callerEndsFrame = false;
 	GLuint timerQueries[kTimerRing] = {};
 	int timerIndex = 0;
 	int timerFrames = 0;
@@ -1365,12 +1367,21 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 
 	if(++env->eyeInFrame >= 2)
 	{
-		env->timer_end();
+		if(!env->callerEndsFrame)
+			env->timer_end();
 		env->frameOpen = false;
 		env->stats.draw_calls = env->frameDrawCalls;
 		env->stats.triangles = env->frameTriangles;
 		env->stats.vertex_bytes = static_cast<uint32_t>(env->roomVertexBytes);
 	}
+}
+
+void pleikkari_vr_environment_end_frame(PleikkariVrEnvironment *env)
+{
+	if(!env)
+		return;
+	env->callerEndsFrame = true;
+	env->timer_end();
 }
 
 void pleikkari_vr_environment_stats(PleikkariVrEnvironment *env, PleikkariVrEnvironmentStats *stats)

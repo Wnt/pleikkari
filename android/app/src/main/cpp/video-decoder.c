@@ -42,7 +42,7 @@ ChiakiErrorCode android_chiaki_video_decoder_init(AndroidChiakiVideoDecoder *dec
 		int32_t target_fps, ChiakiCodec codec, bool low_latency_enabled, bool real_pts_enabled,
 		bool input_thread_enabled, bool late_frame_recovery_enabled,
 		int32_t operating_rate, bool operating_rate_default, bool operating_rate_auto,
-		bool realtime_priority, unsigned int pts_rate_hz,
+		bool realtime_priority, bool qcom_vt_low_latency, unsigned int pts_rate_hz,
 		bool diagnostics_enabled, bool stats_log_enabled,
 		const AndroidChiakiVideoPresenterConfig *presenter_config)
 {
@@ -71,6 +71,7 @@ ChiakiErrorCode android_chiaki_video_decoder_init(AndroidChiakiVideoDecoder *dec
 	decoder->operating_rate = selected_operating_rate.rate;
 	decoder->operating_rate_source = selected_operating_rate.source;
 	decoder->realtime_priority = realtime_priority;
+	decoder->qcom_vt_low_latency = qcom_vt_low_latency;
 	decoder->diagnostics_enabled = diagnostics_enabled;
 	decoder->late_frame_recovery_enabled = late_frame_recovery_enabled;
 	decoder->last_queued_frame_index_valid = false;
@@ -196,7 +197,8 @@ static void android_chiaki_video_decoder_presenter_release(void *user, bool drop
 				backlog, dropped_total);
 }
 
-static AMediaFormat *create_decoder_format(const AndroidChiakiVideoDecoder *decoder, const char *mime, int tier, bool qti_decoder)
+static AMediaFormat *create_decoder_format(const AndroidChiakiVideoDecoder *decoder, const char *mime, int tier, bool qti_decoder,
+		bool vt_low_latency)
 {
 	AMediaFormat *format = AMediaFormat_new();
 	if(!format)
@@ -225,6 +227,12 @@ static AMediaFormat *create_decoder_format(const AndroidChiakiVideoDecoder *deco
 	}
 	if(decoder->realtime_priority)
 		AMediaFormat_setInt32(format, "priority", 0);
+	// PLE-635: Android 7.1 has no "low-latency" key and no vendor.* mapping, but Qualcomm's
+	// ExtendedACodec (libavenhancements) turns "vt-low-latency" into the decoder's
+	// OMX.QTI.index.param.video.LowLatency, which the Go's libOmxVdec implements as decode-order
+	// output with timestamp reordering off. A failed set fails the whole configure.
+	if(vt_low_latency)
+		AMediaFormat_setInt32(format, "vt-low-latency", 1);
 
 	return format;
 }
@@ -385,24 +393,36 @@ void android_chiaki_video_decoder_set_surface(AndroidChiakiVideoDecoder *decoder
 	}
 	if(decoder->realtime_priority)
 		CHIAKI_LOGI(decoder->log, "Decoder realtime priority override: priority=0");
+	if(decoder->qcom_vt_low_latency)
+		CHIAKI_LOGI(decoder->log, "Qualcomm VT low-latency decode requested: vt-low-latency=1 (decode-order output)");
 	int first_tier = decoder->low_latency_enabled ? 0 : DECODER_CONFIGURE_BASELINE_TIER;
 	media_status_t r = AMEDIA_ERROR_UNKNOWN;
 	AMediaFormat *format = NULL;
 	int configured_tier = -1;
-	for(int tier = first_tier; tier <= DECODER_CONFIGURE_BASELINE_TIER; tier++)
+	bool configured_vt_low_latency = false;
+	// With vt-low-latency on, walk the tiers with it first, then again without it.
+	for(int pass = decoder->qcom_vt_low_latency ? 0 : 1; pass < 2 && configured_tier < 0; pass++)
 	{
-		format = create_decoder_format(decoder, mime, tier, qti_decoder);
-		if(!format)
-			break;
-		r = AMediaCodec_configure(decoder->codec, format, decoder->window, NULL, 0);
-		AMediaFormat_delete(format);
-		format = NULL;
-		if(r == AMEDIA_OK)
+		bool vt_low_latency = pass == 0;
+		if(pass == 1 && decoder->qcom_vt_low_latency)
+			CHIAKI_LOGW(decoder->log, "AMediaCodec_configure() failed at every tier with vt-low-latency; retrying without it");
+		for(int tier = first_tier; tier <= DECODER_CONFIGURE_BASELINE_TIER; tier++)
 		{
-			configured_tier = tier;
-			break;
+			format = create_decoder_format(decoder, mime, tier, qti_decoder, vt_low_latency);
+			if(!format)
+				break;
+			r = AMediaCodec_configure(decoder->codec, format, decoder->window, NULL, 0);
+			AMediaFormat_delete(format);
+			format = NULL;
+			if(r == AMEDIA_OK)
+			{
+				configured_tier = tier;
+				configured_vt_low_latency = vt_low_latency;
+				break;
+			}
+			CHIAKI_LOGW(decoder->log, "AMediaCodec_configure() tier %d%s failed for %s: %d", tier,
+					vt_low_latency ? " with vt-low-latency" : "", decoder_name, (int)r);
 		}
-		CHIAKI_LOGW(decoder->log, "AMediaCodec_configure() tier %d failed for %s: %d", tier, decoder_name, (int)r);
 	}
 	if(configured_tier < 0)
 	{
@@ -411,8 +431,9 @@ void android_chiaki_video_decoder_set_surface(AndroidChiakiVideoDecoder *decoder
 			AMediaCodec_releaseName_weak(decoder->codec, decoder_name_allocated);
 		goto error_codec;
 	}
-	CHIAKI_LOGI(decoder->log, "AMediaCodec_configure() succeeded for %s at tier %d%s", decoder_name, configured_tier,
-			decoder->low_latency_enabled ? "" : " (low-latency setting disabled)");
+	CHIAKI_LOGI(decoder->log, "AMediaCodec_configure() succeeded for %s at tier %d%s%s", decoder_name, configured_tier,
+			decoder->low_latency_enabled ? "" : " (low-latency setting disabled)",
+			configured_vt_low_latency ? " with vt-low-latency" : "");
 	if(decoder_name_allocated)
 		AMediaCodec_releaseName_weak(decoder->codec, decoder_name_allocated);
 

@@ -396,7 +396,8 @@ static void android_chiaki_event_cb(ChiakiEvent *event, void *user)
 					" | network target_bps %llu measured_bps %llu console_rtt_raw %.6f"
 					" probe_rtt_ms %llu.%03llu probe_samples %llu probe_unacked %llu probe_ambiguous %llu"
 					" server_loss %llu congestion_loss measured=%.4f reported=%.4f"
-					" | takion_silence_ms %llu window_max_gap_ms %llu%s",
+					" | takion_silence_ms %llu window_max_gap_ms %llu"
+					" | decode mean_ms %llu.%03llu p95_ms %llu.%03llu%s",
 					(unsigned long long)interval_ms,
 					(unsigned long long)event->stream_stats.stream_frames,
 					(unsigned long long)diagnostics.output_frames,
@@ -449,7 +450,11 @@ static void android_chiaki_event_cb(ChiakiEvent *event, void *user)
 					event->stream_stats.congestion_measured_loss,
 					event->stream_stats.congestion_reported_loss,
 					(unsigned long long)event->stream_stats.takion_silence_ms,
-					(unsigned long long)event->stream_stats.takion_max_receive_gap_ms, performance_status);
+					(unsigned long long)event->stream_stats.takion_max_receive_gap_ms,
+					(unsigned long long)(diagnostics.decode_mean_us / 1000),
+					(unsigned long long)(diagnostics.decode_mean_us % 1000),
+					(unsigned long long)(diagnostics.decode_p95_us / 1000),
+					(unsigned long long)(diagnostics.decode_p95_us % 1000), performance_status);
 			}
 			E->CallVoidMethod(env, session->java_session,
 					session->java_session_event_stream_stats_meth,
@@ -536,6 +541,8 @@ static void session_create(JNIEnv *env, jobject result, jobject connect_info_obj
 	jboolean decoder_operating_rate_default = E->GetBooleanField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "decoderOperatingRateDefault", "Z"));
 	jboolean decoder_operating_rate_auto = E->GetBooleanField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "decoderOperatingRateAuto", "Z"));
 	jboolean decoder_realtime_priority = E->GetBooleanField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "decoderRealtimePriority", "Z"));
+	jboolean decoder_qcom_vt_low_latency = E->GetBooleanField(env, connect_info_obj,
+			E->GetFieldID(env, connect_info_class, "decoderQcomVtLowLatency", "Z"));
 	jint video_timestamp_rate_hz = E->GetIntField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "videoTimestampRateHz", "I"));
 	jdouble packet_loss_max = E->GetDoubleField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "packetLossMax", "D"));
 	jboolean adaptive_loss_report = E->GetBooleanField(env, connect_info_obj,
@@ -709,7 +716,7 @@ static void session_create(JNIEnv *env, jobject result, jobject connect_info_obj
 			connect_info.video_profile.max_fps, connect_info.ps5 ? connect_info.video_profile.codec : CHIAKI_CODEC_H264,
 			decoder_low_latency, real_video_timestamps, decoder_input_thread, decoder_late_frame_recovery,
 			(int32_t)decoder_operating_rate, decoder_operating_rate_default,
-			decoder_operating_rate_auto, decoder_realtime_priority,
+			decoder_operating_rate_auto, decoder_realtime_priority, decoder_qcom_vt_low_latency,
 			video_timestamp_rate_hz > 0 ? (unsigned int)video_timestamp_rate_hz : 0, stream_stats_enabled,
 			feedback_stats_log_interval_ms > 0, &presenter_config);
 	if(err != CHIAKI_ERR_SUCCESS)
