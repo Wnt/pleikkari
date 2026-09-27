@@ -1,0 +1,6 @@
+cinema-vrapi           cinema   4x VrApi release    32s App  7.35 TW 1.38 Prd 32.0 (31-45) Stale  190 (max 22/s, 25 s) Early   182 FPS 71/72.0 leads 1943/288/0 drains 0 late 5 work 4.72/15.53 ms GPU 401:7 510:25 u 4.53/6.18
+cinema-hold            cinema   4x hold and drain   33s App  7.43 TW 1.38 Prd   32 (31-32) Stale  263 (max 20/s, 33 s) Early     0 FPS 69/72 leads 2300/0/0 drains 0 late 6 work 5.12/19.12 ms GPU 401:1 510:32 u 5.04/6.39
+void-vrapi             void     4x VrApi release    33s App  9.61 TW 1.51 Prd   46 (45-46) Stale    0 (max 0/s, 0 s) Early   209 FPS 72/72 leads 3/2373/0 drains 0 late 2 work 5.71/17.82 ms GPU 401:33 u 5.68/6.87
+void-hold              void     4x hold and drain   33s App  7.33 TW 1.37 Prd   32 (31-38) Stale  320 (max 28/s, 32 s) Early    32 FPS 67/72 leads 2330/39/0 drains 1 late 143 work 5.28/21.61 ms GPU 401:2 510:31 u 5.23/6.58
+terrace-vrapi          terrace  4x VrApi release    33s App  7.48 TW 1.37 Prd   32 (31-32) Stale  310 (max 26/s, 32 s) Early     0 FPS 72/72 leads 2304/0/0 drains 0 late 0 work 5.13/10.63 ms GPU 510:33 u 5.04/6.45
+terrace-hold           terrace  4x hold and drain   32s App  7.47 TW 1.37 Prd 32.0 (31-32) Stale  397 (max 28/s, 31 s) Early     0 FPS 71/72.0 leads 2376/0/0 drains 0 late 15 work 5.17/11.7 ms GPU 401:4 510:28 u 5.13/6.5

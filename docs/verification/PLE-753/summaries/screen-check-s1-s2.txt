@@ -1,0 +1,13 @@
+go-s1-20260927T130726Z/cinema-hold: shot.png: mean luma 48.1, max 247, 34.1 % of the frame lit: picture
+go-s1-20260927T130726Z/cinema-vrapi: shot.png: mean luma 48.2, max 247, 34.1 % of the frame lit: picture
+go-s1-20260927T130726Z/terrace-hold: shot.png: mean luma 47.2, max 247, 31.7 % of the frame lit: picture
+go-s1-20260927T130726Z/terrace-vrapi: shot.png: mean luma 47.2, max 247, 31.9 % of the frame lit: picture
+go-s1-20260927T130726Z/void-hold: shot.png: mean luma 46.2, max 247, 31.8 % of the frame lit: picture
+go-s1-20260927T130726Z/void-vrapi: shot.png: mean luma 46.3, max 247, 31.8 % of the frame lit: picture
+go-s2-20260927T131946Z/cinema-1x: shot.png: mean luma 48.1, max 247, 34.4 % of the frame lit: picture
+go-s2-20260927T131946Z/cinema-2x: shot.png: mean luma 48.1, max 247, 34.4 % of the frame lit: picture
+go-s2-20260927T131946Z/cinema-4x: shot.png: mean luma 48.1, max 247, 34.3 % of the frame lit: picture
+go-s2-20260927T131946Z/cinema-flush: shot.png: mean luma 48.1, max 247, 34.5 % of the frame lit: picture
+go-s2-20260927T131946Z/cinema-gpu4: shot.png: mean luma 48.1, max 247, 34.0 % of the frame lit: picture
+go-s2-20260927T131946Z/terrace-2x: shot.png: mean luma 47.2, max 247, 31.9 % of the frame lit: picture
+go-s2-20260927T131946Z/void-2x: shot.png: mean luma 46.3, max 247, 31.8 % of the frame lit: picture
