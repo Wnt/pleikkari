@@ -343,6 +343,9 @@ struct Cinema {
             LOGI("Environment plain: black plus the 3 m / 80 degree screen");
             return;
         }
+        // The room checks glGetError after building; an error left by an earlier call is not its own.
+        for(GLenum stale = glGetError(); stale != GL_NO_ERROR; stale = glGetError())
+            LOGE("GL error 0x%x pending before the environment change", stale);
         if(environment) pleikkari_vr_environment_set_config(environment, &config);
         else environment = pleikkari_vr_environment_create(&config, GL_TEXTURE_EXTERNAL_OES);
         if(!environment) { LOGE("Environment %s failed to build; keeping the plain screen", pleikkari_vr_environment_name(config.environment)); return; }
@@ -566,6 +569,11 @@ struct Cinema {
             if(!environment || !showVideo) glDrawArrays(GL_TRIANGLE_STRIP, 0, (Segments + 1) * 2);
             if(uiFrame) {
                 ui.drawEye(view, projection);
+                // The plain screen binds its program and picture once, before the eye loop: put them
+                // back, or the next eye draws its picture with the UI's program (PLE-722, seen on the Go).
+                glUseProgram(p);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(showVideo ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, showVideo ? video : message);
                 glBindVertexArray(vao);
             }
             // Keep an opaque black border for timewarp's out-of-range sampling.

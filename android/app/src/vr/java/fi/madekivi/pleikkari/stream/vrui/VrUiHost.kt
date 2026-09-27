@@ -68,6 +68,8 @@ class VrUiHost(
 	private var redraws = 0
 	private var redrawNs = 0L
 	private var redrawMaxNs = 0L
+	/** Of [redrawNs], the part spent in unlockCanvasAndPost (HWUI's render and queue). */
+	private var postNs = 0L
 	private var windowStartNs = System.nanoTime()
 
 	// ---- GoCinema thread ----
@@ -142,7 +144,9 @@ class VrUiHost(
 		{
 			if(code == KeyEvent.KEYCODE_MENU)
 			{
-				if(down && event.repeatCount == 0)
+				// On the key's release, as the menu closes on it: opening on the press let the
+				// same key's release close the menu again at once.
+				if(!down)
 					handler.post { open("pad Menu key") }
 				return true
 			}
@@ -419,6 +423,7 @@ class VrUiHost(
 		if(surface == null || !surface.isValid)
 			return
 		val start = System.nanoTime()
+		var posting = 0L
 		try
 		{
 			val canvas = surface.lockHardwareCanvas()
@@ -428,6 +433,7 @@ class VrUiHost(
 			}
 			finally
 			{
+				posting = System.nanoTime()
 				surface.unlockCanvasAndPost(canvas)
 			}
 		}
@@ -437,17 +443,20 @@ class VrUiHost(
 			Log.w(TAG, "Panel redraw failed: $e")
 			return
 		}
-		val took = System.nanoTime() - start
+		val end = System.nanoTime()
+		val took = end - start
+		postNs += end - posting
 		redraws++
 		redrawNs += took
 		redrawMaxNs = maxOf(redrawMaxNs, took)
 		val now = System.nanoTime()
 		if(now - windowStartNs >= 1_000_000_000L)
 		{
-			Log.i(TAG, String.format(Locale.US, "Redraws: %d in %.1f s, mean %.2f ms, max %.2f ms",
-				redraws, (now - windowStartNs) / 1e9, redrawNs / 1e6 / redraws, redrawMaxNs / 1e6))
+			Log.i(TAG, String.format(Locale.US, "Redraws: %d in %.1f s, mean %.2f ms (post %.2f), max %.2f ms",
+				redraws, (now - windowStartNs) / 1e9, redrawNs / 1e6 / redraws, postNs / 1e6 / redraws, redrawMaxNs / 1e6))
 			redraws = 0
 			redrawNs = 0L
+			postNs = 0L
 			redrawMaxNs = 0L
 			windowStartNs = now
 		}
