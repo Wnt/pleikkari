@@ -33,6 +33,7 @@ class GoVrSettingsDataStoreTest
 			preferences.goVrLateStartKey to { preferences.goVrLateStart },
 			preferences.goVrHoldDrainKey to { preferences.goVrHoldDrain },
 			preferences.goVrWarmUpKey to { preferences.goVrWarmUp },
+			preferences.goVrFlushEyesKey to { preferences.goVrFlushEyes },
 		)
 		for((key, read) in switches)
 		{

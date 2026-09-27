@@ -42,6 +42,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain
 		preferences.goVrLatchOnSignalKey -> preferences.goVrLatchOnSignal
 		preferences.goVrWarmUpKey -> preferences.goVrWarmUp
+		preferences.goVrFlushEyesKey -> preferences.goVrFlushEyes
 		preferences.goVrInputThreadKey -> preferences.goVrInputThread
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
@@ -97,6 +98,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain = value
 			preferences.goVrLatchOnSignalKey -> preferences.goVrLatchOnSignal = value
 			preferences.goVrWarmUpKey -> preferences.goVrWarmUp = value
+			preferences.goVrFlushEyesKey -> preferences.goVrFlushEyes = value
 			preferences.goVrInputThreadKey -> preferences.goVrInputThread = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
@@ -363,6 +365,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				title = getString(R.string.go_vr_warm_up_title)
 				summary = getString(R.string.go_vr_warm_up_summary)
 				isChecked = preferences.goVrWarmUp
+			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrFlushEyesKey
+				title = getString(R.string.go_vr_flush_eyes_title)
+				summary = getString(R.string.go_vr_flush_eyes_summary)
+				isChecked = preferences.goVrFlushEyes
 			})
 		}
 

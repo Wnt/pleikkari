@@ -728,7 +728,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // and PLE-753's hold and drain (plain and rooms) are A/B settings; a debug build also takes
                 // `adb shell setprop debug.pleikkari.vr_pacing <experiments>` (vr-frame-pacing.h). The
                 // per-second "Frame pacing" line comes with the stats log.
-                val pacingSpec = if(BuildConfig.DEBUG) debugProperty(PACING_PROPERTY) else ""
+                // PLE-809: the flush after the first eye is an A/B setting, passed as the spec's `flusheyes`.
+                val debugSpec = if(BuildConfig.DEBUG) debugProperty(PACING_PROPERTY) else ""
+                val pacingSpec = if(!Preferences(this@StreamVrActivity).goVrFlushEyes) debugSpec
+                    else if(debugSpec.isEmpty()) "flusheyes" else "$debugSpec,flusheyes"
                 val holdDrain = Preferences(this@StreamVrActivity).goVrHoldDrain
                 val pacing = when {
                     Preferences(this@StreamVrActivity).goVrLateStart -> PACING_LATE
