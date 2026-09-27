@@ -143,7 +143,7 @@ struct Cinema {
         if(java.ActivityObject) java.Env->DeleteGlobalRef(java.ActivityObject);
     }
 
-    bool init(JNIEnv *env, jobject activity, jobject surface) {
+    bool init(JNIEnv *env, jobject activity, jobject surface, float refreshHz) {
         env->GetJavaVM(&java.Vm);
         java.Env = env;
         java.ActivityObject = env->NewGlobalRef(activity);
@@ -182,7 +182,7 @@ struct Cinema {
         mode.ShareContext = reinterpret_cast<size_t>(context);
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
-        if(vrapi_SetDisplayRefreshRate(vr, 72.0f) < 0) { LOGE("Runtime refused 72 Hz"); return false; }
+        if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
         vrapi_SetClockLevels(vr, 2, 2);
         width = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH);
         height = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT);
@@ -247,8 +247,8 @@ struct Cinema {
         glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void *>(3 * sizeof(float)));
         glBindVertexArray(0);
-        LOGI("VrApi cinema entered; requested 72 Hz, eye %dx%d, curved screen 3 m / 80 degrees, environment MSAA %dx",
-            width, height, eyes[0].msaaFbos.empty() || eyes[1].msaaFbos.empty() ? 1 : static_cast<int>(samples));
+        LOGI("VrApi cinema entered; requested %.0f Hz, eye %dx%d, curved screen 3 m / 80 degrees, environment MSAA %dx",
+            refreshHz, width, height, eyes[0].msaaFbos.empty() || eyes[1].msaaFbos.empty() ? 1 : static_cast<int>(samples));
         return glGetError() == GL_NO_ERROR;
     }
 
@@ -412,9 +412,9 @@ struct Cinema {
 Cinema *cinema(jlong handle) { return reinterpret_cast<Cinema *>(handle); }
 } // namespace
 
-extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobject activity, jobject surface) {
+extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobject activity, jobject surface, jfloat refreshHz) {
     std::unique_ptr<Cinema> state(new Cinema());
-    if(!state->init(env, activity, surface)) { LOGE("Cinema initialization failed; EGL error 0x%x", eglGetError()); return 0; }
+    if(!state->init(env, activity, surface, refreshHz)) { LOGE("Cinema initialization failed; EGL error 0x%x", eglGetError()); return 0; }
     return reinterpret_cast<jlong>(state.release());
 }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->video; }

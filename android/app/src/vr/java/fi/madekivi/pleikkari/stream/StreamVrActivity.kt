@@ -147,8 +147,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var texture: SurfaceTexture? = null
             var decoder: Surface? = null
             try {
-                native = VrCinemaNative.create(this@StreamVrActivity, surface)
-                check(native != 0L) { "VrApi/EGL initialization or 72 Hz request failed (see GoCinema log)" }
+                // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
+                val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
+                native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz)
+                check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
                 val stored = Preferences(this@StreamVrActivity).vrEnvironmentConfig()
                 val environment = previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
@@ -293,7 +295,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 }
 
 internal object VrCinemaNative {
-    external fun create(activity: android.app.Activity, surface: Surface): Long
+    external fun create(activity: android.app.Activity, surface: Surface, refreshHz: Float): Long
     external fun videoTexture(handle: Long): Int
     external fun messageTexture(handle: Long): Int
     external fun input(handle: Long): Int

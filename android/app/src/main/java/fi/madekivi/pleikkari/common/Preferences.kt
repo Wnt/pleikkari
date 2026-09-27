@@ -274,6 +274,12 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrEnabledKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrEnabledKey, value).apply() }
 
+	// PLE-636: native Go cinema at 60 Hz for a 60 fps stream; off keeps PLE-602's 72 Hz.
+	val goVrMatch60HzKey get() = "stream_go_vr_match_60hz"
+	var goVrMatch60Hz
+		get() = sharedPreferences.getBoolean(goVrMatch60HzKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrMatch60HzKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)
