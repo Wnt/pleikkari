@@ -113,7 +113,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             // PLE-739: debug builds only, `adb shell setprop debug.pleikkari.go_entry_no_console 1`: the
             // Library flow sees no linked PS5, so its no-console message shows without clearing app data.
             val noConsoles = BuildConfig.DEBUG && debugProperty(NO_CONSOLE_PROPERTY) == "1"
-            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, ::showStatus, ::setHome, ::libraryConnect,
+            // PLE-784: debug builds only, `adb shell setprop debug.pleikkari.go_entry_not_found 1`: the
+            // first console looked for lands on Home's not-found sheet, so the address pad can be driven headless.
+            val notFound = BuildConfig.DEBUG && debugProperty(NOT_FOUND_PROPERTY) == "1"
+            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, notFound, ::showStatus, ::setHome, ::libraryConnect,
                 ::openPanel, ::finish).also { it.start() }
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -968,6 +971,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val CHOOSE_PROPERTY = "debug.pleikkari.go_entry_choose"
         /** PLE-739: debug builds only; a Library launch sees no linked console. */
         private const val NO_CONSOLE_PROPERTY = "debug.pleikkari.go_entry_no_console"
+        /** PLE-784: debug builds only; a Library launch's first console look ends not found. */
+        private const val NOT_FOUND_PROPERTY = "debug.pleikkari.go_entry_not_found"
         /** PLE-739: debug builds only; see [registerDebugInput]. */
         private const val DEBUG_INPUT_ACTION = "fi.madekivi.pleikkari.DEBUG_GO_VR_INPUT"
         private const val EXTRA_DEBUG_KEY = "key"
