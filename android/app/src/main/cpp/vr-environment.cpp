@@ -1189,7 +1189,10 @@ void PleikkariVrEnvironment::timer_end()
 
 void PleikkariVrEnvironment::timer_collect()
 {
-	if(!timerAvailable || timerFrames < kTimerRing - 1)
+	// Until every slot has been through a Begin/End pair, timerQueries[timerIndex]
+	// is a generated name with no query object behind it: querying it is
+	// GL_INVALID_OPERATION (Mesa logs it on the fourth frame).
+	if(!timerAvailable || timerFrames < kTimerRing)
 		return;
 	// The oldest query in the ring is the one about to be reused.
 	GLuint q = timerQueries[timerIndex];
