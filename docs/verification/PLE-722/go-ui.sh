@@ -5,7 +5,7 @@
 #   ensure <apk>    install -r ours unless it is already installed
 #   ui <label> <environment>
 #                   the preview in that room with the VR menu on and the stats overlay off. Windows of
-#                   WINDOW s each, marked in logcat (tag PLE722) for windows.py: menu closed; menu open
+#                   GO_WINDOW s each, marked in logcat (tag PLE722) for windows.py: menu closed; menu open
 #                   and idle; menu open with the debug pointer moving across its widgets. Between them,
 #                   screencaps: closed, open, pad focus (injected gamepad keys), pointer hover, the
 #                   stats overlay and a room picked with the pad. Then the prefs go back.
@@ -13,7 +13,7 @@
 # Run from the worktree, under the lease:
 #   DEADLINE=$(( $(date +%s) + 560 )) scripts/dev/device.py run --resource go PLE-722 -- \
 #       bash docs/verification/PLE-722/go-ui.sh <out> setup ensure <apk> ui plain plain ui cinema cinema restore
-# Env: WINDOW (s, default 45), DEADLINE (epoch s).
+# Env: GO_WINDOW (s, default 45), DEADLINE (epoch s).
 set -uo pipefail
 ROOT=/home/wnt/gta6
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -22,7 +22,7 @@ G=192.168.1.202:5555
 PKG=fi.madekivi.pleikkari
 PREFS=shared_prefs/${PKG}_preferences.xml
 OUT=${1:?out dir}; shift
-WINDOW=${WINDOW:-45}
+GO_WINDOW=${GO_WINDOW:-45}
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
 BACKUP=${BACKUP:-$OUT/backup}
@@ -125,7 +125,7 @@ step_ui() { # <label> <environment>
 	sleep 6
 	mark "$label closed start"
 	shot "$label-1-closed"
-	sleep "$WINDOW"
+	sleep "$GO_WINDOW"
 	mark "$label closed end"
 	dump "$OUT/$label-logcat.txt"
 	# The pad's Menu key opens the menu (a keyboard-source key, as a remote-less test can send).
@@ -133,7 +133,7 @@ step_ui() { # <label> <environment>
 	sleep 1.5
 	shot "$label-2-open"
 	mark "$label open-idle start"
-	sleep "$WINDOW"
+	sleep "$GO_WINDOW"
 	mark "$label open-idle end"
 	dump "$OUT/$label-logcat.txt"
 	# §11: does an injected gamepad key reach the app as SOURCE_GAMEPAD on the Go's Android 7.1?
@@ -146,7 +146,7 @@ step_ui() { # <label> <environment>
 	mark "$label open-pointer start"
 	local targets=("-17,7.5" "-17,3" "-4,6" "6,6" "16,6" "7,-6" "7,-11" "-17,-11" "20,0" "0,-2")
 	i=0
-	local end=$(( $(date +%s) + WINDOW ))
+	local end=$(( $(date +%s) + GO_WINDOW ))
 	while [ "$(date +%s)" -lt "$end" ]; do
 		a shell setprop debug.pleikkari.vr_pointer "'${targets[$(( i % ${#targets[@]} ))]}'"
 		i=$(( i + 1 ))
@@ -217,7 +217,7 @@ while [ $# -gt 0 ]; do
 	setup) shift; fits 150 || { say "deferred: no time for setup"; exit 9; }; step_setup ;;
 	ensure) if fits 150; then step_ensure "$2"; else say "deferred ensure"; fi; shift 2 ;;
 	ui) if ! awake; then say "skipped ui $2: the Go is asleep"
-		elif fits $(( 3 * WINDOW + 110 )); then step_ui "$2" "$3" || say "ui $2 failed rc=$?"; else say "deferred ui $2"; fi; shift 3 ;;
+		elif fits $(( 3 * GO_WINDOW + 110 )); then step_ui "$2" "$3" || say "ui $2 failed rc=$?"; else say "deferred ui $2"; fi; shift 3 ;;
 	restore) shift; step_restore ;;
 	*) say "unknown step $1"; exit 2 ;;
 	esac
