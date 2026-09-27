@@ -118,8 +118,8 @@ Instead:
 and restore. Every 5 s the cinema logs `GoCinema: Cinema video: N decoder frames latched
 in … s (… fps), X of Y submitted frames showed video`. Read it next to the session log's
 `Feedback stats` `decoded`: on the Go about 4 % of decoded frames are never latched at
-72 Hz, and 9-11 % at 60 Hz (`docs/verification/PLE-654.md`). PLE-623 once saw vrshell's
-`ClearActivity` cover a display-0 `MainActivity`; five PLE-654 arms did not.
+72 Hz, and 9-12 % at 60 Hz (`docs/verification/PLE-654.md`). PLE-623 once saw vrshell's
+`ClearActivity` cover a display-0 `MainActivity`; seven PLE-654 arms did not.
 
 ## Required device validation
 
@@ -141,7 +141,7 @@ acceptance and latency were not run. Before treating this as a usable Go build:
    Home/resume, and repeated sessions without stale surfaces. Done headless (PLE-654,
    `docs/verification/PLE-654.md`): Connect enters the cinema, the panel holds 72 Hz
    (60 Hz with `stream_go_vr_match_60hz`), decoded frames are latched and drawn, and
-   five sessions, each in a fresh process, ran with no crash. Everything seen, heard or
+   seven sessions, each in a fresh process, ran with no crash. Everything seen, heard or
    held in the headset still needs a person.
 4. Library classification (PLE-609, resolved): Pleikkari stays a 2D app in the
    Go Library and opens in Oculus TV; the VR cinema is entered from Connect with
