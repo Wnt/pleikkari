@@ -122,10 +122,14 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 statusText = when(state) {
                     StreamStateConnected -> ""
                     is StreamStateQuit, is StreamStateCreateError, is StreamStateRemoteError -> getString(R.string.go_vr_disconnected)
-                    is StreamStateLoginPinRequest -> getString(R.string.go_vr_pin)
+                    // PLE-731: with the VR UI the PIN pad takes it; without, the old pointer to Oculus TV.
+                    is StreamStateLoginPinRequest ->
+                        getString(if(Preferences(this).goVrUi) R.string.go_vr_pin_pad else R.string.go_vr_pin)
                     else -> getString(R.string.go_vr_connecting)
                 }
                 cinema?.status = statusText
+                pinRequest = state as? StreamStateLoginPinRequest
+                updatePinPad()
             }
             // PLE-722: the VR menu's stats overlay, once a second while it is on.
             vm.session.streamStats.observe(this) { stats ->
@@ -262,6 +266,43 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         val prefs = Preferences(this)
         val ui = if(prefs.goVrUi) createUi(prefs) else null
         cinema = CinemaThread(surface, profile, frameLatency, ui).also { it.status = statusText; it.start() }
+        pinPadShown = null
+        updatePinPad()
+    }
+
+    /** PLE-731: the session's pending login PIN request, if any. */
+    private var pinRequest: StreamStateLoginPinRequest? = null
+    /** PLE-731: the request the current cinema's PIN pad was shown for. */
+    private var pinPadShown: StreamStateLoginPinRequest? = null
+
+    /** PLE-731: shows the VR PIN pad for a login PIN request, and takes it down once the session moves on. */
+    private fun updatePinPad() {
+        val host = cinema?.ui ?: return
+        val request = pinRequest
+        if(request === pinPadShown) return
+        pinPadShown = request
+        if(request == null) {
+            host.closeModal("PIN request over")
+            return
+        }
+        val text = VrPinPadText(
+            title = getString(R.string.alert_message_login_pin_request).trimEnd(':'),
+            titleIncorrect = getString(R.string.go_vr_pin_incorrect),
+            connect = getString(R.string.action_login_pin_connect),
+            quit = getString(R.string.action_quit_session),
+            clear = getString(R.string.go_vr_pin_clear),
+            backspace = "\u232B")
+        val model = object : VrPinPadModel {
+            // Both run on the GoVrUi thread.
+            override fun submit(pin: String) {
+                Log.i(VrUiHost.TAG, "PIN pad: submitting ${pin.length} digits")
+                host.closeModal("PIN submitted")
+                main.post { this@StreamVrActivity.model?.session?.setLoginPin(pin) }
+            }
+            override fun quit() { main.post { if(cinema?.ui === host) finish() } }
+        }
+        val pad = VrPinPad(model, text, request.pinIncorrect)
+        host.showModal(pad.screen, pad::refresh, model::quit)
     }
 
     /** The stored room and screen, or with the preview the room its extra asked for. */

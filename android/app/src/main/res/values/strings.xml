@@ -411,6 +411,9 @@
     <string name="go_vr_connecting">Connecting to PlayStation…</string>
     <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
     <string name="go_vr_pin">Console login PIN required. Use Oculus TV to enter it.</string>
+    <string name="go_vr_pin_pad">Console login PIN required.</string>
+    <string name="go_vr_pin_incorrect">Wrong PIN. Try again</string>
+    <string name="go_vr_pin_clear">Clear</string>
     <string name="go_vr_menu">Pleikkari cinema</string>
     <string name="go_vr_resume">Resume</string>
     <string name="go_vr_recentre">Recentre</string>

@@ -44,6 +44,12 @@ class VrUiHost(
 	private val surfaces = arrayOfNulls<Surface>(2)
 	private var menu: VrScreen? = null
 	private var page = VrPage.MENU
+	/** PLE-731: a screen shown on the menu panel in place of the menu (the PIN pad) until [closeModal]. */
+	private class Modal(val screen: VrScreen, val refresh: () -> Unit, val back: () -> Unit)
+	private var modal: Modal? = null
+	/** What the menu panel shows: the modal screen when there is one. */
+	private val current get() = modal?.screen ?: menu
+	private fun refreshCurrent(screen: VrScreen) = modal?.refresh?.invoke() ?: refreshMenu(page, screen)
 	private val pointer = VrPointer()
 	private val focus = VrFocus()
 	private val stick = VrStickRepeat()
@@ -84,6 +90,7 @@ class VrUiHost(
 		// Drawn once while closed, so the layer's first frame on opening already has its pixels.
 		val screen = menu ?: buildMenu(page).also { menu = it }
 		refreshMenu(page, screen)
+		modal?.refresh?.invoke()
 		redrawMenu()
 		if(statsOpen)
 			redrawStats()
@@ -129,10 +136,12 @@ class VrUiHost(
 		handler.post { pointerSample(sample) }
 	}
 
-	/** The remote's Back: opens the menu, returns from Settings to it, or closes it. */
+	/** The remote's Back: opens the menu; on a modal screen, its own Back; returns from Settings to the menu, or closes it. */
 	fun back() = handler.post {
+		val m = modal
 		when
 		{
+			m != null -> m.back()
 			!menuOpen -> open("back")
 			page != VrPage.MENU -> switchPage(VrPage.MENU)
 			else -> close("back")
@@ -141,6 +150,35 @@ class VrUiHost(
 
 	/** PLE-732: swaps the menu panel to [target] (Settings and back), keeping it open where it is. */
 	fun showPage(target: VrPage) = handler.post { switchPage(target) }
+
+	/**
+	 * PLE-731: shows [screen] on the menu panel, opened at the gaze, until [closeModal]; Back and
+	 * the pad's B call [back] instead of closing it. [refresh] runs after every activation.
+	 */
+	fun showModal(screen: VrScreen, refresh: () -> Unit, back: () -> Unit) = handler.post {
+		modal = Modal(screen, refresh, back)
+		Log.i(TAG, "Modal '${screen.title}' shown")
+		if(menuOpen)
+		{
+			pointer.reset(lastSelect)
+			focus.reset()
+			placeRequest.set(true)
+			redrawMenu()
+		}
+		else
+			open("modal")
+	}
+
+	/** PLE-731: takes the modal screen down and closes the panel. */
+	fun closeModal(reason: String) = handler.post {
+		if(modal == null)
+			return@post
+		modal = null
+		Log.i(TAG, "Modal closed ($reason)")
+		closeNow(reason)
+		// Drawn once while closed, as [attach] does, so the menu opens with its own pixels.
+		redrawMenu()
+	}
 
 	fun takeRecentre() = recentreRequest.getAndSet(false)
 	fun takeEnvironmentChange() = environmentRequest.getAndSet(false)
@@ -223,8 +261,15 @@ class VrUiHost(
 	}
 
 	fun close(reason: String) = handler.post {
+		// PLE-731: a modal screen stays until [closeModal].
+		if(modal == null)
+			closeNow(reason)
+	}
+
+	private fun closeNow(reason: String)
+	{
 		if(!menuOpen)
-			return@post
+			return
 		menuOpen = false
 		interactive = false
 		// The next open starts on the in-stream menu again.
@@ -269,6 +314,7 @@ class VrUiHost(
 			return
 		val screen = menu ?: buildMenu(page).also { menu = it }
 		refreshMenu(page, screen)
+		modal?.refresh?.invoke()
 		pointer.reset(lastSelect)
 		focus.reset()
 		menuOpen = true
@@ -289,11 +335,11 @@ class VrUiHost(
 				open(if(s.trigger) "trigger" else "touchpad click")
 			return
 		}
-		val screen = menu ?: return
+		val screen = current ?: return
 		var changed = pointer.sample(screen, s) { widget, part ->
 			Log.i(TAG, "Activate ${name(widget)}${if(part != Part.WHOLE) " (${part.name.lowercase(Locale.US)})" else ""}")
 			widget.activate(part)
-			refreshMenu(page, screen)
+			refreshCurrent(screen)
 		}
 		if(s.onPanel && focus.ringVisible && pointer.hovered != null && focus.hideRing())
 			changed = true
@@ -323,7 +369,7 @@ class VrUiHost(
 
 	private fun menuKey(code: Int, down: Boolean, repeat: Int)
 	{
-		val screen = menu ?: return
+		val screen = current ?: return
 		when(code)
 		{
 			KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT ->
@@ -346,14 +392,15 @@ class VrUiHost(
 					focus.focused?.let { Log.i(TAG, "Activate ${name(it)} (pad)") }
 					if(focus.activate())
 					{
-						refreshMenu(page, screen)
+						refreshCurrent(screen)
 						redrawMenu()
 					}
 				}
 			KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU ->
 				if(!down)
 				{
-					if(page != VrPage.MENU) switchPage(VrPage.MENU) else close("pad")
+					val m = modal
+					if(m != null) m.back() else if(page != VrPage.MENU) switchPage(VrPage.MENU) else closeNow("pad")
 				}
 			KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 ->
 				if(down)
@@ -369,7 +416,7 @@ class VrUiHost(
 
 	private fun padMove(dx: Int, dy: Int)
 	{
-		val screen = menu ?: return
+		val screen = current ?: return
 		val before = focus.focused
 		if(focus.move(screen, dx, dy))
 		{
@@ -377,7 +424,7 @@ class VrUiHost(
 				Log.i(TAG, "Focus ${focus.focused?.let { name(it) } ?: "none"}")
 			else if(focus.focused is VrSlider)
 				Log.i(TAG, "Step ${name(focus.focused!!)}")
-			refreshMenu(page, screen)
+			refreshCurrent(screen)
 			redrawMenu()
 		}
 	}
@@ -389,7 +436,7 @@ class VrUiHost(
 		override fun run()
 		{
 			ticking = false
-			val screen = menu ?: return
+			val screen = current ?: return
 			if(!menuOpen)
 				return
 			val now = System.nanoTime()
@@ -446,7 +493,7 @@ class VrUiHost(
 
 	private fun redrawMenu()
 	{
-		val screen = menu ?: return
+		val screen = current ?: return
 		draw(surfaces[MENU]) { painter.draw(it, screen, focus) }
 	}
 
