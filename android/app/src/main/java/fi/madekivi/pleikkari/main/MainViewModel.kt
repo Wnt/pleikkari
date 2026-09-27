@@ -175,6 +175,7 @@ class MainViewModel(
 		decoderOperatingRateDefault = preferences.decoderOperatingRateDefault,
 		decoderOperatingRateAuto = preferences.decoderOperatingRateAuto,
 		decoderRealtimePriority = preferences.decoderRealtimePriority,
+		decoderQcomVtLowLatency = GoDecoderProfile.vtLowLatency(preferences),
 		videoTimestampRateHz = preferences.videoTimestampRateHz,
 		// The Home session summary consumes the same 1 Hz counters as the optional overlay.
 		streamDiagnosticsEnabled = true,

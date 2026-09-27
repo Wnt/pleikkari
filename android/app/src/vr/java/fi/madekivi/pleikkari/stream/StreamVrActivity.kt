@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModelProvider
+import fi.madekivi.pleikkari.BuildConfig
 import fi.madekivi.pleikkari.R
 import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
@@ -31,14 +32,28 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var failed = false
     private var statusText = ""
     private val main = Handler(Looper.getMainLooper())
+    private var preview = false
+    private var previewEnvironment: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val info = IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_CONNECT_INFO, ConnectInfo::class.java)
-        if(!Preferences(this).goVrEnabled || !GoVrSupport.available() || info == null) {
+        // PLE-623: debug builds only. The real VrApi cinema with no console and a synthetic
+        // picture, so the Go's cinema and environment cost can be read from adb (README).
+        preview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_VR_CINEMA_PREVIEW, false)
+        previewEnvironment = if(preview) intent.getStringExtra(EXTRA_ENVIRONMENT) else null
+        if(!GoVrSupport.available() || !preview && (!Preferences(this).goVrEnabled || info == null)) {
             finish()
             return
         }
+        if(!preview && info != null) createModel(info)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        setContentView(SurfaceView(this).apply { holder.addCallback(this@StreamVrActivity) })
+    }
+
+    private fun createModel(info: ConnectInfo) {
         val device = IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_PSN_DEVICE, PsnDevice::class.java)
         val justLinked = intent.getBooleanExtra(StreamActivity.EXTRA_JUST_LINKED, false)
         model = ViewModelProvider(this, viewModelFactory {
@@ -55,10 +70,6 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 cinema?.status = statusText
             }
         }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        setContentView(SurfaceView(this).apply { holder.addCallback(this@StreamVrActivity) })
     }
 
     override fun onResume() {
@@ -85,10 +96,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private fun startCinema() {
-        val vm = model ?: return
+        val vm = model
+        if(vm == null && !preview) return
         val surface = windowSurface?.takeIf { it.isValid } ?: return
         if(!resumed || failed || cinema != null) return
-        cinema = CinemaThread(surface, vm.connectInfo).also { it.status = statusText; it.start() }
+        cinema = CinemaThread(surface, vm?.connectInfo).also { it.status = statusText; it.start() }
     }
 
     private fun stopCinema() {
@@ -125,7 +137,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         model?.input?.onGenericMotionEvent(event) == true || super.onGenericMotionEvent(event)
 
     /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
-    private inner class CinemaThread(private val surface: Surface, private val info: ConnectInfo) : Thread("GoCinema") {
+    private inner class CinemaThread(private val surface: Surface, private val info: ConnectInfo?) : Thread("GoCinema") {
         val running = AtomicBoolean(true)
         val detached = CountDownLatch(1)
         @Volatile var status = ""
@@ -136,23 +148,28 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var decoder: Surface? = null
             try {
                 // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
-                val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info.videoProfile.maxFPS == 60) 60f else 72f
+                val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
                 // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
                 if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
-                Preferences(this@StreamVrActivity).vrEnvironmentConfig().toNative().let {
+                val stored = Preferences(this@StreamVrActivity).vrEnvironmentConfig()
+                val environment = previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
+                environment.toNative().let {
                     VrCinemaNative.setEnvironment(native, it.environment, it.screenDistanceM, it.screenWidthM,
                         it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
                 }
                 val frameReady = AtomicBoolean(false)
                 val consumer = SurfaceTexture(VrCinemaNative.videoTexture(native))
                 texture = consumer
-                consumer.setDefaultBufferSize(info.videoProfile.width, info.videoProfile.height)
+                consumer.setDefaultBufferSize(info?.videoProfile?.width ?: PREVIEW_WIDTH, info?.videoProfile?.height ?: PREVIEW_HEIGHT)
                 consumer.setOnFrameAvailableListener({ frameReady.set(true) }, main)
                 val output = Surface(consumer)
                 decoder = output
+                val picture = if(preview) PreviewPicture(output) else null
+                if(picture != null)
+                    Log.i("GoCinema", "Debug preview: no console; synthetic ${PREVIEW_WIDTH}x$PREVIEW_HEIGHT picture at 60 fps, environment ${environment.environment.value}")
                 main.post {
                     if(cinema === this && running.get() && resumed) {
                         model?.session?.attachToSurface(output)
@@ -175,11 +192,13 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         }
                         menu = false
                     }
+                    picture?.post()
                     val newFrame = frameReady.getAndSet(false)
                     if(newFrame) {
                         consumer.updateTexImage()
                         consumer.getTransformMatrix(transform)
                         hasFrame = true
+                        picture?.consumed()
                     }
                     val text = if(menu) getString(R.string.go_vr_menu) + "\n\n" +
                         getString(R.string.go_vr_resume) + "     |     " + getString(R.string.go_vr_recentre) +
@@ -221,12 +240,59 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * PLE-623 debug preview: a moving test picture queued into the decoder's SurfaceTexture at
+     * 60 fps, so the environment's glow refresh and picture sampling run as in a stream. Drawn
+     * on the cinema thread, one frame in flight at a time, so it never blocks on its consumer.
+     */
+    private class PreviewPicture(private val output: Surface) {
+        private val bars = intArrayOf(Color.WHITE, Color.YELLOW, Color.CYAN, Color.GREEN, Color.MAGENTA, Color.RED, Color.BLUE)
+        private val paint = Paint()
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = PREVIEW_HEIGHT / 12f }
+        private var frames = 0L
+        private var lastNs = 0L
+        private var inFlight = false
+
+        fun post() {
+            val now = System.nanoTime()
+            if(inFlight || now - lastNs < 1_000_000_000L / 60) return
+            lastNs = now
+            val canvas = output.lockHardwareCanvas()
+            try {
+                val w = PREVIEW_WIDTH.toFloat()
+                val h = PREVIEW_HEIGHT.toFloat()
+                val bar = w / bars.size
+                bars.forEachIndexed { i, color -> paint.color = color; canvas.drawRect(i * bar, 0f, (i + 1) * bar, h * 0.75f, paint) }
+                paint.color = Color.rgb(24, 24, 32)
+                canvas.drawRect(0f, h * 0.75f, w, h, paint)
+                val x = (frames % 120) / 120f * w
+                paint.color = Color.WHITE
+                canvas.drawRect(x, h * 0.75f, x + w / 40f, h, paint)
+                canvas.drawText("Pleikkari VR cinema preview   frame $frames", w * 0.05f, h * 0.92f, text)
+            } finally {
+                output.unlockCanvasAndPost(canvas)
+            }
+            frames++
+            inFlight = true
+        }
+
+        fun consumed() {
+            inFlight = false
+        }
+    }
+
     companion object {
         // JNI poll result: Back toggles menu; touchpad click recentres or picks its horizontal third.
         private const val MENU = 1
         private const val CLICK = 2
         private const val CENTRE = 4
         private const val RIGHT = 8
+        /** PLE-623: debug builds only; see [PreviewPicture] and third_party/ovr_sdk_mobile/README.md. */
+        const val EXTRA_VR_CINEMA_PREVIEW = "vr_cinema_preview"
+        /** With the preview: plain, void, cinema or terrace instead of the stored setting. */
+        const val EXTRA_ENVIRONMENT = "environment"
+        private const val PREVIEW_WIDTH = 1280
+        private const val PREVIEW_HEIGHT = 720
     }
 }
 

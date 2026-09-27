@@ -403,8 +403,10 @@ struct Cinema {
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
+        // PLE-651: stop the room's GPU timer after the strip, border clears and both eyes' resolves.
+        if(environment) pleikkari_vr_environment_end_frame(environment);
         if(environment && frameIndex - environmentStatsFrame >= 720) {
-            // Every 10 s at 72 Hz: the room's GPU cost (GL_EXT_disjoint_timer_query, one frame late).
+            // Every 10 s at 72 Hz: the whole eye frame's GPU cost (GL_EXT_disjoint_timer_query, a few frames late).
             PleikkariVrEnvironmentStats stats{};
             pleikkari_vr_environment_stats(environment, &stats);
             LOGI("Environment frame: gpu %.3f ms, %u draws, %u triangles", stats.gpu_ns / 1e6, stats.draw_calls, stats.triangles);

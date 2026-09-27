@@ -595,6 +595,13 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(decoderOperatingRateDefaultKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(decoderOperatingRateDefaultKey, value).apply() }
 
+	// PLE-635: Qualcomm vt-low-latency on the Oculus Go (GoDecoderProfile); off keeps today's
+	// display-order decoder output. Ignored on every other device.
+	val decoderQcomVtLowLatencyKey get() = resources.getString(R.string.preferences_decoder_qcom_vt_low_latency_key)
+	var decoderQcomVtLowLatency
+		get() = sharedPreferences.getBoolean(decoderQcomVtLowLatencyKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(decoderQcomVtLowLatencyKey, value).apply() }
+
 	// PLE-75: with frame-index timestamps on and no explicit operating rate, request 960 (default on;
 	// off reproduces the 14 ms decode latency of AB round 2).
 	val decoderOperatingRateAutoKey get() = resources.getString(R.string.preferences_decoder_operating_rate_auto_key)
