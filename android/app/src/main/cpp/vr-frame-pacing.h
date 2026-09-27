@@ -7,11 +7,16 @@
 // which the Go does not have) releases vrapi_SubmitFrame2 at a fixed phase of each refresh and
 // gives the frame a vsync slot, clamp(previous slot + 1, now, now + 2). The slot's lead over "now"
 // carries over unchanged while the app submits once per refresh: lead 0 is VrApi's Prd=32 ms at
-// 72 Hz, lead 1 its every-frame Early, Prd=46 ms. The loop latches the video frame right after
-// the previous submit returns, so every frame waits most of a refresh inside the next submit.
-// PLEIKKARI_VR_PACING_LATE moves that wait before the latch instead: the frame starts [budget]
-// before the release VrApi would give it anyway, so its slot is unchanged and the video it shows
-// is newer by the time moved.
+// 72 Hz, lead 1 its every-frame Early, Prd=46 ms. A submit that comes late is let through at once,
+// and so is the next one in the same refresh: two submits in one refresh add a refresh of lead.
+// On the Go (PLE-715) the predicted display time sits (lead + 1.38) refreshes after the release.
+//
+// The loop latches the video frame right after the previous submit returns, so every frame waits
+// most of a refresh inside the next submit. PLEIKKARI_VR_PACING_LATE moves that wait before the
+// latch instead: the frame starts [budget] before the release VrApi would give it anyway, on the
+// release grid measured from throttled submits, so its slot is unchanged and the video it shows is
+// newer by the time moved. After a late frame it also holds the next one for that point, rather
+// than letting it into the same refresh.
 
 #ifndef PLEIKKARI_VR_FRAME_PACING_H
 #define PLEIKKARI_VR_FRAME_PACING_H
@@ -29,13 +34,19 @@ typedef enum pleikkari_vr_pacing_mode_t
 	PLEIKKARI_VR_PACING_LATE = 1,  // start each frame [budget] before VrApi's next release
 } PleikkariVrPacingMode;
 
-// A submit that waited at least this long inside vrapi_SubmitFrame2 returned at VrApi's own
-// release, one refresh after the last one; a shorter wait means the frame came late, and the
-// next frame starts at once so that VrApi's throttle anchors it again.
-#define PLEIKKARI_VR_PACING_THROTTLED_NS 1000000LL
-// The late start's default budget: the plain cinema's latch to submit is 1.9 ms p50, 2.3 ms p95
-// (PLE-698), and the GPU needs about 0.5 ms (VrApi App=) before the timewarp takes the frame.
-#define PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS 5000000LL
+// vrapi_SubmitFrame2 never returns in under about 2 ms on the Go. A submit that waited at least
+// this long returned at VrApi's own release, which then anchors the release grid; a shorter wait
+// means the frame came after the release and was let through at once.
+#define PLEIKKARI_VR_PACING_THROTTLED_NS 3000000LL
+// The late start's default budget, frame start to VrApi's release. PLE-715's sweep on the Go at
+// 72 Hz: a frame is shown in its slot while its submit comes at least ~3 ms before the release;
+// the plain cinema's start to submit is 2.6-2.9 ms mean with spikes past 5 ms.
+#define PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS 7500000LL
+// A frame started this close to the release or closer would come late (start to submit plus the
+// ~3 ms the submit needs before the release); the late start and the hold aim at the next one.
+#define PLEIKKARI_VR_PACING_MIN_START_NS 6000000LL
+// The predicted display time minus a throttled submit's return, in refreshes, at lead 0.
+#define PLEIKKARI_VR_PACING_LEAD0_REFRESHES 1.38
 // Debug experiments: one-shot stalls at given frames.
 #define PLEIKKARI_VR_PACING_MAX_STALLS 8
 
@@ -46,6 +57,7 @@ typedef struct pleikkari_vr_pacing_config_t
 	int64_t budget_ns;
 	// Debug experiments (a debug build's debug.pleikkari.vr_pacing property), all off by default.
 	bool trace;               // one GoPacing line per frame
+	bool hold;                // in PLEIKKARI_VR_PACING_VRAPI too: hold the frame after a late one
 	int64_t sleep_ns;         // a fixed sleep at the top of every frame
 	int64_t sweep_step_ns;    // added to that sleep every sweep_frames frames, up to sweep_max_ns
 	uint32_t sweep_frames;
@@ -74,6 +86,8 @@ typedef struct pleikkari_vr_pacing_window_t
 	int64_t lead_min_ns;
 	int64_t lead_max_ns;
 	int64_t start_to_photon_sum_ns; // frame start (the video latch) to predicted display
+	uint32_t leads[3];     // throttled frames at lead 0, 1, and 2 or more
+	int64_t period_ns;     // the measured refresh period at the window's end
 } PleikkariVrPacingWindow;
 
 typedef struct pleikkari_vr_pacing_t
@@ -82,18 +96,23 @@ typedef struct pleikkari_vr_pacing_t
 	uint64_t frames;         // frames recorded
 	int64_t return_ns;       // the last submit's return; 0 before the first
 	bool throttled;          // that submit waited for VrApi's release
+	int64_t release_ns;      // the last VrApi release seen (a throttled return); 0 before the first
+	int64_t period_ns;       // the refresh period, measured from predicted display times
+	int64_t predicted_ns;    // the last frame's predicted display time
 	int64_t sweep_sleep_ns;  // the sweep's current sleep
 	PleikkariVrPacingWindow window;
 } PleikkariVrPacing;
 
 void pleikkari_vr_pacing_config_default(PleikkariVrPacingConfig *config, float refresh_hz);
-// "trace,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,budget=US": the debug
+// "trace,hold,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,budget=US": the debug
 // property's experiments, on top of the config. Unknown items are ignored; returns how many were read.
 int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char *spec);
 
 void pleikkari_vr_pacing_init(PleikkariVrPacing *pacing, const PleikkariVrPacingConfig *config);
 // At the top of the loop, before the video latch: the CLOCK_MONOTONIC time to sleep until, or 0.
 int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns);
+// VrApi's next release after now on the measured grid, or 0 before the first throttled submit.
+int64_t pleikkari_vr_pacing_next_release_ns(const PleikkariVrPacing *pacing, int64_t now_ns);
 // After vrapi_SubmitFrame2 returns: start is the frame's start after any sleep, submit and
 // returned bracket the submit call, predicted is its vrapi_GetPredictedDisplayTime.
 void pleikkari_vr_pacing_frame(PleikkariVrPacing *pacing, int64_t start_ns, int64_t slept_ns,

@@ -52,6 +52,8 @@ int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char
 			value++;
 		if(strcmp(item, "trace") == 0)
 			config->trace = true;
+		else if(strcmp(item, "hold") == 0)
+			config->hold = true;
 		else if(strcmp(item, "late") == 0)
 			config->mode = PLEIKKARI_VR_PACING_LATE;
 		else if(strncmp(item, "sleep=", 6) == 0)
@@ -105,7 +107,17 @@ void pleikkari_vr_pacing_init(PleikkariVrPacing *pacing, const PleikkariVrPacing
 {
 	memset(pacing, 0, sizeof(*pacing));
 	pacing->config = *config;
+	pacing->period_ns = config->period_ns;
 	window_reset(&pacing->window);
+}
+
+int64_t pleikkari_vr_pacing_next_release_ns(const PleikkariVrPacing *pacing, int64_t now_ns)
+{
+	if(!pacing->release_ns || pacing->period_ns <= 0)
+		return 0;
+	const int64_t since = now_ns - pacing->release_ns;
+	const int64_t periods = since < 0 ? 0 : since / pacing->period_ns + 1;
+	return pacing->release_ns + periods * pacing->period_ns;
 }
 
 int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns)
@@ -113,13 +125,17 @@ int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns)
 	const PleikkariVrPacingConfig *config = &pacing->config;
 	const uint64_t frame = pacing->frames;
 	int64_t wake = 0;
-	// The late start keys on the last release only when VrApi made it: after a late frame the
-	// next one starts at once, VrApi throttles it again, and the one after that is late-started.
-	if(config->mode == PLEIKKARI_VR_PACING_LATE && pacing->return_ns > 0 && pacing->throttled)
+	// The late start aims at the next release on the grid; so does the hold, but only after a
+	// late frame. A start already inside the budget goes at once while the release is still in
+	// reach, else it waits for the budget before the release after it.
+	const bool late_frame = pacing->return_ns > 0 && !pacing->throttled;
+	int64_t release = pleikkari_vr_pacing_next_release_ns(pacing, now_ns);
+	if(release && (config->mode == PLEIKKARI_VR_PACING_LATE || (config->hold && late_frame)))
 	{
-		const int64_t release = pacing->return_ns + config->period_ns;
+		if(release - now_ns < PLEIKKARI_VR_PACING_MIN_START_NS)
+			release += pacing->period_ns;
 		const int64_t start = release - config->budget_ns;
-		if(start > now_ns && start < release)
+		if(start > now_ns)
 			wake = start;
 	}
 	if(config->sweep_frames && frame > 0 && frame % config->sweep_frames == 0)
@@ -171,6 +187,20 @@ void pleikkari_vr_pacing_frame(PleikkariVrPacing *pacing, int64_t start_ns, int6
 	if(lead > window->lead_max_ns)
 		window->lead_max_ns = lead;
 	window->start_to_photon_sum_ns += predicted_ns - start_ns;
+	// Consecutive predicted display times step by one refresh, on VrApi's own vsync clock.
+	const int64_t step = predicted_ns - pacing->predicted_ns;
+	const int64_t nominal = pacing->config.period_ns;
+	if(pacing->predicted_ns && step > nominal - nominal / 10 && step < nominal + nominal / 10)
+		pacing->period_ns += (step - pacing->period_ns) / 32;
+	pacing->predicted_ns = predicted_ns;
+	if(throttled)
+	{
+		pacing->release_ns = returned_ns;
+		const double refreshes = (double)lead / (double)pacing->period_ns - PLEIKKARI_VR_PACING_LEAD0_REFRESHES;
+		const int rounded = refreshes < 0.5 ? 0 : refreshes < 1.5 ? 1 : 2;
+		window->leads[rounded]++;
+	}
+	window->period_ns = pacing->period_ns;
 	pacing->return_ns = returned_ns;
 	pacing->throttled = throttled;
 	pacing->frames++;

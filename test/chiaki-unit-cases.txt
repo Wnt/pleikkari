@@ -108,4 +108,5 @@
 /chiaki/vr_frame_pacing/config
 /chiaki/vr_frame_pacing/vrapi_never_sleeps
 /chiaki/vr_frame_pacing/late_start
+/chiaki/vr_frame_pacing/hold_and_period
 /chiaki/vr_frame_pacing/experiments
