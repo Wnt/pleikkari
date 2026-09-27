@@ -175,3 +175,8 @@ if(CHIAKI_GO_VR AND ANDROID_ABI STREQUAL "arm64-v8a")
     target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include" src/main/cpp)
     target_link_libraries(pleikkari-vr vrapi pleikkari-vr-environment android log EGL GLESv3)
 endif()
+
+# PLE-711: default-off room orientation A/B arm.
+option(PLEIKKARI_VR_ORIENTATION_CUE "Faint floor cue in plain and void rooms" OFF)
+target_compile_definitions(pleikkari-vr-environment PRIVATE
+        PLEIKKARI_VR_ORIENTATION_CUE=$<BOOL:${PLEIKKARI_VR_ORIENTATION_CUE}>)

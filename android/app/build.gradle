@@ -152,6 +152,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments "-DCHIAKI_ENABLE_TESTS=OFF",
+                        "-DPLEIKKARI_VR_ORIENTATION_CUE=${project.findProperty('vrOrientationCue') == 'true' ? 'ON' : 'OFF'}",
                         "-DCHIAKI_GO_VR=${goVrEnabled ? 'ON' : 'OFF'}",
                         "-DCHIAKI_GO_VR_SDK=${goVrSdk.absolutePath}",
                         "-DCHIAKI_ENABLE_CLI=OFF",

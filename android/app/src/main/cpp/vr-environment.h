@@ -35,6 +35,11 @@
 
 #include <stdint.h>
 
+// PLE-711: opt-in floor orientation experiment; shipped surroundings stay unchanged.
+#ifndef PLEIKKARI_VR_ORIENTATION_CUE
+#define PLEIKKARI_VR_ORIENTATION_CUE 0
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
