@@ -6,7 +6,7 @@ This file records what ran on the Go.
 
 * **Device:** Oculus Go `1KWPH802EW8203`, `oculus/vr_pacific/pacific:7.1.1/NGI77B/20008400174500000`.
 * **Console:** PS5-466, 192.168.1.164, `ready` in `scripts/dev/ps5-discover.py`.
-* **APK:** the gate's arm64 debug build of `1f822412` (`3a1d7aa3` after the rebase), installed with
+* **APK:** the gate's arm64 debug build of `1f822412` (the same change is `b0fb10ad` on the rebased branch), installed with
   `install -r` over `go-live.sh setup`'s backup.
 * **Harness:** `go-probe.sh` (this directory), one `device.py run --resource go` lease per session.
 * **Raw data:** on CT950 under `/home/wnt/gta6/build/ple746/` (not committed).
