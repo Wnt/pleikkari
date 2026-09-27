@@ -67,4 +67,17 @@ class VrPinPadTest
 		assertEquals("Login PIN", pad.screen.title)
 		assertEquals("Wrong PIN", VrPinPad(model, text, incorrect = true).screen.title)
 	}
+
+	/** PLE-757: a wrong PIN turns the title `stream_quit` and shakes it 0.3 degrees for 0.4 s (§10.7). */
+	@Test fun wrongPinAlertsAndShakesTheTitle()
+	{
+		assertFalse(pad.screen.titleAlert)
+		assertTrue(VrPinPad(model, text, incorrect = true).screen.titleAlert)
+		val amp = VrUi.deg(0.3f)
+		assertEquals(0f, VrPinPad.shakeShift(0), 0f)
+		assertEquals(0f, VrPinPad.shakeShift(VrPinPad.SHAKE_NS), 0f)
+		val samples = (1 until 400).map { VrPinPad.shakeShift(it * 1_000_000L) }
+		assertTrue(samples.all { kotlin.math.abs(it) <= amp })
+		assertTrue(samples.any { it > amp / 2 } && samples.any { it < -amp / 2 })
+	}
 }

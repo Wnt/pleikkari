@@ -74,7 +74,7 @@ class VrPinPad(private val model: VrPinPadModel, text: VrPinPadText, incorrect: 
 			model.quit()
 		}
 		screen = VrScreen(WIDTH, HEIGHT, if(incorrect) text.titleIncorrect else text.title,
-			listOf(slots) + keys + listOf(connect, quit))
+			listOf(slots) + keys + listOf(connect, quit), titleAlert = incorrect)
 		refresh()
 	}
 
@@ -99,5 +99,17 @@ class VrPinPad(private val model: VrPinPadModel, text: VrPinPadText, incorrect: 
 		const val LENGTH = 4
 		const val WIDTH = VrMenu.WIDTH
 		const val HEIGHT = VrMenu.HEIGHT
+		/** PLE-757: §10.7's wrong-PIN shake, 0.3 degrees for 0.4 s. */
+		const val SHAKE_NS = 400_000_000L
+		private const val SHAKE_CYCLES = 3
+
+		/** The title's offset [elapsedNs] into the shake: a decaying sine, back to 0 at and after [SHAKE_NS]. */
+		fun shakeShift(elapsedNs: Long): Float
+		{
+			if(elapsedNs <= 0 || elapsedNs >= SHAKE_NS)
+				return 0f
+			val t = elapsedNs.toFloat() / SHAKE_NS
+			return VrUi.deg(0.3f) * (1f - t) * kotlin.math.sin(2f * Math.PI.toFloat() * SHAKE_CYCLES * t)
+		}
 	}
 }

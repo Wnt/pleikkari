@@ -69,7 +69,7 @@ class VrUiPainter(context: Context)
 		if(screen.title.isNotEmpty())
 		{
 			val pad = VrUi.deg(1f)
-			drawText(canvas, screen.title, titlePaint, text, pad, 0f, screen.width - 2 * pad, VrUi.HEADER_HEIGHT, center = false)
+			drawText(canvas, screen.title, titlePaint, if(screen.titleAlert) destructive else text, pad + screen.titleShift, 0f, screen.width - 2 * pad, VrUi.HEADER_HEIGHT, center = false)
 		}
 		screen.widgets.forEach { drawWidget(canvas, it, focus) }
 		screen.lists.forEach { drawList(canvas, it, focus) }
