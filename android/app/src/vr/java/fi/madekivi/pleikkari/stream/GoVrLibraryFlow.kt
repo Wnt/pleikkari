@@ -24,6 +24,7 @@ import fi.madekivi.pleikkari.stream.vrui.VrConsoleCard
 import fi.madekivi.pleikkari.stream.vrui.VrHomeAction
 import fi.madekivi.pleikkari.stream.vrui.VrHomeButton
 import fi.madekivi.pleikkari.stream.vrui.VrHomeState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -157,6 +158,30 @@ internal class GoVrLibraryFlow(
     fun consoles() {
         val notFound = screen as? Screen.NotFound ?: return
         choose(notFound.console)
+        render()
+    }
+
+    /** PLE-733: the not-found console's saved manual address ("" if none), for the address pad; null off that sheet. */
+    fun address(): String? {
+        val notFound = screen as? Screen.NotFound ?: return null
+        return manual.firstOrNull { it.registeredHost == notFound.console.id }?.host ?: ""
+    }
+
+    /**
+     * PLE-733: the address pad's Save: store [host] as the not-found console's manual address
+     * (replacing the one it had), then look for it again, which tries that address.
+     */
+    fun saveAddress(host: String) {
+        val console = (screen as? Screen.NotFound)?.console ?: return
+        val existing = manual.firstOrNull { it.registeredHost == console.id }
+        val saved = existing?.copy(host = host) ?: ManualHost(host = host, registeredHost = console.id)
+        manual = manual.filter { it !== existing } + saved
+        Log.i(TAG, "Manual address for ${GoVrConsolePicker.name(console)} " + if(existing != null) "changed" else "added")
+        jobs += activity.lifecycleScope.launch(Dispatchers.IO) {
+            val dao = getDatabase(activity).manualHostDao()
+            if(existing != null) dao.update(saved) else dao.insert(saved)
+        }
+        find(console)
         render()
     }
 
@@ -298,6 +323,7 @@ internal class GoVrLibraryFlow(
                 VrHomeState.Status(name, activity.getString(R.string.go_vr_home_not_found_message, name),
                     listOf(activity.getString(R.string.go_vr_home_not_found_detail)), busy = false,
                     buttons = listOf(VrHomeButton(activity.getString(R.string.go_vr_home_consoles), VrHomeAction.Consoles),
+                        VrHomeButton(activity.getString(R.string.go_vr_home_address), VrHomeAction.Address),
                         VrHomeButton(activity.getString(R.string.go_vr_home_retry), VrHomeAction.Retry, ButtonStyle.PRIMARY)),
                     back = VrHomeAction.Consoles)
             }

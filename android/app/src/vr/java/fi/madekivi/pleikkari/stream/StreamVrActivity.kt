@@ -182,6 +182,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             VrHomeAction.Cancel -> if(flow != null) flow.cancel() else leave()
             VrHomeAction.Retry -> flow?.retry()
             VrHomeAction.Consoles -> flow?.consoles()
+            VrHomeAction.Address -> flow?.let(::showAddressPad)
             VrHomeAction.OculusTv -> openPanel()
             // PLE-732's Go Settings sheet, on the menu panel over Home.
             VrHomeAction.Settings -> cinema?.ui?.openSettings("Home Settings")
@@ -349,6 +350,30 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         val pad = VrPinPad(model, text, request.pinIncorrect)
         host.showModal(pad.screen, pad::refresh, model::quit)
+    }
+
+    /** PLE-733: the address pad over Home's not-found sheet; Save stores it and looks for the console again. */
+    private fun showAddressPad(flow: GoVrLibraryFlow) {
+        val host = cinema?.ui ?: return
+        val initial = flow.address() ?: return
+        val text = VrAddressPadText(
+            title = getString(R.string.go_vr_address_title),
+            save = getString(R.string.go_vr_address_save),
+            cancel = getString(R.string.go_vr_home_cancel),
+            clear = getString(R.string.go_vr_pin_clear),
+            backspace = "\u232B",
+            letters = "abc",
+            digits = "123")
+        val model = object : VrAddressPadModel {
+            // Both run on the GoVrUi thread.
+            override fun save(address: String) {
+                host.closeModal("address saved")
+                main.post { if(libraryFlow === flow) flow.saveAddress(address) }
+            }
+            override fun cancel() { host.closeModal("address cancelled") }
+        }
+        val pad = VrAddressPad(model, text, initial)
+        host.showModal(pad.screen, pad::refresh, model::cancel)
     }
 
     /** The stored room and screen, or with the preview the room its extra asked for. */
