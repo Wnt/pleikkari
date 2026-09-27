@@ -489,7 +489,8 @@ pointer shows over it.
 Layers win on the two things the operator ranked first: crisp text, and not taxing the head
 loop. Skybox's eye-buffer route only reaches its sharpness by doubling the eye-buffer
 pixels, which our rooms cannot afford (`vr-environments.md` §8). Wide panels (30 degrees or
-more) are cylinder layers; small flat things (a toast, the stats readout) can be quads.
+more) are cylinder layers; small flat things (a toast) can be quads. The stats readout
+stays a cylinder like the other panels (§10.5, PLE-760).
 
 **Pixels: our own small Kotlin toolkit drawing with `Canvas` into a VrApi Android-surface
 swapchain.**
@@ -657,7 +658,26 @@ All sizes are in degrees at the panel.
 | Toast | Non-interactive, one line, bottom of view (§10.3) |
 | Progress | A 2.5-degree spinner, or a determinate bar |
 | Text field | One line with a caret and horizontal scroll, masked for secrets with a show toggle. Opens the keyboard (§10.7) |
-| Stats readout | A small quad layer at the picture's top-left corner, redrawn once a second |
+| Stats readout | A small cylinder layer (25 x 7 degrees) inside the picture's top-left corner, redrawn once a second. The layer type and the placement are explained in the note below the table |
+
+**Stats readout: layer type and placement (PLE-760, decided after PLE-722 landed).** Keep
+the readout as PLE-722 shipped it: a cylinder layer inside the picture's top-left corner
+(`VrStatsPanel.anchor`, 1 degree margin).
+
+- **Type.** The readout uses the same code path as every other panel
+  (`VrUiLayers::layers`). PLE-761's `debug.pleikkari.vr_ui_layers=quad` already turns
+  every panel into a flat quad, the readout included. At 25 degrees wide, a quad and a
+  cylinder differ by under 1% in edge distance. So the readout gets no layer type of its
+  own. If PLE-735's cylinder-against-quad measurement favours the quad, all panels switch
+  together.
+- **Placement.** Outside the picture's edge fails where the readout matters most. The
+  plain room's picture is 80 x 43 degrees, centred on the gaze. A readout above its top
+  edge would sit about 26 degrees up, and one beside it about 53 degrees out. Both are
+  outside §10.3's range for frequent targets (+-25 degrees of yaw, +15 degrees of pitch).
+  The rooms' default screens are just as large. Outside the edge would only fit small, far
+  screens, and one readout placed two ways by screen size is not worth a switch. The
+  readout is off unless the user opens it from the menu, and it covers about 5% of the
+  plain picture.
 
 ### 10.6 Input model
 
