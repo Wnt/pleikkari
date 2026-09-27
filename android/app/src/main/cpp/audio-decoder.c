@@ -21,6 +21,8 @@ ChiakiErrorCode android_chiaki_audio_decoder_init(AndroidChiakiAudioDecoder *dec
 	memset(&decoder->audio_header, 0, sizeof(decoder->audio_header));
 	decoder->codec = NULL;
 	decoder->timestamp_cur = 0;
+	decoder->codec_failed = false;
+	decoder->codec_failed_logged = false;
 
 	decoder->cb_user = NULL;
 	decoder->settings_cb = NULL;
@@ -85,6 +87,16 @@ static void *android_chiaki_audio_decoder_output_thread_func(void *user)
 				break;
 			}
 		}
+		else if(codec_buf_index != AMEDIACODEC_INFO_TRY_AGAIN_LATER
+			&& codec_buf_index != AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED
+			&& codec_buf_index != AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED)
+		{
+			// A codec in an error state returns immediately, so looping here
+			// busy-spins a core and floods logcat (PLE-661).
+			CHIAKI_LOGE(decoder->log, "AMediaCodec for Audio Decoder failed with %zd, stopping output", codec_buf_index);
+			__atomic_store_n(&decoder->codec_failed, true, __ATOMIC_RELEASE);
+			break;
+		}
 	}
 
 	CHIAKI_LOGI(decoder->log, "Audio Decoder Output Thread exiting");
@@ -103,6 +115,9 @@ static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void 
 		CHIAKI_LOGI(decoder->log, "Audio decoder already initialized, shutting down the old one");
 		android_chiaki_audio_decoder_shutdown_codec(decoder);
 	}
+
+	decoder->codec_failed = false;
+	decoder->codec_failed_logged = false;
 
 	const char *mime = "audio/opus";
 	decoder->codec = AMediaCodec_createDecoderByType(mime);
@@ -182,8 +197,17 @@ static void android_chiaki_audio_decoder_frame(uint8_t *buf, size_t buf_size, vo
 		ssize_t codec_buf_index = AMediaCodec_dequeueInputBuffer(decoder->codec, INPUT_BUFFER_TIMEOUT_MS * 1000);
 		if(codec_buf_index < 0)
 		{
-			CHIAKI_LOGE(decoder->log, "Failed to get input audio buffer");
-			return;
+			if(__atomic_load_n(&decoder->codec_failed, __ATOMIC_ACQUIRE))
+			{
+				if(!decoder->codec_failed_logged)
+				{
+					CHIAKI_LOGE(decoder->log, "Audio decoder is in an error state, dropping audio until the next header");
+					decoder->codec_failed_logged = true;
+				}
+			}
+			else
+				CHIAKI_LOGE(decoder->log, "Failed to get input audio buffer");
+			goto beach;
 		}
 
 		size_t codec_buf_size;
