@@ -153,34 +153,8 @@ class MainViewModel(
 		_psnListState.value = PsnConsoleListState.Ready
 	}
 
-	fun connectInfo(host: RegisteredHost?, autoRegister: Boolean = false): ConnectInfo = ConnectInfo(
-		ps5 = true,
-		host = "",
-		registKey = host?.rpRegistKey ?: ByteArray(16),
-		morning = host?.rpKey ?: ByteArray(16),
-		videoProfile = preferences.videoProfile,
-		decoderLowLatencyEnabled = preferences.decoderLowLatencyEnabled,
-		threadPriorityBoostEnabled = preferences.threadPriorityBoostEnabled,
-		decoderLateFrameRecoveryEnabled = preferences.decoderLateFrameRecoveryEnabled,
-		packetLossMax = preferences.packetLossMax,
-		adaptiveLossReport = preferences.adaptiveLossReport,
-		takionVideoPacketReorderingDisabled = preferences.takionVideoPacketReorderingDisabled,
-		feedbackStateMinIntervalMs = if(preferences.feedbackReducedIntervalEnabled) 4 else 0,
-		feedbackStatsLogIntervalMs = preferences.feedbackStatsLogIntervalMs,
-		audioBufferBursts = preferences.audioBufferBursts,
-		audioFifoMs = preferences.audioFifoMs,
-		autoRegister = autoRegister,
-		performanceModeEnabled = preferences.performanceModeEnabled,
-		decoderOperatingRate = preferences.decoderOperatingRate,
-		decoderOperatingRateDefault = preferences.decoderOperatingRateDefault,
-		decoderOperatingRateAuto = preferences.decoderOperatingRateAuto,
-		decoderRealtimePriority = preferences.decoderRealtimePriority,
-		decoderQcomVtLowLatency = GoDecoderProfile.vtLowLatency(preferences),
-		videoTimestampRateHz = preferences.videoTimestampRateHz,
-		// The Home session summary consumes the same 1 Hz counters as the optional overlay.
-		streamDiagnosticsEnabled = true,
-		videoPresenterConfig = preferences.videoPresenterConfig
-	)
+	fun connectInfo(host: RegisteredHost?, autoRegister: Boolean = false): ConnectInfo =
+		preferences.connectInfo("", host, autoRegister = autoRegister)
 
 	fun playPsnConsole(console: PsnConsole)
 	{

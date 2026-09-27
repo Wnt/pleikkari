@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 package fi.madekivi.pleikkari.stream
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.graphics.*
 import android.opengl.GLES20
 import android.opengl.GLUtils
@@ -14,6 +16,7 @@ import android.view.*
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.IntentCompat
+import androidx.core.os.BundleCompat
 import androidx.lifecycle.ViewModelProvider
 import fi.madekivi.pleikkari.BuildConfig
 import fi.madekivi.pleikkari.R
@@ -21,6 +24,7 @@ import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.lib.CinemaFrameLatency
 import fi.madekivi.pleikkari.lib.ConnectInfo
+import fi.madekivi.pleikkari.lib.ConnectVideoProfile
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
 import java.util.Locale
@@ -40,20 +44,53 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var preview = false
     private var previewEnvironment: String? = null
     private var environmentSamples = DEFAULT_ENVIRONMENT_SAMPLES
+    /** PLE-690: started by the Go Library through the exported alias (or back in its chooser), not by Connect. */
+    private var library = false
+    private var libraryFlow: GoVrLibraryFlow? = null
+    /** PLE-690: a Library launch before its stream; touchpad clicks drive the chooser, not recentre. */
+    @Volatile private var picking = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val info = IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_CONNECT_INFO, ConnectInfo::class.java)
+        val entry = GoVrSupport.isLibraryEntry(intent)
+        // PLE-690: anyone can start the exported alias, so a Library launch drops every extra before
+        // anything reads one; it only takes back the session it saved itself before being recreated.
+        if(entry) intent.replaceExtras(null as Bundle?)
+        // PLE-690: a Library launch's Disconnect restarts this (unexported) activity in its chooser.
+        val chooser = !entry && intent.getBooleanExtra(EXTRA_LIBRARY_CHOOSER, false)
+        library = entry || chooser
+        val info = if(library) savedInstanceState?.let { BundleCompat.getParcelable(it, STATE_CONNECT_INFO, ConnectInfo::class.java) }
+            else IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_CONNECT_INFO, ConnectInfo::class.java)
         // PLE-623: debug builds only. The real VrApi cinema with no console and a synthetic
         // picture, so the Go's cinema and environment cost can be read from adb (README).
         preview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_VR_CINEMA_PREVIEW, false)
         previewEnvironment = if(preview) intent.getStringExtra(EXTRA_ENVIRONMENT) else null
         if(preview) environmentSamples = intent.getIntExtra(EXTRA_ENVIRONMENT_MSAA, DEFAULT_ENVIRONMENT_SAMPLES)
-        if(!GoVrSupport.available() || !preview && (!Preferences(this).goVrEnabled || info == null)) {
+        if(library) {
+            // The referrer names the app that started us (com.oculus.vrshell for the Library).
+            Log.i(TAG_ENTRY, (if(chooser) "Back in the Library chooser" else "Library VR launch, referrer ${referrer ?: "none"}") +
+                if(info != null) ", resuming its session" else "")
+            if(!GoVrSupport.available() || !Preferences(this).goVrEnabled) {
+                // A stale entry (the setting is off) or a build whose VR libraries do not load.
+                GoVrSupport.syncLibraryEntry(this)
+                openPanel()
+                return
+            }
+        }
+        if(!GoVrSupport.available() || !preview && !library && (!Preferences(this).goVrEnabled || info == null)) {
             finish()
             return
         }
         if(!preview && info != null) createModel(info)
+        else if(library) {
+            picking = true
+            // PLE-690: debug builds only, `adb shell setprop debug.pleikkari.go_entry_choose 1`: a Library
+            // launch opens its chooser instead of streaming on its own, so the entry can be proven on the
+            // Go without connecting to a console (third_party/ovr_sdk_mobile/README.md).
+            val chooseFirst = chooser || BuildConfig.DEBUG && debugProperty(CHOOSE_PROPERTY) == "1"
+            libraryFlow = GoVrLibraryFlow(this, chooseFirst, ::showStatus, ::libraryConnect, ::openPanel, ::finish)
+                .also { it.start() }
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -79,16 +116,71 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun showStatus(text: String) {
+        statusText = text
+        cinema?.status = text
+    }
+
+    /** PLE-690: the Library flow picked and found a console; stream it into the running cinema. */
+    private fun libraryConnect(info: ConnectInfo) {
+        picking = false
+        libraryFlow?.stop()
+        libraryFlow = null
+        createModel(info)
+        attachSession()
+    }
+
+    /** PLE-690: the 2D app on the Oculus TV screen, for linking a console and Settings; this VR task ends. */
+    private fun openPanel() {
+        Log.i(TAG_ENTRY, "Opening Pleikkari on the Oculus TV screen")
+        try {
+            startActivity(GoVrSupport.panelIntent(this))
+        } catch(error: ActivityNotFoundException) {
+            Log.e(TAG_ENTRY, "No vrshell to host the 2D app", error)
+        } catch(error: SecurityException) {
+            Log.e(TAG_ENTRY, "vrshell refused to host the 2D app", error)
+        }
+        finish()
+    }
+
+    /**
+     * The menu's right third. Before a Library launch streams it exits; a Library launch's Disconnect
+     * returns to its chooser, whose last row opens the 2D app for linking and Settings (PLE-690).
+     */
+    private fun leave() {
+        if(library && !picking) {
+            Log.i(TAG_ENTRY, "Disconnect: back to the Library chooser")
+            startActivity(Intent().setClassName(this, GoVrSupport.ACTIVITY)
+                .putExtra(EXTRA_LIBRARY_CHOOSER, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        }
+        finish()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // PLE-690: a recreated Library launch keeps its session instead of choosing again.
+        if(library) model?.connectInfo?.let { outState.putParcelable(STATE_CONNECT_INFO, it) }
+    }
+
     override fun onResume() {
         super.onResume()
         resumed = true
+        libraryFlow?.resume()
         startCinema()
     }
 
     override fun onPause() {
         resumed = false
+        libraryFlow?.pause()
         stopCinema()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        libraryFlow?.stop()
+        libraryFlow = null
+        super.onDestroy()
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) = Unit
@@ -104,10 +196,27 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun startCinema() {
         val vm = model
-        if(vm == null && !preview) return
+        if(vm == null && !preview && !library) return
         val surface = windowSurface?.takeIf { it.isValid } ?: return
         if(!resumed || failed || cinema != null) return
-        cinema = CinemaThread(surface, vm?.connectInfo).also { it.status = statusText; it.start() }
+        // PLE-690: a Library launch enters the cinema before it has a session; it will stream the
+        // profile its ConnectInfo is built from.
+        val profile = vm?.connectInfo?.videoProfile ?: if(library) Preferences(this).videoProfile else null
+        // PLE-698: per-frame latency is measurement, so only with the stats log on. The preview and a
+        // Library launch have no session yet; a Library stream's ConnectInfo takes it from the same setting.
+        val frameLatency = vm?.connectInfo?.let { it.feedbackStatsLogIntervalMs > 0 } ?: Preferences(this).feedbackStatsLogEnabled
+        cinema = CinemaThread(surface, profile, frameLatency).also { it.status = statusText; it.start() }
+    }
+
+    /** Hands the cinema's decoder surface to the session: when the cinema starts, or when a Library launch connects. */
+    private fun attachSession() {
+        val thread = cinema ?: return
+        val output = thread.output ?: return
+        val vm = model ?: return
+        if(!thread.running.get() || !resumed) return
+        vm.session.attachToSurface(output)
+        vm.session.updateDisplayTiming(thread.refreshHz.toDouble(), 0L) // PLE-654: the panel's real rate
+        vm.resume()
     }
 
     private fun stopCinema() {
@@ -125,6 +234,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         Log.e("GoCinema", "Cannot start/continue VR cinema", error)
         failed = true
         stopCinema()
+        // PLE-690: a Library launch has no Oculus TV task behind it; open the 2D app there instead,
+        // so a cinema that cannot start never locks the user out of Settings.
+        if(library) return openPanel()
         Toast.makeText(this, R.string.go_vr_failed, Toast.LENGTH_LONG).show()
         finish() // Return to the existing Oculus TV task; never relaunch onto display 0.
     }
@@ -137,6 +249,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             // delivers its Back event; its press edge will open the cinema menu.
             return true
         }
+        // PLE-690: before a Library launch's stream the pad drives the chooser; no session has its keys yet.
+        if(gamepad && libraryFlow?.key(event) == true) return true
         return model?.input?.dispatchKeyEvent(event) == true || super.dispatchKeyEvent(event)
     }
 
@@ -144,26 +258,27 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         model?.input?.onGenericMotionEvent(event) == true || super.onGenericMotionEvent(event)
 
     /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
-    private inner class CinemaThread(private val surface: Surface, private val info: ConnectInfo?) : Thread("GoCinema") {
+    private inner class CinemaThread(private val surface: Surface, private val videoProfile: ConnectVideoProfile?,
+                                     private val frameLatency: Boolean) : Thread("GoCinema") {
         val running = AtomicBoolean(true)
         val detached = CountDownLatch(1)
         @Volatile var status = ""
+        // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps. PLE-698: the
+        // preview stands in for a 60 fps stream, so it can time both panel rates.
+        private val streamFps = if(preview) 60 else videoProfile?.maxFPS
+        val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && streamFps == 60) 60f else 72f
+        /** The decoder's target, once the GL thread has made it; read on the main thread. */
+        @Volatile var output: Surface? = null
 
         override fun run() {
             var native = 0L
             var texture: SurfaceTexture? = null
             var decoder: Surface? = null
             var listenerThread: HandlerThread? = null
-            // PLE-698: per-frame latency (arrival, decode, latch, submit, predicted photon) for the
-            // stats log's "Cinema latency" line; measurement, so only with that setting on. The debug
-            // preview has no decoder: its frames time the latch, submit and predicted photon only.
-            val frameLatency = if(preview) Preferences(this@StreamVrActivity).feedbackStatsLogEnabled
-                else (info?.feedbackStatsLogIntervalMs ?: 0) > 0
+            // PLE-698: [frameLatency] times each frame (arrival, decode, latch, submit, predicted photon)
+            // for the stats log's "Cinema latency" line. The debug preview has no decoder: its frames
+            // time the latch, submit and predicted photon only.
             try {
-                // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps. PLE-698: the
-                // preview stands in for a 60 fps stream, so it can time both panel rates.
-                val streamFps = if(preview) 60 else info?.videoProfile?.maxFPS
-                val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && streamFps == 60) 60f else 72f
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
                 // PLE-675: debug builds only, `adb shell setprop debug.pleikkari.vr_full_pose 1` before
@@ -187,7 +302,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val available = AtomicInteger(0)
                 val consumer = SurfaceTexture(VrCinemaNative.videoTexture(native))
                 texture = consumer
-                consumer.setDefaultBufferSize(info?.videoProfile?.width ?: PREVIEW_WIDTH, info?.videoProfile?.height ?: PREVIEW_HEIGHT)
+                consumer.setDefaultBufferSize(videoProfile?.width ?: PREVIEW_WIDTH, videoProfile?.height ?: PREVIEW_HEIGHT)
                 // PLE-673: off (the default) keeps the listener on the main looper, as PLE-654 measured.
                 val listenerHandler = if(Preferences(this@StreamVrActivity).goVrFrameListenerThread) {
                     val thread = HandlerThread("GoCinemaFrames", Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
@@ -198,17 +313,13 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 consumer.setOnFrameAvailableListener({ available.incrementAndGet(); frameReady.set(true) }, listenerHandler)
                 val output = Surface(consumer)
                 decoder = output
+                // Before the output is published: a Library launch attaches its session as soon as it is.
                 if(frameLatency) CinemaFrameLatency.enable(true)
+                this.output = output
                 val picture = if(preview) PreviewPicture(output) else null
                 if(picture != null)
                     Log.i("GoCinema", "Debug preview: no console; synthetic ${PREVIEW_WIDTH}x$PREVIEW_HEIGHT picture at 60 fps, environment ${environment.environment.value}")
-                main.post {
-                    if(cinema === this && running.get() && resumed) {
-                        model?.session?.attachToSurface(output)
-                        model?.session?.updateDisplayTiming(refreshHz.toDouble(), 0L) // PLE-654: the panel's real rate
-                        model?.resume()
-                    }
-                }
+                main.post { if(cinema === this) attachSession() }
                 val transform = FloatArray(16)
                 android.opengl.Matrix.setIdentityM(transform, 0)
                 var hasFrame = false
@@ -226,9 +337,17 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val input = VrCinemaNative.input(native)
                     if(input and MENU != 0) menu = !menu
                     if(input and CLICK != 0) {
-                        if(!menu || input and CENTRE != 0) VrCinemaNative.recentre(native)
+                        if(!menu && picking) {
+                            // PLE-690: a Library launch's chooser and messages take the touchpad until it streams.
+                            val touch = when {
+                                input and CENTRE != 0 -> GoVrLibraryFlow.Touch.CENTRE
+                                input and RIGHT != 0 -> GoVrLibraryFlow.Touch.RIGHT
+                                else -> GoVrLibraryFlow.Touch.LEFT
+                            }
+                            main.post { if(cinema === this) libraryFlow?.click(touch) }
+                        } else if(!menu || input and CENTRE != 0) VrCinemaNative.recentre(native)
                         if(menu && input and RIGHT != 0) {
-                            main.post { if(cinema === this) finish() }
+                            main.post { if(cinema === this) leave() }
                         }
                         menu = false
                     }
@@ -242,9 +361,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         latched++
                         picture?.consumed()
                     }
+                    // PLE-690: before a Library launch streams, the right third leaves the app.
                     val text = if(menu) getString(R.string.go_vr_menu) + "\n\n" +
                         getString(R.string.go_vr_resume) + "     |     " + getString(R.string.go_vr_recentre) +
-                        "     |     " + getString(R.string.go_vr_disconnect) + "\n\n" + getString(R.string.go_vr_menu_help)
+                        "     |     " + getString(if(picking) R.string.go_vr_exit else R.string.go_vr_disconnect) + "\n\n" +
+                        getString(if(picking) R.string.go_vr_menu_help_exit else R.string.go_vr_menu_help)
                     else status
                     if(text != previousText) {
                         uploadText(VrCinemaNative.messageTexture(native), text)
@@ -301,7 +422,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE; textSize = 36f; textAlign = Paint.Align.CENTER
             }
-            text.split('\n').forEachIndexed { i, line -> canvas.drawText(line, 768f, 300f + i * 64f, paint) }
+            val lines = text.split('\n')
+            // PLE-690: the Library chooser can outgrow the old block; only then does it start higher.
+            val top = minOf(300f, 864f - 48f - (lines.size - 1) * 64f)
+            lines.forEachIndexed { i, line -> canvas.drawText(line, 768f, top + i * 64f, paint) }
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
             GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
             bitmap.recycle()
@@ -365,6 +489,12 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
+        /** PLE-690: debug builds only; a Library launch opens its chooser instead of connecting. */
+        private const val CHOOSE_PROPERTY = "debug.pleikkari.go_entry_choose"
+        /** PLE-690: set only by [leave]; the activity is not exported. */
+        private const val EXTRA_LIBRARY_CHOOSER = "library_chooser"
+        private const val TAG_ENTRY = "GoVrEntry"
+        private const val STATE_CONNECT_INFO = "library_connect_info"
 
         /** android.os.SystemProperties is hidden API; a debug-only reader, "" on any failure. */
         private fun debugProperty(name: String): String = try {

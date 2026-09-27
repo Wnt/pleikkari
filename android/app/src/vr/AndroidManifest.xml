@@ -1,13 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <!-- Deliberately activity-local: never classify the phone launcher as vr_only. -->
+        <!-- Deliberately activity-local: never classify the phone launcher as vr_only.
+             PLE-690: its own task affinity, so a Library launch (NEW_TASK) never joins a MainActivity
+             task that Oculus TV hosts on its virtual display; Connect still starts it for a result,
+             inside the caller's task. -->
         <activity android:name=".stream.StreamVrActivity"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
+            android:taskAffinity="${applicationId}.vr"
             android:exported="false">
             <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only" />
         </activity>
+        <!-- PLE-690: the Go Library's VR launch. vrshell's PackageUtil.isVrApp() takes a MAIN +
+             com.oculus.intent.category.VR activity as a VR app, and sendLaunchIntent() starts
+             getLaunchIntentForPackage(), which prefers MAIN/INFO over MainActivity's LAUNCHER.
+             Disabled here: GoVrSupport.syncLibraryEntry turns it on only on an Oculus Go with the
+             native cinema on, so no phone ever resolves it. -->
+        <activity-alias android:name=".stream.GoVrLibraryEntry"
+            android:targetActivity=".stream.StreamVrActivity"
+            android:enabled="false"
+            android:exported="true">
+            <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.INFO" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>
