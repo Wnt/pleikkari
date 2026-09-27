@@ -32,9 +32,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * window is the main thread's, and `Window.takeInputQueue` does not change that: ViewRootImpl still
  * reads each event on the main looper, then forwards it to the queue. So this adds a second window
  * from a [HandlerThread] of its own. It is a 1x1 sub-window of the activity's, with alpha 0 so
- * SurfaceFlinger has no layer to composite. It is focusable, because key and joystick events go to
- * the focused window, but not touchable, so touches still reach the activity. It is not an IME
- * target, so no key takes a round trip through the keyboard's process first.
+ * SurfaceFlinger has no layer to composite (on Android 14+ it is off the screen instead: [add]). It is
+ * focusable, because key and joystick events go to the focused window, but not touchable, so touches
+ * still reach the activity. It is not an IME target, so no key takes a round trip through the
+ * keyboard's process first.
  *
  * [Router.key] and [Router.motion] see each event on that thread. An event they do not take goes
  * back to the main thread, which gives it the activity window's own handling ([handBack]). Its
@@ -142,8 +143,20 @@ class InputThreadWindow(
 			PixelFormat.TRANSLUCENT).apply {
 			this.token = token
 			gravity = Gravity.TOP or Gravity.START
-			alpha = 0f
 			title = name
+			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+			{
+				// PLE-829: from Android 14, SurfaceFlinger gives no input to a layer that has drawn a buffer
+				// at alpha 0 (Layer::canReceiveInput). An alpha-0 window never gets the focus: the input
+				// dispatcher dropped every key and raised an ANR on the API 36 emulator. So the window keeps
+				// its alpha and sits off the screen, where SurfaceFlinger composites nothing
+				// (Output::ensureOutputLayerIfVisible). It draws nothing anyway. A multi-window task
+				// ignores NO_LIMITS and pulls it back onto the display, where it is a transparent pixel.
+				flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+				y = OFF_SCREEN_Y
+			}
+			else
+				alpha = 0f
 		}
 		try
 		{
@@ -247,6 +260,8 @@ class InputThreadWindow(
 	companion object
 	{
 		const val TAG = "GoPadInput"
+		/** Far above any display the window's parent can start on; WindowLayout clamps to -100000. */
+		private const val OFF_SCREEN_Y = -10000
 		@Suppress("DEPRECATION")
 		private const val HIDDEN_SYSTEM_BARS = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
 			View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY

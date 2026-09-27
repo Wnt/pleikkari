@@ -25,8 +25,9 @@ import java.util.concurrent.TimeUnit
 /**
  * PLE-829: the phone's StreamActivity reads its pad on PLE-802's [InputThreadWindow], so the window's
  * own settings matter there: it must keep the system bars hidden (Android 11 to 13 give the focused
- * window the navigation bar) and carry PLE-91's unbuffered joystick request, while the Go's window
- * stays as PLE-802 made it. A key the stream refuses must reach the activity's handling on main, once.
+ * window the navigation bar), carry PLE-91's unbuffered joystick request and, from Android 14, keep
+ * its alpha off the screen (an alpha-0 layer gets no input there), while the Go's window stays as
+ * PLE-802 made it. A key the stream refuses must reach the activity's handling on main, once.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30])
@@ -94,9 +95,9 @@ class InputThreadWindowTest
 		}
 	}
 
+	/** The phone's window: focusable, not touchable, bars hidden before it is added, joystick unbuffered. */
 	@Suppress("DEPRECATION")
-	@Test
-	fun phoneWindowHidesTheBarsAndTakesTheJoystickUnbuffered()
+	private fun phoneWindow(): WindowManager.LayoutParams
 	{
 		val activity = activity()
 		val window = InputThreadWindow(activity, Router(streamTakes = true), "PadInput", hideSystemBars = true,
@@ -105,7 +106,6 @@ class InputThreadWindowTest
 		val (view, params) = addedWindow(window, "PadInput")
 		assertEquals(WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, params.type)
 		assertEquals(activity.window.decorView.windowToken, params.token)
-		assertEquals(0f, params.alpha)
 		val flags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
 			WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
 		assertEquals(flags, params.flags and flags)
@@ -116,6 +116,30 @@ class InputThreadWindowTest
 		val unbuffered = View::class.java.getDeclaredField("mUnbufferedInputSource").apply { isAccessible = true }
 		assertEquals(InputDevice.SOURCE_CLASS_JOYSTICK, unbuffered.getInt(view))
 		window.stop()
+		return params
+	}
+
+	@Test
+	fun phoneWindowBeforeAndroid14HasAlphaZero()
+	{
+		val params = phoneWindow()
+		assertEquals(0f, params.alpha)
+		assertEquals(0, params.flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+		assertEquals(0, params.y)
+	}
+
+	/**
+	 * Android 14+ gives no input to a layer with a buffer and alpha 0, so the window keeps its alpha and
+	 * sits off the screen instead, where SurfaceFlinger composites nothing.
+	 */
+	@Config(sdk = [35])
+	@Test
+	fun phoneWindowFromAndroid14IsOffTheScreenAndKeepsItsAlpha()
+	{
+		val params = phoneWindow()
+		assertEquals(1f, params.alpha)
+		assertEquals(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, params.flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+		assertTrue("the window is not off the screen: y ${params.y}", params.y + params.height <= -4096)
 	}
 
 	@Suppress("DEPRECATION")
@@ -125,7 +149,8 @@ class InputThreadWindowTest
 		val activity = activity()
 		val window = InputThreadWindow(activity, Router(streamTakes = true))
 		assertTrue(window.start())
-		val (view, _) = addedWindow(window, InputThreadWindow.TAG)
+		val (view, params) = addedWindow(window, InputThreadWindow.TAG)
+		assertEquals(0f, params.alpha)
 		assertEquals(activity.window.decorView.systemUiVisibility, view.systemUiVisibility)
 		val unbuffered = View::class.java.getDeclaredField("mUnbufferedInputSource").apply { isAccessible = true }
 		assertEquals(0, unbuffered.getInt(view))
