@@ -1014,13 +1014,15 @@ JNIEXPORT void JNICALL JNI_FCN(latencyProbeStop)(JNIEnv *env, jobject obj)
 		CHIAKI_LOGI(&global_log, "Latency probe: stopped, %u presses and %u frames written", presses, frames);
 }
 
-// PLE-746: a Cross KeyEvent reached the app; event_ns is its getEventTime() in ns (CLOCK_MONOTONIC).
-JNIEXPORT void JNICALL JNI_FCN(latencyProbePress)(JNIEnv *env, jobject obj, jlong event_ns, jlong received_ns)
+// PLE-746: a KeyEvent putting buttons down reached the app; event_ns is its getEventTime() in ns
+// (CLOCK_MONOTONIC). PLE-829: the probe's press mask decides whether it is a press (Cross by default).
+JNIEXPORT void JNICALL JNI_FCN(latencyProbePress)(JNIEnv *env, jobject obj, jlong event_ns, jlong received_ns, jint buttons)
 {
 	if(!android_chiaki_latency_trace_armed())
 		return;
-	android_chiaki_latency_probe_press(&latency_probe, event_ns, received_ns);
-	android_chiaki_latency_trace_mark("PLE746 input key cross event_ns=%lld", (long long)event_ns);
+	if(android_chiaki_latency_probe_press(&latency_probe, (uint32_t)buttons, event_ns, received_ns))
+		android_chiaki_latency_trace_mark("PLE746 input key press buttons=0x%x event_ns=%lld", (unsigned)buttons,
+				(long long)event_ns);
 }
 
 // PLE-698: the debug preview has no session and so no stats window; its cinema logs one itself, once a second.

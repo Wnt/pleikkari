@@ -352,6 +352,13 @@
             app:icon="@drawable/ic_gamepad" />
 
         <SwitchPreference
+            app:key="@string/preferences_pad_input_thread_enabled_key"
+            app:title="@string/preferences_pad_input_thread_enabled_title"
+            app:summary="@string/preferences_pad_input_thread_enabled_summary"
+            app:defaultValue="false"
+            app:icon="@drawable/ic_gamepad" />
+
+        <SwitchPreference
             app:key="@string/preferences_gamepad_trigger_fallback_enabled_key"
             app:title="@string/preferences_gamepad_trigger_fallback_enabled_title"
             app:summary="@string/preferences_gamepad_trigger_fallback_enabled_summary"

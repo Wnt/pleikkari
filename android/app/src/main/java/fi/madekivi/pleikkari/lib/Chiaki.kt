@@ -172,11 +172,15 @@ object LatencyProbe
 		ChiakiNative.latencyProbeStop()
 	}
 
-	/** A Cross KeyEvent: [eventTimeMs] is its getEventTime() (uptimeMillis, CLOCK_MONOTONIC). */
-	fun press(eventTimeMs: Long)
+	/**
+	 * A KeyEvent putting [buttons] down: [eventTimeMs] is its getEventTime() (uptimeMillis,
+	 * CLOCK_MONOTONIC). It is a press only if [buttons] include the probe's press buttons (Cross, or
+	 * PLE-803's debug.pleikkari.probe_buttons): PLE-829 times R3 on the phone.
+	 */
+	fun press(eventTimeMs: Long, buttons: UInt)
 	{
 		if(active)
-			ChiakiNative.latencyProbePress(eventTimeMs * 1_000_000L, System.nanoTime())
+			ChiakiNative.latencyProbePress(eventTimeMs * 1_000_000L, System.nanoTime(), buttons.toInt())
 	}
 }
 
@@ -215,7 +219,7 @@ private class ChiakiNative
 			predictedDisplayNs: Long, luma: Int)
 		@JvmStatic external fun latencyProbeStart(directory: String): Boolean
 		@JvmStatic external fun latencyProbeStop()
-		@JvmStatic external fun latencyProbePress(eventNs: Long, receivedNs: Long)
+		@JvmStatic external fun latencyProbePress(eventNs: Long, receivedNs: Long, buttons: Int)
 		@JvmStatic external fun cinemaFrameLatencyLog()
 		@JvmStatic external fun discoveryServiceCreate(result: CreateResult, options: DiscoveryServiceOptions, javaService: DiscoveryService)
 		@JvmStatic external fun discoveryServiceFree(ptr: Long)

@@ -58,8 +58,13 @@ bool android_chiaki_latency_probe_stop(AndroidChiakiLatencyProbe *probe, uint32_
 /** PLE-803: presses are these buttons going down (0 keeps the current mask); default Cross. */
 void android_chiaki_latency_probe_set_press_buttons(AndroidChiakiLatencyProbe *probe, uint32_t buttons);
 bool android_chiaki_latency_probe_enabled(AndroidChiakiLatencyProbe *probe);
-/** A Cross KeyEvent reached the app. A press still on its way is written unsent first. */
-void android_chiaki_latency_probe_press(AndroidChiakiLatencyProbe *probe, int64_t event_ns, int64_t received_ns);
+/**
+ * A KeyEvent putting [buttons] down reached the app. It opens a press only when they include a press
+ * button (PLE-829: the mask decides, not the caller); a press still on its way is written unsent first.
+ * True when it opened one.
+ */
+bool android_chiaki_latency_probe_press(AndroidChiakiLatencyProbe *probe, uint32_t buttons, int64_t event_ns,
+		int64_t received_ns);
 /**
  * The app handed chiaki a controller state. Cross going down stamps the pending press, or opens
  * one with no KeyEvent (a pad the probe did not see, or the debug pad broadcast).
