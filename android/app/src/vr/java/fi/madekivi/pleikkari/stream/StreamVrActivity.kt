@@ -166,6 +166,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
                 val stored = Preferences(this@StreamVrActivity).vrEnvironmentConfig()
                 val environment = previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
+                // PLE-666: with the preview, `--ei sky_variant N` draws a PLE-650 debug sky in the VrApi cinema.
+                if(preview && intent.hasExtra(EXTRA_SKY_VARIANT))
+                    VrCinemaNative.debugSetSkyVariant(native, intent.getIntExtra(EXTRA_SKY_VARIANT, 0))
                 environment.toNative().let {
                     VrCinemaNative.setEnvironment(native, it.environment, it.screenDistanceM, it.screenWidthM,
                         it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
@@ -332,6 +335,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_VR_CINEMA_PREVIEW = "vr_cinema_preview"
         /** With the preview: plain, void, cinema or terrace instead of the stored setting. */
         const val EXTRA_ENVIRONMENT = "environment"
+        /** PLE-666: with the preview, a PLE-650 sky variant (0 is the shipped dome). */
+        const val EXTRA_SKY_VARIANT = "sky_variant"
         /** PLE-653: with the preview, the rooms' MSAA sample count (1 turns MSAA off) instead of PLE-615's 4x. */
         const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
@@ -361,5 +366,6 @@ internal object VrCinemaNative {
     external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
         heightOffset: Float, glow: Float, roomLight: Float)
+    external fun debugSetSkyVariant(handle: Long, variant: Int)
     external fun destroy(handle: Long)
 }

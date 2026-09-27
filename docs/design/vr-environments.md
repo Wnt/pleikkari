@@ -329,6 +329,37 @@ warnings, and against 1.50.0's headers too (PLE-623).
   4x MSAA is about 4 to 5.5 ms of the 7 to 8 ms room cost, well over half; without it a
   room costs about 3 ms over the plain screen's 0.55 ms and drops almost no frames.
   Logs under `build/ple-653/go/` of the workspace.
+- Sky variants inside VrApi (PLE-666): with the preview, `--ei sky_variant N` draws
+  PLE-650's debug sky in the real cinema (0 shipped dome, 3 fullscreen triangle,
+  4 no dome, 5 constant-colour dome, 7 PLE-665's per-vertex gradient). On the Go
+  (1KWPH802EW8203, tip d23b066a plus this change, 4x MSAA, 72 Hz, 2026-09-27), two
+  interleaved rounds of 36 s runs per cell, median `App=` after 3 warm-up seconds,
+  split by the GPU clock the runtime picked (315 or 401 MHz, per run, on its own):
+
+  | Run | `App=` @315 MHz (s) | `App=` @401 MHz (s) | Stale/s mean, max | `Environment frame: gpu` |
+  | --- | ---: | ---: | ---: | ---: |
+  | void, dome (0) | 7.55 ms (2) | 7.60 ms (62) | 2.5, 14 | 2.37 ms |
+  | void, fullscreen (3) | 9.46 ms (32) | 7.60 ms (32) | 0.9, 6 | 2.58 ms |
+  | void, no dome (4) | 7.47 ms (64) | - | 0.6, 5 | 1.18 ms |
+  | void, constant (5) | 8.58 ms (23) | 7.02 ms (41) | 9.4, 24 | 1.92 ms |
+  | void, vertex gradient (7) | 9.11 ms (33) | 7.38 ms (31) | 1.4, 15 | 2.44 ms |
+  | terrace, dome (0) | 9.48 ms (32) | 7.55 ms (32) | 1.4, 14 | 2.63 ms |
+  | terrace, fullscreen (3) | - | 7.51 ms (63) | 2.5, 15 | 2.30 ms |
+  | terrace, no dome (4) | 9.11 ms (3) | 7.50 ms (61) | 2.8, 17 | 2.28 ms |
+  | terrace, constant (5) | - | 7.68 ms (64) | 3.7, 13 | 2.48 ms |
+  | terrace, vertex gradient (7) | 7.52 ms (1) | 7.54 ms (62) | 2.9, 18 | 2.34 ms |
+  | plain | 0.54 to 0.57 ms | | 0 | (not logged) |
+
+  The terrace is clean: at 401 MHz every variant, no dome included, reads 7.50 to
+  7.68 ms, so there the sky is worth about 0.1 ms of the ~7 ms room cost. The void is
+  confounded by the clock: its no-dome runs both landed at 315 MHz and read 7.47 ms,
+  against 8.6 to 9.5 ms for the dome variants at 315 MHz, which would put the void's
+  sky at 1 to 2 ms, but its shipped dome at 401 MHz reads the same 7.6 ms. A void
+  re-run pinned to one GPU clock would settle it. PLE-650's preview split (2.4 / 1.3 ms
+  of sky) does not carry over to VrApi as-is; MSAA (PLE-653) stays the bigger lever.
+  `Environment frame:` does see the dome (void 2.37 -> 1.18 ms without it) but, as
+  above, under-reports the frame. Logs, `run.sh` and `sum.py` under `build/ple-666/` of
+  the workspace.
 - Device, live PS5 stream (PLE-654, `docs/verification/PLE-654.md`): the cinema room
   with a live 1080p60 picture measured VrApi `App=` 8.02 ms (median) and 3.0 stale
   frames/s (max 26), as in PLE-623's preview. `Environment frame: gpu` still read 2.40
@@ -344,6 +375,9 @@ warnings, and against 1.50.0's headers too (PLE-623).
   about a third fill and two thirds gradient maths, and none of it geometry (§8), so a
   cheaper sky shader (the gradient per vertex) is the next step, not a cheaper mesh
   (this supersedes PLE-630's reading that the shader is not the lever).
+  Inside the VrApi cinema the terrace's sky variants, no dome included, are within
+  about 0.1 ms of `App=` at a fixed clock; the void is unsettled by the runtime's clock
+  choice (PLE-666, §8).
   Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
   GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
   (§8, PLE-623, and on a live stream PLE-654); 4x MSAA is 4 to 5.5 ms of that (§8,

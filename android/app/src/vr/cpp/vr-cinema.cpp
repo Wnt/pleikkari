@@ -120,6 +120,7 @@ struct Cinema {
     long long environmentStatsFrame = 0;
     // PLE-652: GPU clock level while a room is drawn; 2 (the PLE-623 baseline) unless the A/B setting raises it.
     int roomGpuLevel = 2;
+    int skyVariant = PLEIKKARI_VR_SKY_DOME; // PLE-666: debug sky draw, kept across environment rebuilds
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
@@ -283,6 +284,7 @@ struct Cinema {
         if(environment) pleikkari_vr_environment_set_config(environment, &config);
         else environment = pleikkari_vr_environment_create(&config, GL_TEXTURE_EXTERNAL_OES);
         if(!environment) { LOGE("Environment %s failed to build; keeping the plain screen", pleikkari_vr_environment_name(config.environment)); return; }
+        if(skyVariant != PLEIKKARI_VR_SKY_DOME) pleikkari_vr_environment_debug_set_sky_variant(environment, skyVariant);
         LOGI("Environment %s: screen %.2f m away, %.2f m wide, curve radius %.2f m, %.2f m above eyes, glow %.2f, room light %.2f",
             pleikkari_vr_environment_name(config.environment), config.screen_distance_m, config.screen_width_m,
             config.screen_curve_radius_m, config.screen_height_offset_m, config.glow, config.room_light);
@@ -467,5 +469,9 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setEnvironment)(JNIEnv *, jobject, 
 // PLE-652: call before setEnvironment; it applies on the next environment change.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(setRoomGpuLevel)(JNIEnv *, jobject, jlong h, jint level) {
     cinema(h)->roomGpuLevel = std::clamp(static_cast<int>(level), 0, 4);
+}
+// PLE-666: debug preview only; call before setEnvironment (PLE-650 variants, 0 is shipped).
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetSkyVariant)(JNIEnv *, jobject, jlong h, jint variant) {
+    cinema(h)->skyVariant = variant;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(destroy)(JNIEnv *, jobject, jlong h) { delete cinema(h); }

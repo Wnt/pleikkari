@@ -91,7 +91,8 @@ A debug build runs the real VrApi cinema without a PS5 or the setting (PLE-623):
 moving 1280x720 test picture into the decoder's `SurfaceTexture` at 60 fps, so the
 picture, the environment's glow map and `Environment frame:` run as in a stream.
 `--es environment plain|void|cinema|terrace` overrides the stored environment for that
-run, and `--ei environment_msaa 1` turns the rooms' 4x MSAA off (PLE-653); no
+run, `--ei environment_msaa 1` turns the rooms' 4x MSAA off (PLE-653), and
+`--ei sky_variant N` draws a PLE-650 debug sky in the void or terrace (PLE-666); no
 preference is written. The activity is not exported, so start it as the app's
 own uid, with `--user 0` (`am`'s default `current` user needs a permission the app lacks):
 
