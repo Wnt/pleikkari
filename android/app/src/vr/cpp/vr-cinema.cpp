@@ -26,7 +26,6 @@ namespace {
 constexpr int Segments = 64;
 constexpr float Radius = 3.0f;
 constexpr float Arc = 1.4f; // 80 degrees wide, 3 m away; arc length preserves 16:9.
-constexpr GLsizei EnvironmentSamples = 4; // PLE-615: the environments' thin edges assume Skybox's 4x.
 struct Eye {
     ovrTextureSwapChain *chain = nullptr;
     std::vector<GLuint> fbos;
@@ -143,7 +142,8 @@ struct Cinema {
         if(java.ActivityObject) java.Env->DeleteGlobalRef(java.ActivityObject);
     }
 
-    bool init(JNIEnv *env, jobject activity, jobject surface, float refreshHz) {
+    // environmentSamples: PLE-615's 4x unless the debug preview asks otherwise (PLE-653).
+    bool init(JNIEnv *env, jobject activity, jobject surface, float refreshHz, GLsizei environmentSamples) {
         env->GetJavaVM(&java.Vm);
         java.Env = env;
         java.ActivityObject = env->NewGlobalRef(activity);
@@ -193,7 +193,7 @@ struct Cinema {
         const char *extensions = reinterpret_cast<const char *>(glGetString(GL_EXTENSIONS));
         GLint maxSamples = 0;
         if(extensions && strstr(extensions, "GL_EXT_multisampled_render_to_texture")) glGetIntegerv(GL_MAX_SAMPLES_EXT, &maxSamples);
-        const GLsizei samples = std::min<GLsizei>(EnvironmentSamples, maxSamples);
+        const GLsizei samples = std::min<GLsizei>(environmentSamples, maxSamples);
         if(!attachMultisample || samples < 2) { attachMultisample = nullptr; LOGI("No multisampled render-to-texture; environments render without MSAA"); }
         for(auto &eye : eyes) {
             eye.chain = vrapi_CreateTextureSwapChain3(VRAPI_TEXTURE_TYPE_2D, GL_RGBA8, width, height, 1, 3);
@@ -414,9 +414,9 @@ struct Cinema {
 Cinema *cinema(jlong handle) { return reinterpret_cast<Cinema *>(handle); }
 } // namespace
 
-extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobject activity, jobject surface, jfloat refreshHz) {
+extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobject activity, jobject surface, jfloat refreshHz, jint environmentSamples) {
     std::unique_ptr<Cinema> state(new Cinema());
-    if(!state->init(env, activity, surface, refreshHz)) { LOGE("Cinema initialization failed; EGL error 0x%x", eglGetError()); return 0; }
+    if(!state->init(env, activity, surface, refreshHz, environmentSamples)) { LOGE("Cinema initialization failed; EGL error 0x%x", eglGetError()); return 0; }
     return reinterpret_cast<jlong>(state.release());
 }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->video; }
