@@ -142,7 +142,7 @@ class MainActivity : AppCompatActivity()
 		{
 			pendingAutoPlay.request(intent.getStringExtra(EXTRA_AUTO_CONNECT_HOST))
 			pendingAutoPlay.address?.let {
-				Log.i(AUTO_CONNECT_TAG, "auto_connect_host $it: streaming as soon as it is listed as a registered console")
+				Log.i(AUTO_CONNECT_TAG, "auto_connect_host $it: streaming as soon as it is listed as a registered LAN or PSN console")
 			}
 		}
 		setSupportActionBar(binding.toolbar)
@@ -198,6 +198,7 @@ class MainActivity : AppCompatActivity()
 		viewModel.psnConsoles.observe(this) {
 			psnConsoles = it
 			updateConsoleList()
+			maybePlayPsnConsole(it)
 		}
 		viewModel.psnListState.observe(this) {
 			updatePsnListState(it)
@@ -647,6 +648,13 @@ class MainActivity : AppCompatActivity()
 		val play = pendingAutoPlay.take(hosts) ?: return
 		Log.i(AUTO_CONNECT_TAG, "${play.host.host} is listed as registered console ${play.host.name}: connecting")
 		playLocalConsole(play.host, justLinked = play.justLinked)
+	}
+
+	private fun maybePlayPsnConsole(consoles: List<PsnConsole>)
+	{
+		val play = pendingAutoPlay.takePsn(consoles) ?: return
+		Log.i(AUTO_CONNECT_TAG, "${play.console.device.name} is listed as a registered PSN console: connecting")
+		connectPsnConsole(play.console, justLinked = play.justLinked)
 	}
 
 	private fun wakeupHost(host: DisplayHost)

@@ -9,6 +9,7 @@ import fi.madekivi.pleikkari.common.ManualHost
 import fi.madekivi.pleikkari.common.RegisteredHost
 import fi.madekivi.pleikkari.lib.DiscoveryHost
 import fi.madekivi.pleikkari.lib.Target
+import fi.madekivi.pleikkari.remote.PsnDevice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -123,5 +124,24 @@ class PendingAutoPlayTest
 			// A discovered host with no address has host "", which a blank request must not match.
 			assertNull(pending.take(listOf(DiscoveredDisplayHost(ps5, discovered().copy(hostAddr = null)))))
 		}
+	}
+
+	@Test
+	fun aPsnListedConsoleIsMatchedByNameOrDuid()
+	{
+		val pending = PendingAutoPlay()
+		val device = PsnDevice("DUID123", "PS5-466")
+		pending.request("ps5-466")
+		// Unregistered on this client: not streamable, keep waiting.
+		assertNull(pending.takePsn(listOf(PsnConsole(device, null))))
+		assertNull(pending.takePsn(listOf(PsnConsole(PsnDevice("X", "Other"), ps5))))
+		val play = pending.takePsn(listOf(PsnConsole(device, ps5)))!!
+		assertEquals(device, play.console.device)
+		assertNull(pending.address)
+		pending.request("duid123")
+		assertEquals(device, pending.takePsn(listOf(PsnConsole(device, ps5)))!!.console.device)
+		// An IP address never matches a PSN console.
+		pending.request(ADDRESS)
+		assertNull(pending.takePsn(listOf(PsnConsole(device, ps5))))
 	}
 }
