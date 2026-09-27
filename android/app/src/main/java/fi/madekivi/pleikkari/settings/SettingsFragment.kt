@@ -290,6 +290,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				summary = getString(R.string.go_vr_room_high_gpu_summary)
 				isChecked = preferences.goVrRoomHighGpu
 			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrFrameListenerThreadKey
+				title = getString(R.string.go_vr_frame_listener_thread_title)
+				summary = getString(R.string.go_vr_frame_listener_thread_summary)
+				isChecked = preferences.goVrFrameListenerThread
+			})
 		}
 
 		preferenceScreen.findPreference<Preference>(preferences.decoderQcomVtLowLatencyKey)?.isVisible =

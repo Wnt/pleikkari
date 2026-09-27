@@ -285,6 +285,12 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrRoomHighGpuKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrRoomHighGpuKey, value).apply() }
 
+	// PLE-673: A/B the cinema's frame-available listener on its own thread instead of the main looper.
+	val goVrFrameListenerThreadKey get() = "stream_go_vr_frame_listener_thread"
+	var goVrFrameListenerThread
+		get() = sharedPreferences.getBoolean(goVrFrameListenerThreadKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrFrameListenerThreadKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)
