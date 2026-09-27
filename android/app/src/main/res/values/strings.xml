@@ -430,6 +430,12 @@
     <string name="go_vr_ui_match_60hz">Match 60 Hz</string>
     <string name="go_vr_ui_match_60hz_detail">From the next stream</string>
     <string name="go_vr_ui_stats">Stats overlay</string>
+    <string name="go_vr_ui_settings">Settings</string>
+    <string name="go_vr_ui_back">Back</string>
+    <string name="go_vr_ui_oculus_tv">Oculus TV screen</string>
+    <string name="go_vr_ui_stream">Stream</string>
+    <string name="go_vr_ui_bitrate">Bitrate</string>
+    <string name="go_vr_ui_bitrate_auto">Auto (%s)</string>
     <string name="go_vr_menu_help_exit">Click left: Resume · centre: Recentre · right: Exit</string>
     <!-- PLE-690: the Go Library's VR launch, drawn in the cinema; keep lines under about 60 characters. -->
     <string name="go_vr_entry_loading">Pleikkari\n\nLooking for your PlayStation…</string>

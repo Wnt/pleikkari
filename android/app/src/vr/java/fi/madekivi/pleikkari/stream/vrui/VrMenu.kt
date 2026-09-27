@@ -15,6 +15,8 @@ interface VrMenuModel
 	fun resume()
 	fun recentre()
 	fun leave()
+	/** PLE-732: swap the panel to the Go Settings sheet. */
+	fun openSettings()
 	var room: VrEnvironmentKind
 	var screenDistanceCm: Int
 	var screenWidthCm: Int
@@ -29,6 +31,7 @@ data class VrMenuText(
 	val recentre: String,
 	val disconnect: String,
 	val exit: String,
+	val settings: String,
 	val room: String,
 	val rooms: Map<VrEnvironmentKind, String>,
 	val distance: String,
@@ -62,11 +65,29 @@ object VrMenu
 		val actions = listOf(
 			VrButton(row(top), text.resume, ButtonStyle.PRIMARY) { model.resume() },
 			VrButton(row(top + rowH + 2 * gap), text.recentre) { model.recentre() },
+			VrButton(row(top + 2 * (rowH + 2 * gap)), text.settings) { model.openSettings() },
 			VrButton(Box(leftColumn.left, bottom - rowH, leftColumn.right, bottom),
 				if(model.leaveIsExit) text.exit else text.disconnect, ButtonStyle.DESTRUCTIVE) { model.leave() }
 		)
 
 		val items = mutableListOf<Widget>()
+		screenRows(model, text, right, top, items)
+
+		val screen = VrScreen(WIDTH, HEIGHT, text.title, actions, listOf(VrList(right, items)))
+		refresh(screen, model)
+		return screen
+	}
+
+	/**
+	 * Room, screen distance and size, Match 60 Hz and the stats overlay down [right] from [top]:
+	 * the in-stream menu's settings column, and the first section of the Settings sheet (PLE-732).
+	 * Returns the y below the last row.
+	 */
+	fun screenRows(model: VrMenuModel, text: VrMenuText, right: Box, top: Float, items: MutableList<Widget>): Float
+	{
+		val rowH = VrUi.ROW_HEIGHT
+		val gap = VrUi.ROW_GAP
+		fun row(y: Float) = Box(right.left, y, right.right, y + rowH)
 		var y = top
 		val labelHeight = VrUi.deg(1.9f)
 		items += VrLabel(Box(right.left, y, right.right, y + labelHeight), text.room, TextRole.SECONDARY)
@@ -85,24 +106,21 @@ object VrMenu
 		}
 		y += gap
 		val roomsOnly = { model.room == VrEnvironmentKind.PLAIN }
-		val distance = VrSlider(row(y, right), text.distance, VrEnvironmentConfig.SCREEN_DISTANCE_CM_MIN,
+		val distance = VrSlider(row(y), text.distance, VrEnvironmentConfig.SCREEN_DISTANCE_CM_MIN,
 			VrEnvironmentConfig.SCREEN_DISTANCE_CM_MAX, DISTANCE_STEP_CM, { model.screenDistanceCm },
 			{ if(roomsOnly()) text.roomsOnly else metres(it) }) { model.screenDistanceCm = it }
 		items += distance
 		y += rowH + gap
-		val width = VrSlider(row(y, right), text.size, VrEnvironmentConfig.SCREEN_WIDTH_CM_MIN,
+		val width = VrSlider(row(y), text.size, VrEnvironmentConfig.SCREEN_WIDTH_CM_MIN,
 			VrEnvironmentConfig.SCREEN_WIDTH_CM_MAX, WIDTH_STEP_CM, { model.screenWidthCm },
 			{ if(roomsOnly()) text.roomsOnly else metres(it) }) { model.screenWidthCm = it }
 		items += width
 		y += rowH + gap
-		items += VrToggle(row(y, right), text.match60Hz, { model.match60Hz }) { model.match60Hz = it }
+		items += VrToggle(row(y), text.match60Hz, { model.match60Hz }) { model.match60Hz = it }
 			.also { it.detail = text.match60HzDetail }
 		y += rowH + gap
-		items += VrToggle(row(y, right), text.statsOverlay, { model.statsOverlay }) { model.statsOverlay = it }
-
-		val screen = VrScreen(WIDTH, HEIGHT, text.title, actions, listOf(VrList(right, items)))
-		refresh(screen, model)
-		return screen
+		items += VrToggle(row(y), text.statsOverlay, { model.statsOverlay }) { model.statsOverlay = it }
+		return y + rowH
 	}
 
 	/** Enables what the current room allows: screen distance and size apply to the rooms, not the plain screen. */

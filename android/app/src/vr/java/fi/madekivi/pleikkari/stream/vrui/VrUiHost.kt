@@ -25,8 +25,9 @@ import kotlin.math.abs
  */
 class VrUiHost(
 	context: Context,
-	private val buildMenu: () -> VrScreen,
-	private val refreshMenu: (VrScreen) -> Unit,
+	/** PLE-732: the menu panel shows one [VrPage] at a time. */
+	private val buildMenu: (VrPage) -> VrScreen,
+	private val refreshMenu: (VrPage, VrScreen) -> Unit,
 	/** Main thread: the menu opened or closed (the activity neutralises the pad's console input). */
 	private val menuChanged: (Boolean) -> Unit,
 	/** Share and Options, as the console mapping has them: held together they open the menu. */
@@ -42,12 +43,13 @@ class VrUiHost(
 	private val painter = VrUiPainter(context)
 	private val surfaces = arrayOfNulls<Surface>(2)
 	private var menu: VrScreen? = null
+	private var page = VrPage.MENU
 	/** PLE-731: a screen shown on the menu panel in place of the menu (the PIN pad) until [closeModal]. */
 	private class Modal(val screen: VrScreen, val refresh: () -> Unit, val back: () -> Unit)
 	private var modal: Modal? = null
 	/** What the menu panel shows: the modal screen when there is one. */
 	private val current get() = modal?.screen ?: menu
-	private fun refreshCurrent(screen: VrScreen) = modal?.refresh?.invoke() ?: refreshMenu(screen)
+	private fun refreshCurrent(screen: VrScreen) = modal?.refresh?.invoke() ?: refreshMenu(page, screen)
 	private val pointer = VrPointer()
 	private val focus = VrFocus()
 	private val stick = VrStickRepeat()
@@ -74,6 +76,8 @@ class VrUiHost(
 	private var redraws = 0
 	private var redrawNs = 0L
 	private var redrawMaxNs = 0L
+	/** Of [redrawNs], the part spent in unlockCanvasAndPost (HWUI's render and queue). */
+	private var postNs = 0L
 	private var windowStartNs = System.nanoTime()
 
 	// ---- GoCinema thread ----
@@ -84,8 +88,8 @@ class VrUiHost(
 		surfaces[STATS] = statsSurface
 		Log.i(TAG, "Panels attached: menu ${menuSurface != null}, stats ${statsSurface != null}")
 		// Drawn once while closed, so the layer's first frame on opening already has its pixels.
-		val screen = menu ?: buildMenu().also { menu = it }
-		refreshMenu(screen)
+		val screen = menu ?: buildMenu(page).also { menu = it }
+		refreshMenu(page, screen)
 		modal?.refresh?.invoke()
 		redrawMenu()
 		if(statsOpen)
@@ -132,16 +136,20 @@ class VrUiHost(
 		handler.post { pointerSample(sample) }
 	}
 
-	/** The remote's Back: opens the menu, or closes it (the only level so far); on a modal screen, its own Back. */
+	/** The remote's Back: opens the menu; on a modal screen, its own Back; returns from Settings to the menu, or closes it. */
 	fun back() = handler.post {
 		val m = modal
 		when
 		{
 			m != null -> m.back()
-			menuOpen -> close("back")
-			else -> open("back")
+			!menuOpen -> open("back")
+			page != VrPage.MENU -> switchPage(VrPage.MENU)
+			else -> close("back")
 		}
 	}
+
+	/** PLE-732: swaps the menu panel to [target] (Settings and back), keeping it open where it is. */
+	fun showPage(target: VrPage) = handler.post { switchPage(target) }
 
 	/**
 	 * PLE-731: shows [screen] on the menu panel, opened at the gaze, until [closeModal]; Back and
@@ -186,7 +194,9 @@ class VrUiHost(
 		{
 			if(code == KeyEvent.KEYCODE_MENU)
 			{
-				if(down && event.repeatCount == 0)
+				// On the key's release, as the menu closes on it: opening on the press let the
+				// same key's release close the menu again at once.
+				if(!down)
 					handler.post { open("pad Menu key") }
 				return true
 			}
@@ -262,6 +272,12 @@ class VrUiHost(
 			return
 		menuOpen = false
 		interactive = false
+		// The next open starts on the in-stream menu again.
+		if(page != VrPage.MENU)
+		{
+			page = VrPage.MENU
+			menu = null
+		}
 		pointer.reset(lastSelect)
 		focus.reset()
 		chordDown.clear()
@@ -279,12 +295,25 @@ class VrUiHost(
 
 	// ---- GoVrUi thread ----
 
+	private fun switchPage(target: VrPage)
+	{
+		if(page == target)
+			return
+		page = target
+		val screen = buildMenu(page).also { menu = it }
+		refreshMenu(page, screen)
+		pointer.reset(lastSelect)
+		focus.reset()
+		Log.i(TAG, "Menu page $page")
+		redrawMenu()
+	}
+
 	private fun open(reason: String)
 	{
 		if(menuOpen)
 			return
-		val screen = menu ?: buildMenu().also { menu = it }
-		refreshMenu(screen)
+		val screen = menu ?: buildMenu(page).also { menu = it }
+		refreshMenu(page, screen)
 		modal?.refresh?.invoke()
 		pointer.reset(lastSelect)
 		focus.reset()
@@ -368,13 +397,17 @@ class VrUiHost(
 					}
 				}
 			KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU ->
-				if(!down) modal?.back?.invoke() ?: closeNow("pad")
+				if(!down)
+				{
+					val m = modal
+					if(m != null) m.back() else if(page != VrPage.MENU) switchPage(VrPage.MENU) else closeNow("pad")
+				}
 			KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 ->
 				if(down)
 				{
 					val list = focus.focused?.list ?: screen.lists.firstOrNull() ?: return
-					val page = list.viewport.height * if(code == KeyEvent.KEYCODE_BUTTON_L1) -1 else 1
-					if(list.scrollBy(page))
+					val pageHeight = list.viewport.height * if(code == KeyEvent.KEYCODE_BUTTON_L1) -1 else 1
+					if(list.scrollBy(pageHeight))
 						redrawMenu()
 				}
 		}
@@ -471,6 +504,7 @@ class VrUiHost(
 		if(surface == null || !surface.isValid)
 			return
 		val start = System.nanoTime()
+		var posting = 0L
 		try
 		{
 			val canvas = surface.lockHardwareCanvas()
@@ -480,6 +514,7 @@ class VrUiHost(
 			}
 			finally
 			{
+				posting = System.nanoTime()
 				surface.unlockCanvasAndPost(canvas)
 			}
 		}
@@ -489,17 +524,20 @@ class VrUiHost(
 			Log.w(TAG, "Panel redraw failed: $e")
 			return
 		}
-		val took = System.nanoTime() - start
+		val end = System.nanoTime()
+		val took = end - start
+		postNs += end - posting
 		redraws++
 		redrawNs += took
 		redrawMaxNs = maxOf(redrawMaxNs, took)
 		val now = System.nanoTime()
 		if(now - windowStartNs >= 1_000_000_000L)
 		{
-			Log.i(TAG, String.format(Locale.US, "Redraws: %d in %.1f s, mean %.2f ms, max %.2f ms",
-				redraws, (now - windowStartNs) / 1e9, redrawNs / 1e6 / redraws, redrawMaxNs / 1e6))
+			Log.i(TAG, String.format(Locale.US, "Redraws: %d in %.1f s, mean %.2f ms (post %.2f), max %.2f ms",
+				redraws, (now - windowStartNs) / 1e9, redrawNs / 1e6 / redraws, postNs / 1e6 / redraws, redrawMaxNs / 1e6))
 			redraws = 0
 			redrawNs = 0L
+			postNs = 0L
 			redrawMaxNs = 0L
 			windowStartNs = now
 		}
@@ -539,3 +577,6 @@ class VrUiHost(
 		private const val DEBUG_POINTER_POLL_MS = 250L
 	}
 }
+
+/** PLE-732: what the menu panel shows. */
+enum class VrPage { MENU, SETTINGS }
