@@ -102,4 +102,19 @@ class HomeConsoleTest
 
 		assertEquals(2, result.size)
 	}
+
+	private fun unlinkedDiscovered(state: DiscoveryHost.State) = DiscoveredDisplayHost(
+		null,
+		DiscoveryHost(state, 0U, "192.168.1.9", null, "00030010", "Den", null, null, null, null)
+	)
+
+	@Test fun unlinkedConsoleInRestModeOffersWakeAndLink()
+	{
+		val resting = mergeHomeConsoles(listOf(unlinkedDiscovered(DiscoveryHost.State.STANDBY)), emptyList()).single()
+		val awake = mergeHomeConsoles(listOf(unlinkedDiscovered(DiscoveryHost.State.READY)), emptyList()).single()
+
+		assertEquals(HomeConsoleStatus.REGISTRATION_REQUIRED, resting.status)
+		assertEquals(true, resting.isUnlinkedResting)
+		assertEquals(false, awake.isUnlinkedResting)
+	}
 }

@@ -367,6 +367,7 @@
     <!-- Button on an unlinked console: tapping it signs in if needed and
          registers the console with no PIN, then streams. -->
     <string name="action_link">Link</string>
+    <string name="action_wake_and_link">Wake and link</string>
     <!-- Button on an already-linked console: tapping it streams directly.
          Reuses the existing @string/action_connect ("Connect") from
          strings.xml rather than duplicating it here. -->
