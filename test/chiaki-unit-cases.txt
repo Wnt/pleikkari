@@ -115,6 +115,7 @@
 /chiaki/vr_frame_pacing/hold_and_period
 /chiaki/vr_frame_pacing/drain
 /chiaki/vr_frame_pacing/experiments
+/chiaki/vr_frame_pacing/latch_on_signal
 /chiaki/vr_ui_panel/init
 /chiaki/vr_ui_panel/radius
 /chiaki/vr_ui_panel/centre_ray
