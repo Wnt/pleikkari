@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 // PLE-722: see vr-ui-layers.h.
 #include "vr-ui-layers.h"
+#include "vr-ui-shaders.h"
 
 #include <android/log.h>
 #include <android/native_window_jni.h>
@@ -22,56 +23,6 @@ constexpr float LaserWidthM = 0.004f, LaserAlpha = 0.6f;
 constexpr float LaserFraction = 0.25f, LaserNoHitM = 0.4f, LaserStartM = 0.04f;
 // The debug pointer has no remote; its laser starts where a right hand would hold one.
 constexpr PleikkariVrVec3 DebugHand = {0.15f, -0.35f, -0.25f};
-
-const char *VertexShader = R"(#version 300 es
-layout(location=0) in vec2 corner;
-uniform mat4 mvp;
-uniform int mode;
-uniform vec3 a;
-uniform vec3 b;
-uniform vec3 c;
-out vec2 uv;
-void main() {
-    vec3 p;
-    if(mode == 0) {
-        // Footprint: a = (arc, height over radius, radius), in the panel's own frame.
-        float theta = (corner.x - 0.5) * a.x;
-        p = vec3(a.z * sin(theta), (0.5 - corner.y) * a.y * a.z, -a.z * cos(theta));
-    } else if(mode == 1) {
-        p = mix(a, b, corner.x) + c * (corner.y - 0.5); // laser: start, end, width across
-    } else {
-        p = a + b * (corner.x * 2.0 - 1.0) + c * (corner.y * 2.0 - 1.0); // reticle: centre, right, up
-    }
-    uv = corner;
-    gl_Position = mvp * vec4(p, 1.0);
-})";
-
-const char *FragmentShader = R"(#version 300 es
-precision mediump float;
-uniform int mode;
-uniform vec4 color;
-uniform vec4 rect;   // footprint: texture size in texels, border inset, corner radius
-uniform float opacity;
-in vec2 uv;
-out vec4 result;
-void main() {
-    if(mode == 0) {
-        // The same rounded rectangle the toolkit fills, as a signed distance in texels.
-        vec2 p = uv * rect.xy - rect.xy * 0.5;
-        vec2 q = abs(p) - (rect.xy * 0.5 - vec2(rect.z + rect.w));
-        float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rect.w;
-        result = vec4(0.0, 0.0, 0.0, clamp(0.5 - d, 0.0, 1.0) * opacity);
-    } else if(mode == 1) {
-        float along = 1.0 - smoothstep(0.1, 0.9, uv.x);
-        float across = 1.0 - abs(uv.y * 2.0 - 1.0);
-        result = vec4(color.rgb, color.a * along * smoothstep(0.0, 0.5, across));
-    } else {
-        float r = length(uv * 2.0 - 1.0);
-        float disc = 1.0 - smoothstep(0.58, 0.70, r);
-        float outline = 1.0 - smoothstep(0.86, 1.0, r);
-        result = vec4(mix(vec3(0.07, 0.07, 0.09), color.rgb, disc), color.a * outline);
-    }
-})";
 
 GLuint compile(GLenum type, const char *source) {
     GLuint id = glCreateShader(type);
@@ -114,13 +65,17 @@ PleikkariVrQuat quat(const ovrQuatf &q) { return {q.x, q.y, q.z, q.w}; }
 } // namespace
 
 bool VrUiLayers::init() {
-    GLuint v = compile(GL_VERTEX_SHADER, VertexShader), f = compile(GL_FRAGMENT_SHADER, FragmentShader);
+    GLuint v = compile(GL_VERTEX_SHADER, VrUiVertexShader), f = compile(GL_FRAGMENT_SHADER, VrUiFragmentShader);
     if(!v || !f) { if(v) glDeleteShader(v); if(f) glDeleteShader(f); return false; }
     program = glCreateProgram();
     glAttachShader(program, v); glAttachShader(program, f); glLinkProgram(program);
     glDeleteShader(v); glDeleteShader(f);
     GLint ok = 0; glGetProgramiv(program, GL_LINK_STATUS, &ok);
-    if(!ok) { LOGE("UI program link failed"); return false; }
+    if(!ok) {
+        char log[1024]; glGetProgramInfoLog(program, sizeof(log), nullptr, log);
+        LOGE("UI program link failed: %s", log);
+        return false;
+    }
     mvpLocation = glGetUniformLocation(program, "mvp");
     modeLocation = glGetUniformLocation(program, "mode");
     aLocation = glGetUniformLocation(program, "a");
