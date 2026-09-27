@@ -71,10 +71,13 @@ ATRACE_KB=${ATRACE_KB:-16384}
 PADS=${PADS:-}
 STEP_WAIT=${STEP_WAIT:-1.5}
 BASELINE_DROP=${BASELINE_DROP:-stream_go_vr_match_60hz stream_go_vr_room_high_gpu stream_go_vr_frame_listener_thread stream_decoder_qcom_vt_low_latency}
-# PLE-802: the A/B arm, space-separated boolean prefs set after the baseline drop, for example
-# ARM_PREFS="stream_go_vr_input_thread=true". Empty (the default) runs the baseline.
-ARM_PREFS=${ARM_PREFS:-}
+# PLE-802: for example ARM_PREFS="stream_go_vr_input_thread=true".
 DEADLINE=${DEADLINE:-$(( $(date +%s) + 570 ))}
+# PLE-815: an A/B arm on top of the baseline. ARM_PREFS="key=value ..." (true/false -> boolean, anything
+# else -> string) replaces or adds those prefs; ARM_PROPS="prop=value ..." is set before the launch and
+# cleared with the other props. Both empty (the default) is the baseline.
+ARM_PREFS=${ARM_PREFS:-}
+ARM_PROPS=${ARM_PROPS:-}
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
 a() { echo "$(date -u +%T) adb $*" >>"$OUT/adb.txt"; timeout 120 "$A" -s "$G" "$@"; }
@@ -103,6 +106,8 @@ write_prefs() { # <file>
 cleanup_props() {
 	a shell setprop debug.pleikkari.vr_full_pose 0
 	a shell setprop debug.pleikkari.go_entry_choose 0
+	local kv
+	for kv in $ARM_PROPS; do a shell setprop "${kv%%=*}" "''"; done
 	a shell setprop debug.pleikkari.probe_buttons "''"
 }
 
@@ -117,15 +122,17 @@ for key in drop.split():
         print("baseline: dropped %s (was: %s)" % (key, found.group(0).strip()))
     text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % re.escape(key), "", text)
     text = re.sub(r'\s*<string name="%s">[^<]*</string>' % re.escape(key), "", text)
-arm_prefs = [tuple(pair.split("=", 1)) for pair in arm.split()]
-for pair in arm_prefs:
-    if len(pair) != 2 or pair[1] not in ("true", "false"):
-        sys.exit("ARM_PREFS: %s is not key=true or key=false" % "=".join(pair))
-for key, value in [(k, "true") for k in ("stream_feedback_stats_log", "stream_go_vr_enabled", "stream_go_vr_latency_probe")] + arm_prefs:
+for key in ("stream_feedback_stats_log", "stream_go_vr_enabled", "stream_go_vr_latency_probe"):
+    text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % key, "", text)
+    text = text.replace("</map>", '    <boolean name="%s" value="true" />\n</map>' % key)
+for item in arm.split():
+    key, value = item.split("=", 1)
     text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % re.escape(key), "", text)
-    text = text.replace("</map>", '    <boolean name="%s" value="%s" />\n</map>' % (key, value))
-    if (key, value) in arm_prefs:
-        print("arm: %s=%s" % (key, value))
+    text = re.sub(r'\s*<string name="%s">[^<]*</string>' % re.escape(key), "", text)
+    entry = ('<boolean name="%s" value="%s" />' % (key, value) if value in ("true", "false")
+             else '<string name="%s">%s</string>' % (key, value))
+    text = text.replace("</map>", "    %s\n</map>" % entry)
+    print("arm: %s" % entry)
 open(dst, "w").write(text)
 # The stream's own settings, for the summary's setup section.
 for line in text.splitlines():
@@ -148,6 +155,8 @@ step_launch() {
 	entry=$(a shell "cmd package resolve-activity -a android.intent.action.MAIN -c android.intent.category.INFO $PKG" 2>&1 | tr -d '\r' | grep -o 'name=fi\.madekivi\.pleikkari\.stream\.GoVrLibraryEntry' | head -1 | sed 's/^name=fi\.madekivi\.pleikkari//')
 	[ -n "$entry" ] || { say "abort: MAIN/INFO does not resolve to the Library entry (.stream.GoVrLibraryEntry)"; return 5; }
 	a shell setprop debug.pleikkari.vr_full_pose 1
+	local kv
+	for kv in $ARM_PROPS; do a shell setprop "${kv%%=*}" "${kv#*=}"; say "arm prop: $kv"; done
 	a shell setprop debug.pleikkari.probe_buttons $STIM_MASK # read when the cinema starts the probe
 	"$ROOT/scripts/dev/go-keepawake.sh" wake 2>&1 | tail -1 | tee -a "$LOG"
 	mark_since
