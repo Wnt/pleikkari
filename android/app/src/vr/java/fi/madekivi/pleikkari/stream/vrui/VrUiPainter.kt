@@ -42,6 +42,17 @@ class VrUiPainter(context: Context)
 	private val secondaryPaint = textPaint(VrUi.deg(1.05f), Typeface.DEFAULT)
 	private val rect = RectF()
 
+	/** PLE-763: a laid-out string, so a redraw of unchanged text skips ellipsize and measureText. */
+	private class Shown(val text: String, val width: Float)
+	private data class TextKey(val value: String, val paint: TextPaint, val width: Float)
+	/** Access-ordered, so the eldest entry is the least recently drawn. */
+	private val shownCache = object : LinkedHashMap<TextKey, Shown>(64, 0.75f, true)
+	{
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextKey, Shown>?) = size > TEXT_CACHE_SIZE
+	}
+	/** Per text paint; their size and face never change after construction. */
+	private val baselineOffset = HashMap<TextPaint, Float>()
+
 	private fun textPaint(size: Float, face: Typeface) = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
 		textSize = size
 		typeface = face
@@ -254,10 +265,19 @@ class VrUiPainter(context: Context)
 		width: Float, height: Float, center: Boolean)
 	{
 		paint.color = color
-		val shown = TextUtils.ellipsize(value, paint, width, TextUtils.TruncateAt.END).toString()
-		val fm = paint.fontMetrics
-		val baseline = top + height / 2 - (fm.ascent + fm.descent) / 2
-		val x = if(center) left + (width - paint.measureText(shown)) / 2 else left
-		canvas.drawText(shown, x, baseline, paint)
+		val shown = shownCache.getOrPut(TextKey(value, paint, width)) {
+			val t = TextUtils.ellipsize(value, paint, width, TextUtils.TruncateAt.END).toString()
+			Shown(t, paint.measureText(t))
+		}
+		val offset = baselineOffset.getOrPut(paint) { paint.fontMetrics.let { -(it.ascent + it.descent) / 2 } }
+		val baseline = top + height / 2 + offset
+		val x = if(center) left + (width - shown.width) / 2 else left
+		canvas.drawText(shown.text, x, baseline, paint)
+	}
+
+	private companion object
+	{
+		/** Comfortably above the strings of one screen plus the stats panel's. */
+		const val TEXT_CACHE_SIZE = 256
 	}
 }

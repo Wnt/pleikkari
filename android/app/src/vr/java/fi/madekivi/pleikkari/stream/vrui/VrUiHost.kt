@@ -95,6 +95,8 @@ class VrUiHost(
 	private var redrawMaxNs = 0L
 	/** Of [redrawNs], the part spent in unlockCanvasAndPost (HWUI's render and queue). */
 	private var postNs = 0L
+	/** PLE-763: of [redrawNs], the part spent in lockHardwareCanvas (dequeueing a buffer). */
+	private var lockNs = 0L
 	private var windowStartNs = System.nanoTime()
 
 	// ---- GoCinema thread ----
@@ -645,9 +647,11 @@ class VrUiHost(
 			return
 		val start = System.nanoTime()
 		var posting = 0L
+		var locked = 0L
 		try
 		{
 			val canvas = surface.lockHardwareCanvas()
+			locked = System.nanoTime()
 			try
 			{
 				if(texelScale != 1f)
@@ -669,17 +673,20 @@ class VrUiHost(
 		val end = System.nanoTime()
 		val took = end - start
 		postNs += end - posting
+		lockNs += locked - start
 		redraws++
 		redrawNs += took
 		redrawMaxNs = maxOf(redrawMaxNs, took)
 		val now = System.nanoTime()
 		if(now - windowStartNs >= 1_000_000_000L)
 		{
-			Log.i(TAG, String.format(Locale.US, "Redraws: %d in %.1f s, mean %.2f ms (post %.2f), max %.2f ms",
-				redraws, (now - windowStartNs) / 1e9, redrawNs / 1e6 / redraws, postNs / 1e6 / redraws, redrawMaxNs / 1e6))
+			Log.i(TAG, String.format(Locale.US, "Redraws: %d in %.1f s, mean %.2f ms (lock %.2f, paint %.2f, post %.2f), max %.2f ms",
+				redraws, (now - windowStartNs) / 1e9, redrawNs / 1e6 / redraws, lockNs / 1e6 / redraws,
+				(redrawNs - lockNs - postNs) / 1e6 / redraws, postNs / 1e6 / redraws, redrawMaxNs / 1e6))
 			redraws = 0
 			redrawNs = 0L
 			postNs = 0L
+			lockNs = 0L
 			redrawMaxNs = 0L
 			windowStartNs = now
 		}
