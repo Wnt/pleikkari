@@ -50,6 +50,8 @@ class MainActivity : AppCompatActivity()
 	companion object
 	{
 		const val EXTRA_ONBOARDING_PREVIEW = "onboarding_preview"
+		/** Debug builds only: the address of a registered console to stream from as soon as it is discovered. */
+		const val EXTRA_AUTO_CONNECT_HOST = "auto_connect_host"
 		private const val PREVIEW_WELCOME = "welcome"
 		private const val PREVIEW_CONSOLES = "consoles"
 		private const val PREVIEW_SUMMARY = "summary"
@@ -137,6 +139,8 @@ class MainActivity : AppCompatActivity()
 		preferences = Preferences(this)
 		previewState = intent.getStringExtra(EXTRA_ONBOARDING_PREVIEW)
 			?.takeIf { BuildConfig.DEBUG && it in setOf(PREVIEW_WELCOME, PREVIEW_CONSOLES, PREVIEW_SUMMARY) }
+		if(BuildConfig.DEBUG && savedInstanceState == null)
+			pendingAutoPlayAddress = intent.getStringExtra(EXTRA_AUTO_CONNECT_HOST)?.takeIf { it.isNotBlank() }
 		setSupportActionBar(binding.toolbar)
 		setupQualityPresetChooser()
 
