@@ -160,12 +160,13 @@ step_home() {
 		key centre     # A on it: Play
 		sleep 0.5
 		shot 6-status-sheet
+		# Home closes on StreamStateConnected.
 		for i in $(seq 1 30); do
 			sleep 1
 			dump_log
-			grep -q 'GoVrUi: Home closed' "$OUT/logcat-raw.txt" && break
+			grep -qE 'GoVrUi *: Home closed' "$OUT/logcat-raw.txt" && break
 		done
-		say "Home closed after ${i}s: $(grep -c 'GoVrUi: Home closed' "$OUT/logcat-raw.txt")"
+		say "Home closed after ${i}s: $(grep -cE 'GoVrUi *: Home closed' "$OUT/logcat-raw.txt")"
 		sleep 8
 		shot 7-stream
 		dump_log
@@ -205,10 +206,11 @@ golive restore
 say "debug properties: full_pose=$(a shell getprop debug.pleikkari.vr_full_pose | tr -d '\r') choose=$(a shell getprop debug.pleikkari.go_entry_choose | tr -d '\r') no_console=$(a shell getprop debug.pleikkari.go_entry_no_console | tr -d '\r') pointer=$(a shell getprop debug.pleikkari.vr_pointer | tr -d '\r')"
 say "resumed at the end: $(resumed)"
 awk '!s[$0]++' "$OUT/logcat-raw.txt" > "$OUT/logcat.txt"
-grep -E ' (GoVrUi|GoVrEntry|GoCinema): ' "$OUT/logcat.txt" > "$OUT/home.txt"
+# logcat pads a short tag: "GoVrUi  : ".
+grep -E ' (GoVrUi|GoVrEntry|GoCinema) *: ' "$OUT/logcat.txt" | grep -v 'Frame pacing' > "$OUT/home.txt"
 grep -E ' VrApi ' "$OUT/logcat.txt" | grep 'FPS=' > "$OUT/vrapi-fps.txt"
 grep -E 'FATAL EXCEPTION' -A12 "$OUT/logcat.txt" | head -60 > "$OUT/crashes.txt"
 python3 "$ROOT/scripts/dev/go-latency/screen_check.py" "$OUT"/shot-*.png --logcat "$OUT/logcat.txt" > "$OUT/screen-check.txt" 2>&1
 rc=$?
-say "GoVrUi lines $(grep -c ' GoVrUi: ' "$OUT/home.txt"), fatal $(grep -c 'FATAL EXCEPTION' "$OUT/crashes.txt"), screen_check rc=$rc"
+say "GoVrUi lines $(grep -cE ' GoVrUi *: ' "$OUT/home.txt"), fatal $(grep -c 'FATAL EXCEPTION' "$OUT/crashes.txt"), screen_check rc=$rc"
 say "done"

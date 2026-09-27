@@ -1,0 +1,68 @@
+12:32:32 PLE-730 start, LIVE=1; 536s before the deadline; serial 1KWPH802EW8203; mWakefulness=Awake
+12:32:33 start; 535s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:32:36 backup: prefs 981 B, db chiaki chiaki-shm chiaki-wal , appdata 564736 B, apk 4195fddae5404465;     versionCode=12 minSdk=24 targetSdk=35     lastUpdateTime=2026-09-27 15:31:00 
+12:32:38 installed APK 1d9f5288e99470ef3893b77ab70e8f5a is not ours (70f5f74a1f66ca61325995cb59f9fad2, 01c67c6daae3e7ea): install -r
+Success
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 15:32:46
+12:32:47 done
+12:32:47 battery 47%
+12:32:50 prefs: snapshot + stream_feedback_stats_log, stream_go_vr_enabled, stream_go_vr_ui = true; last_console_mac: 1
+Starting: Intent { cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity }
+12:34:55 MAIN/INFO resolves to .stream.GoVrLibraryEntry
+go-keepawake: 192.168.1.202:5555 is Awake; focus: com.oculus.vrshell/com.oculus.vrshell.MainActivity
+Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.INFO] flg=0x10010000 cmp=fi.madekivi.pleikkari/.stream.GoVrLibraryEntry }
+Warning: Activity not started, its current task has been brought to the front
+12:34:59 home: resumed after 1s: mResumedActivity: ActivityRecord{61ed1d1 u0 fi.madekivi.pleikkari/.stream.GoVrLibraryEntry t372}
+12:35:06 screencap 1-cards: 120277 B
+12:35:08 key right
+12:35:10 screencap 2-pad-focus: 127908 B
+12:35:10 pointer -12,6.9
+12:35:12 screencap 3-pointer-card: 139255 B
+12:35:12 pointer 19,6.9
+12:35:15 screencap 4-pointer-play: 132090 B
+12:35:15 pointer off
+12:35:17 key back
+12:35:19 screencap 5-menu-over-home: 147278 B
+12:35:21 key back
+12:35:24 key right
+12:35:26 key centre
+12:35:29 screencap 6-status-sheet: 79926 B
+12:36:03 Home closed after 30s: 0
+12:36:15 screencap 7-stream: 1129549 B
+12:36:20 after force-stop: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+go-keepawake: 192.168.1.202:5555 is Awake; focus: com.oculus.vrshell/com.oculus.vrshell.MainActivity
+Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.INFO] flg=0x10010000 cmp=fi.madekivi.pleikkari/.stream.GoVrLibraryEntry }
+Warning: Activity not started, its current task has been brought to the front
+12:36:24 noconsole: resumed after 1s: mResumedActivity: ActivityRecord{bbfdf63 u0 fi.madekivi.pleikkari/.stream.GoVrLibraryEntry t373}
+12:36:31 screencap 8-no-console: 102434 B
+12:36:32 key right
+12:36:34 screencap 9-no-console-focus: 102618 B
+12:36:39 after force-stop: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:36:40 original prefs back
+12:36:40 start; 288s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+Success
+12:36:51 original APK back
+12:36:51 prefs restored byte-identically
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 15:36:49
+total 192
+drwxrwx--x 2 u0_a63 u0_a63  4096 2026-09-26 23:55 .
+drwx------ 7 u0_a63 u0_a63  4096 2026-09-26 23:55 ..
+-rw-rw---- 1 u0_a63 u0_a63 28672 2026-09-26 23:55 chiaki
+-rw------- 1 u0_a63 u0_a63 32768 2026-09-27 15:36 chiaki-shm
+-rw-rw---- 1 u0_a63 u0_a63  4152 2026-09-26 23:55 chiaki-wal
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:36:51 done
+12:36:52 debug properties: full_pose=0 choose=0 no_console=0 pointer=off
+12:36:52 resumed at the end: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:36:54 GoVrUi lines 0, fatal 0, screen_check rc=0
+12:36:54 done
