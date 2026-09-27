@@ -276,7 +276,15 @@ class StreamActivity : AppCompatActivity()
 		viewModel.session.streamStats.observe(this) { stats ->
 			val link = diagnosticsNetworkLink()
 			summaryAccumulator.add(stats, link)
+			val previousQuality = networkQuality
 			networkQuality = networkQualityClassifier.update(stats, link)
+			// PLE-369: one line per badge level change, so badge timing reads straight off logcat
+			// instead of an offline replay of the 1 Hz fields below.
+			if(qualityLogEnabled && networkQuality.level != previousQuality.level)
+				Log.i("NetworkQuality", String.format(Locale.US,
+					"Quality badge transition: %s -> %s cause %s at elapsed_ms %d",
+					previousQuality.level.name, networkQuality.level.name,
+					networkQuality.cause.name, SystemClock.elapsedRealtime()))
 			// PLE-473: the classifier's own stallMillis is a window max, so it stays elevated for
 			// up to FAST_WINDOW_SECONDS after the event -- fine for the badge, but it would make
 			// "N s ago" drift forward every tick the event is still in-window. Reading the raw
