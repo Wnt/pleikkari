@@ -59,6 +59,10 @@ typedef enum pleikkari_vr_panel_hit_result_t
 // A panel of width x height texels at PLEIKKARI_VR_UI_TEXELS_PER_DEGREE, straight ahead of the
 // origin, radius_m away.
 void pleikkari_vr_panel_init(PleikkariVrPanel *panel, int width_texels, int height_texels, float radius_m);
+// PLE-761: the same at texels_per_degree, for the debug texel-density switch (same angular size
+// for texture sizes scaled with it).
+void pleikkari_vr_panel_init_density(PleikkariVrPanel *panel, int width_texels, int height_texels, float radius_m,
+		float texels_per_degree);
 
 // The panel radius for a picture screen_distance_m away: RADIUS_M, but always in front of the
 // picture and never nearer than RADIUS_MIN_M.

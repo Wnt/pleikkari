@@ -566,6 +566,15 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     VrCinemaNative.debugSetSkyVariant(native, intent.getIntExtra(EXTRA_SKY_VARIANT, 0))
                 applyEnvironment(native, environment)
                 ui?.let { host ->
+                    // PLE-761: debug builds only, `adb shell setprop debug.pleikkari.vr_ui_layers <spec>` before
+                    // the stream starts; PLE-735's panel layer switches (VrUiLayerDebug).
+                    val layerDebug = if(BuildConfig.DEBUG) VrUiLayerDebug.parse(debugProperty(UI_LAYERS_PROPERTY)) else VrUiLayerDebug.DEFAULT
+                    if(!layerDebug.isDefault) {
+                        Log.i("GoCinema", "VR UI layer debug: $layerDebug")
+                        VrCinemaNative.debugSetUiLayers(native, layerDebug.quad, layerDebug.overlay, layerDebug.texelScale,
+                            layerDebug.filterExpensive, layerDebug.maxPanels)
+                        host.texelScale = layerDebug.texelScale
+                    }
                     // PLE-722: one Canvas-drawn Surface per panel, latched by the compositor itself.
                     val menuSurface = VrCinemaNative.createPanel(native, VrUiHost.MENU, VrMenu.WIDTH, VrMenu.HEIGHT,
                         VrUi.BORDER, VrUi.PANEL_CORNER, ANCHOR_GAZE)
@@ -846,6 +855,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val PACING_PROPERTY = "debug.pleikkari.vr_pacing"
         /** PLE-722: debug builds only; "x,y" degrees from the open menu's middle for a synthetic pointer. */
         private const val POINTER_PROPERTY = "debug.pleikkari.vr_pointer"
+        /** PLE-761: debug builds only; panel layer switches, see VrUiLayerDebug. */
+        private const val UI_LAYERS_PROPERTY = "debug.pleikkari.vr_ui_layers"
         /** PLE-722: vr-ui-layers.h's VrUiAnchor*. */
         private const val ANCHOR_GAZE = 0
         private const val ANCHOR_PICTURE = 1
@@ -896,6 +907,9 @@ internal object VrCinemaNative {
     external fun createPanel(handle: Long, index: Int, width: Int, height: Int, inset: Float, corner: Float, anchor: Int): Surface?
     /** PLE-698: the last draw's {vrapi_SubmitFrame2 call, predicted display time}, CLOCK_MONOTONIC ns. */
     external fun submitTiming(handle: Long, out: LongArray)
+    /** PLE-761: debug builds only, before createPanel; vr-ui-layers.h's VrUiDebug. */
+    external fun debugSetUiLayers(handle: Long, quad: Boolean, overlay: Boolean, texelScale: Float,
+        filterExpensive: Boolean, maxPanels: Int)
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
     external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,

@@ -510,7 +510,7 @@ struct Cinema {
         }
         const bool panels = uiFrame && ui.active();
         auto layer = vrapi_DefaultLayerProjection2();
-        if(panels) {
+        if(panels && !ui.overlay()) {
             // PLE-722: the panels lie under the eye buffer, which lets them through where its alpha is 0.
             layer.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
             layer.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
@@ -604,11 +604,13 @@ struct Cinema {
             environmentStatsFrame = frameIndex;
         }
         glFlush();
-        ovrLayerCylinder2 panelLayers[pleikkari::VrUiMaxPanels];
+        ovrLayer_Union2 panelLayers[pleikkari::VrUiMaxPanels];
         const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
         const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 1];
-        for(int i = 0; i < panelCount; ++i) layers[i] = &panelLayers[i].Header;
-        layers[panelCount] = &layer.Header;
+        // PLE-761: the overlay switch submits the panels after the eye buffer instead of before it.
+        const bool overlay = panels && ui.overlay();
+        layers[overlay ? 0 : panelCount] = &layer.Header;
+        for(int i = 0; i < panelCount; ++i) layers[(overlay ? 1 : 0) + i] = &panelLayers[i].Header;
         if(uiFrame && uiOut) ui.output(uiOut);
         ovrSubmitFrameDescription2 frame{};
         frame.SwapInterval = 1;
@@ -678,6 +680,17 @@ extern "C" JNIEXPORT jobject JNICALL JNI_METHOD(createPanel)(JNIEnv *env, jobjec
     return c->uiReady ? c->ui.createPanel(env, index, width, height, inset, corner, anchor) : nullptr;
 }
 // PLE-698: {submit call, predicted display time} of the last draw, CLOCK_MONOTONIC ns.
+// PLE-761: debug builds only, before createPanel; see vr-ui-layers.h's VrUiDebug.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetUiLayers)(JNIEnv *, jobject, jlong h, jboolean quad, jboolean overlay,
+        jfloat texelScale, jboolean filterExpensive, jint maxPanels) {
+    pleikkari::VrUiDebug debug;
+    debug.quad = quad;
+    debug.overlay = overlay;
+    debug.texelScale = std::clamp(static_cast<float>(texelScale), 0.5f, 2.0f);
+    debug.filterExpensive = filterExpensive;
+    debug.maxPanels = std::clamp(static_cast<int>(maxPanels), 1, pleikkari::VrUiMaxPanels);
+    cinema(h)->ui.setDebug(debug);
+}
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(submitTiming)(JNIEnv *env, jobject, jlong h, jlongArray out) {
     const jlong timing[] = {cinema(h)->submitNs, cinema(h)->predictedDisplayNs};
     env->SetLongArrayRegion(out, 0, 2, timing);
