@@ -399,6 +399,8 @@
 	<string name="preferences_vr_room_light_percent_key">stream_vr_room_light_percent</string>
     <string name="go_vr_title">Native VR cinema (Oculus Go)</string>
     <string name="go_vr_summary">Head-tracked cinema at 72 Hz. Turn off to use the Oculus TV screen.</string>
+    <string name="go_vr_match_60hz_title">Match panel to stream (60 Hz)</string>
+    <string name="go_vr_match_60hz_summary">Run the Go panel at 60 Hz when the stream is 60 fps, instead of 72 Hz.</string>
     <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>
     <string name="go_vr_connecting">Connecting to PlayStation…</string>
     <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>

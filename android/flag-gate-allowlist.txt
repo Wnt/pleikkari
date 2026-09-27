@@ -28,3 +28,4 @@ debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/strea
 debug-guard | source set: android/app/src/debug/AndroidManifest.xml | debug-harness | PLE-603: declares the debug-only VrEnvironmentPreviewActivity; a release build has no such activity
 default-off-pref | stream_go_vr_enabled | measurement | PLE-602: native Go cinema A/B against the existing Oculus TV virtual display
 default-off-pref | stream_decoder_qcom_vt_low_latency | measurement | PLE-635: Qualcomm vt-low-latency (decode-order output) on the Oculus Go, A/B against today's display-order output for PLE-601; shown and applied only on the Go
+default-off-pref | stream_go_vr_match_60hz | measurement | PLE-636: Go panel at 60 Hz for a 60 fps stream vs 72 Hz resampling; PLE-601 A/B

@@ -196,10 +196,10 @@ decoder's external texture, and since this ticket calls the renderer as follows:
 
 The library is `libpleikkari-vr-environment.so` (CMake target `pleikkari-vr-environment`,
 built for every ABI in every gate); `pleikkari-vr` links it and `GoVrSupport` loads it
-before `pleikkari-vr`. Because the Oculus Mobile SDK is not on CT950, the wired
-`vr-cinema.cpp` was type-checked with the NDK's clang against a local stub of the VrApi
-declarations it uses (under `build/`, never committed), not compiled against the SDK;
-PLE-608 compiles the real thing.
+before `pleikkari-vr`. The wired `vr-cinema.cpp` was first type-checked against a local
+stub of the VrApi declarations; since PLE-617 fetched SDK 1.35.0 it compiles and links
+against the real headers and `libvrapi.so` with no changes and no `-Wall -Wextra`
+warnings, and against 1.50.0's headers too (PLE-623).
 
 ## 8. Verification
 
@@ -238,16 +238,59 @@ PLE-608 compiles the real thing.
   the cinema is the room to A/B first; the void and terrace need the dome drawn after
   the picture with the depth test on (skipping the picture's pixels) before they are
   cheap enough for a stream (§9).
+
+  PLE-630 re-measured the void and the terrace after PLE-622 on the same Go and
+  preview, interleaving the variants in one session (12 one-second `gpu=` samples each,
+  temporary builds, none landed): void 4.9 to 5.1 ms, terrace 5.3 to 5.5 ms per stereo
+  frame; plain 1.0 to 1.2 ms.
+
+  | Sky variant | void | terrace |
+  | --- | ---: | ---: |
+  | as shipped (gradient + hash dither) | 5.0 ms | 5.4 ms |
+  | no dither (a switch through set_config) | 5.1 ms | 5.4 ms |
+  | constant colour, no maths at all | 4.2 ms | 5.0 ms |
+  | dome not drawn | 2.6 ms | 4.1 ms |
+
+  The sky's fragment maths is at most 0.8 ms (void) and 0.3 ms (terrace), and the
+  dither costs nothing measurable. Most of the dome's 2.4 ms (void) and 1.3 ms
+  (terrace) is paid for drawing it at all, so a cheaper shader or a baked cubemap
+  cannot reach the ~2 ms target; the next suspect is the draw itself (a full-sphere,
+  culling-off mesh on the far plane with depth test on and depth writes off). Single
+  back-to-back runs drift by up to 1 ms as the GPU warms, so compare variants only
+  interleaved in one session.
+- Device, inside the VrApi cinema (PLE-623): the debug preview of `StreamVrActivity`
+  (`third_party/ovr_sdk_mobile/README.md`, "Debug preview") runs the real cinema with a
+  synthetic 60 fps picture through the decoder's `SurfaceTexture`. On the Go on
+  2026-09-27 (serial 1KWPH802EW8203, SDK 1.35.0, tip 1ab2b5b8 with PLE-622's reorder and
+  PLE-615's 4x MSAA, 72 Hz, 1024x1024 eyes, `vrapi_SetClockLevels(2, 2)`; the runtime
+  ran the GPU at level 2 to 3, 315 to 401 MHz), VrApi's own per-second `App=` GPU time:
+
+  | Environment | VrApi `App=` GPU (median) | Stale frames/s (mean, max) | `Environment frame: gpu` |
+  | --- | ---: | ---: | ---: |
+  | plain | 0.55 ms | 0, 1 | (not logged) |
+  | cinema | 7.54 ms | 2.5, 15 | 2.55 ms |
+  | void | 8.59 ms | 4.9, 11 | 2.55 to 2.57 ms |
+  | terrace | 8.53 ms | 4.8, 14 | 2.50 ms |
+
+  Every room costs 7 to 8 ms of GPU per frame on top of the plain screen in VrApi, and
+  each drops frames (TimeWarp reuses a stale eye buffer) at the clock level the cinema
+  asks for; the plain screen does not. `Environment frame: gpu` does not see this: it
+  reads about 2.5 ms for all three rooms. Its `GL_TIME_ELAPSED` query ends right after
+  the second eye's draws are issued, before that eye's tiled pass (and its MSAA
+  resolve) runs, so in VrApi read `logcat -s VrApi` `App=` instead. Captures under
+  `build/ple-623/go/run6-preview/` of the workspace.
 - Unit: `VrEnvironmentConfigTest` pins the defaults to PLE-602's screen, the clamps and
   the native enum values.
 
 ## 9. Open points
 
 - The void and the terrace cost 6 to 8.5 ms of GPU per stereo frame on the Adreno 530
-  (§8): draw the dome and stars after the picture with the depth test on, and consider
-  a cheaper sky shader, before offering them in a stream. The cost inside the VrApi
-  activity (eye buffer size, MSAA, TimeWarp alongside) is still to be read from the
-  `Environment frame:` lines in `logcat -s GoCinema` once PLE-608 builds it.
+  (§8) before PLE-622 and about 5 ms after it; PLE-630 showed the remaining sky cost
+  is the dome draw, not its shader (§8), so a cheaper sky shader will not fix it.
+  Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
+  GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
+  (§8, PLE-623): the MSAA share, a higher GPU level while a room is on, and a timer
+  that covers the whole frame are open.
 - Eye buffer size belongs to PLE-602's swapchain. MSAA is done (PLE-615): while an
   environment is active the VrApi cinema renders its eyes through
   `GL_EXT_multisampled_render_to_texture` at 4x, like Skybox, with a matching
