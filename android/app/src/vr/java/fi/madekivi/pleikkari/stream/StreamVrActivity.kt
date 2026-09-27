@@ -25,6 +25,7 @@ import androidx.core.os.BundleCompat
 import androidx.lifecycle.ViewModelProvider
 import fi.madekivi.pleikkari.BuildConfig
 import fi.madekivi.pleikkari.R
+import fi.madekivi.pleikkari.common.GoDecoderProfile
 import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.lib.CinemaFrameLatency
@@ -34,6 +35,7 @@ import fi.madekivi.pleikkari.lib.ControllerState
 import fi.madekivi.pleikkari.lib.LatencyProbe
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
+import fi.madekivi.pleikkari.settings.DataStore
 import fi.madekivi.pleikkari.stream.vrui.*
 import java.io.File
 import java.text.SimpleDateFormat
@@ -80,6 +82,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var homeState: VrHomeState? = null
     /** PLE-730: the console a Library launch connects to, for the connecting sheet's title. */
     private var consoleName: String? = null
+    /** PLE-844: the running VR UI's model, for the Settings sheet's readout. */
+    private var menuModel: MenuModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,7 +94,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // PLE-690: a Library launch's Disconnect restarts this (unexported) activity in its chooser.
         val chooser = !entry && intent.getBooleanExtra(EXTRA_LIBRARY_CHOOSER, false)
         library = entry || chooser
-        val info = if(library) savedInstanceState?.let { BundleCompat.getParcelable(it, STATE_CONNECT_INFO, ConnectInfo::class.java) }
+        val saved = savedInstanceState?.let { BundleCompat.getParcelable(it, STATE_CONNECT_INFO, ConnectInfo::class.java) }
+        // PLE-844: a Library stream's "Apply and restart stream" comes back through the chooser with its session.
+        val info = if(entry) saved
+            else if(chooser) saved ?: IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_CONNECT_INFO, ConnectInfo::class.java)
             else IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_CONNECT_INFO, ConnectInfo::class.java)
         // PLE-623: debug builds only. The real VrApi cinema with no console and a synthetic
         // picture, so the Go's cinema and environment cost can be read from adb (README).
@@ -167,7 +174,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             vm.session.streamStats.observe(this) { stats ->
                 val thread = cinema ?: return@observe
                 val ui = thread.ui ?: return@observe
-                if(ui.statsOpen) ui.stats(VrStatsPanel.lines(stats, thread.refreshHz, false))
+                val lines = VrStatsPanel.lines(stats, thread.refreshHz, false)
+                if(ui.statsOpen) ui.stats(lines)
+                // PLE-844: the same numbers in the Settings sheet, to compare an experiment against.
+                menuModel?.let { if(it.readout != lines) { it.readout = lines; ui.refreshSettings() } }
             }
         }
     }
@@ -246,6 +256,29 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 .putExtra(EXTRA_LIBRARY_CHOOSER, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
         }
+        finish()
+    }
+
+    /**
+     * PLE-844: the Settings sheet's "Apply and restart stream". Ends this session and starts the cinema
+     * again on the same console, with the stored stream profile and experiments. The console can refuse
+     * the next session for a few seconds after ours quits, so the new one arms the just-linked retry.
+     */
+    private fun restartStream() {
+        val vm = model ?: return
+        val prefs = Preferences(this)
+        val info = vm.connectInfo.copy(videoProfile = prefs.videoProfile,
+            decoderQcomVtLowLatency = GoDecoderProfile.vtLowLatency(prefs))
+        Log.i(TAG_ENTRY, "Settings: restarting the stream with the stored settings")
+        vm.session.shutdown()
+        val next = Intent().setClassName(this, GoVrSupport.ACTIVITY)
+            .putExtra(StreamActivity.EXTRA_CONNECT_INFO, info)
+            .putExtra(StreamActivity.EXTRA_JUST_LINKED, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        IntentCompat.getParcelableExtra(intent, StreamActivity.EXTRA_PSN_DEVICE, PsnDevice::class.java)
+            ?.let { next.putExtra(StreamActivity.EXTRA_PSN_DEVICE, it) }
+        if(library) next.putExtra(EXTRA_LIBRARY_CHOOSER, true)
+        startActivity(next)
         finish()
     }
 
@@ -426,7 +459,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** PLE-722: the in-stream VR menu's host; its GoVrUi thread lives as long as one cinema. */
     private fun createUi(prefs: Preferences): VrUiHost {
-        val model = MenuModel()
+        val model = MenuModel().also { menuModel = it }
         val text = VrMenuText(
             title = getString(R.string.go_vr_menu),
             resume = getString(R.string.go_vr_resume),
@@ -458,10 +491,27 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             fpsValues = Preferences.FPS.values().associateWith { getString(it.title) },
             bitrate = getString(R.string.go_vr_ui_bitrate),
             bitrateAuto = getString(R.string.go_vr_ui_bitrate_auto),
-            codecs = Preferences.Codec.values().associateWith { getString(it.title) })
+            codecs = Preferences.Codec.values().associateWith { getString(it.title) },
+            experiments = getString(R.string.go_vr_ui_experiments),
+            experimentTitles = mapOf(
+                prefs.goVrLateStartKey to getString(R.string.go_vr_late_start_title),
+                prefs.goVrLatchOnSignalKey to getString(R.string.go_vr_latch_on_signal_title),
+                prefs.goVrInputThreadKey to getString(R.string.go_vr_input_thread_title),
+                prefs.goVrInputThreadFlushKey to getString(R.string.go_vr_input_thread_flush_title),
+                prefs.goVrFrameListenerThreadKey to getString(R.string.go_vr_frame_listener_thread_title),
+                prefs.goVrMatch60HzKey to getString(R.string.go_vr_match_60hz_title),
+                prefs.decoderQcomVtLowLatencyKey to getString(R.string.preferences_decoder_qcom_vt_low_latency_title),
+                prefs.goVrWarmUpKey to getString(R.string.go_vr_warm_up_title),
+                prefs.goVrHoldDrainKey to getString(R.string.go_vr_hold_drain_title),
+                prefs.goVrFlushEyesKey to getString(R.string.go_vr_flush_eyes_title),
+                prefs.goVrRoomHighGpuKey to getString(R.string.go_vr_room_high_gpu_title)),
+            roomMsaa = getString(R.string.go_vr_room_msaa_title),
+            roomMsaaValues = mapOf(4 to getString(R.string.go_vr_room_msaa_4x), 2 to getString(R.string.go_vr_room_msaa_2x)),
+            applyRestart = getString(R.string.go_vr_ui_apply_restart),
+            resetDefaults = getString(R.string.go_vr_ui_reset_defaults))
         val host = VrUiHost(this,
             { page -> if(page == VrPage.SETTINGS) VrSettings.build(model, model, text, settingsText) else VrMenu.build(model, text) },
-            { page, screen -> if(page == VrPage.SETTINGS) VrSettings.refresh(screen, model) else VrMenu.refresh(screen, model) },
+            { page, screen -> if(page == VrPage.SETTINGS) VrSettings.refresh(screen, model, model) else VrMenu.refresh(screen, model) },
             ::menuChanged,
             prefs.mappingShare, prefs.mappingOptions, debugPointer, ::homeAction)
         model.host = host
@@ -533,6 +583,23 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 prefs.streamDiagnosticsOverlayEnabled = value
                 host?.showStats(value)
             }
+        // PLE-844: the Settings sheet's latency experiments, through Settings' own key routing.
+        private val store = DataStore(prefs)
+        override fun experiment(key: String) = store.getBoolean(key, false)
+        override fun setExperiment(key: String, on: Boolean) {
+            Log.i(TAG_ENTRY, "Settings: $key = $on")
+            store.putBoolean(key, on)
+        }
+        override var roomMsaa: Int
+            get() = prefs.goVrRoomMsaa
+            set(value) { prefs.goVrRoomMsaa = value }
+        override fun resetExperiments() {
+            Log.i(TAG_ENTRY, "Settings: latency experiments reset to defaults")
+            VrSettings.EXPERIMENTS.forEach { store.putBoolean(it, false) }
+            prefs.goVrRoomMsaa = Preferences.GO_VR_ROOM_MSAA_DEFAULT
+        }
+        override fun restartStream() { main.post { if(cinema?.ui === host) this@StreamVrActivity.restartStream() } }
+        @Volatile override var readout: List<String> = emptyList()
     }
 
     /** Hands the cinema's decoder surface to the session: when the cinema starts, or when a Library launch connects. */
