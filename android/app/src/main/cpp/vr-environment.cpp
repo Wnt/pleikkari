@@ -269,6 +269,36 @@ void main() {
 }
 )";
 
+// PLE-665 sky variant: the shipped gradient evaluated per dome vertex and interpolated.
+// Only elevation matters and the dome's stacks follow it, but the 12 stacks are 15 degrees
+// apart, coarser than the terrace's horizon band, so the band flattens; A/B it by eye too.
+const char *kSkyVertexGradientVertex = R"(#version 300 es
+layout(location = 0) in vec3 aPos;
+uniform mat4 uViewProj;
+uniform vec3 uZenith;
+uniform vec3 uHorizon;
+uniform vec3 uGround;
+uniform float uHorizonWidth;
+out mediump vec3 vColor;
+void main() {
+	float up = aPos.y * inversesqrt(dot(aPos, aPos));
+	float band = exp(-abs(up) / uHorizonWidth);
+	vColor = mix(up >= 0.0 ? uZenith : uGround, uHorizon, band);
+	vec4 clip = uViewProj * vec4(aPos, 1.0);
+	gl_Position = clip.xyww;
+}
+)";
+
+const char *kSkyVertexGradientFragment = R"(#version 300 es
+precision mediump float;
+in mediump vec3 vColor;
+out vec4 fragColor;
+void main() {
+	float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	fragColor = vec4(vColor + (n - 0.5) / 255.0, 1.0);
+}
+)";
+
 // PLE-650 sky variant: constant colour, no varyings. The floor of what any sky draw costs.
 const char *kSkyConstantFragment = R"(#version 300 es
 precision mediump float;
@@ -775,6 +805,9 @@ struct PleikkariVrEnvironment
 	GLuint skyFullscreenProgram = 0, skyConstantProgram = 0, skyFullscreenConstantProgram = 0;
 	GLint skyFullscreenInvViewProj = -1, skyFullscreenZenith = -1, skyFullscreenHorizon = -1, skyFullscreenGround = -1,
 			skyFullscreenHorizonWidth = -1, skyConstantViewProj = -1;
+	GLuint skyVertexGradientProgram = 0;
+	GLint skyVertexGradientViewProj = -1, skyVertexGradientZenith = -1, skyVertexGradientHorizon = -1,
+			skyVertexGradientGround = -1, skyVertexGradientHorizonWidth = -1;
 	GLsizei skyCoarseFirst = 0, skyCoarseCount = 0;
 	int skyVariant = 0;
 	GLuint starVao = 0, starVbo = 0;
@@ -864,6 +897,7 @@ bool PleikkariVrEnvironment::init()
 	skyFullscreenProgram = link(kSkyFullscreenVertex, kSkyFragment);
 	skyConstantProgram = link(kSkyVertex, kSkyConstantFragment);
 	skyFullscreenConstantProgram = link(kSkyFullscreenVertex, kSkyConstantFragment);
+	skyVertexGradientProgram = link(kSkyVertexGradientVertex, kSkyVertexGradientFragment);
 	if(!roomProgram || !skyProgram || !starProgram || !haloProgram || !screenProgram || !glowProgram)
 		return false;
 
@@ -888,6 +922,14 @@ bool PleikkariVrEnvironment::init()
 		skyFullscreenHorizon = glGetUniformLocation(skyFullscreenProgram, "uHorizon");
 		skyFullscreenGround = glGetUniformLocation(skyFullscreenProgram, "uGround");
 		skyFullscreenHorizonWidth = glGetUniformLocation(skyFullscreenProgram, "uHorizonWidth");
+	}
+	if(skyVertexGradientProgram)
+	{
+		skyVertexGradientViewProj = glGetUniformLocation(skyVertexGradientProgram, "uViewProj");
+		skyVertexGradientZenith = glGetUniformLocation(skyVertexGradientProgram, "uZenith");
+		skyVertexGradientHorizon = glGetUniformLocation(skyVertexGradientProgram, "uHorizon");
+		skyVertexGradientGround = glGetUniformLocation(skyVertexGradientProgram, "uGround");
+		skyVertexGradientHorizonWidth = glGetUniformLocation(skyVertexGradientProgram, "uHorizonWidth");
 	}
 	if(skyConstantProgram)
 		skyConstantViewProj = glGetUniformLocation(skyConstantProgram, "uViewProj");
@@ -1399,6 +1441,14 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 			program = env->skyFullscreenConstantProgram;
 		else if(variant == PLEIKKARI_VR_SKY_DOME_CONSTANT)
 			program = env->skyConstantProgram;
+		else if(variant == PLEIKKARI_VR_SKY_DOME_VERTEX_GRADIENT)
+		{
+			program = env->skyVertexGradientProgram;
+			zenith = env->skyVertexGradientZenith;
+			horizon = env->skyVertexGradientHorizon;
+			ground = env->skyVertexGradientGround;
+			width = env->skyVertexGradientHorizonWidth;
+		}
 		glUseProgram(program);
 		if(fullscreen)
 		{
@@ -1412,6 +1462,8 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		}
 		else if(variant == PLEIKKARI_VR_SKY_DOME_CONSTANT)
 			glUniformMatrix4fv(env->skyConstantViewProj, 1, GL_FALSE, viewProj);
+		else if(variant == PLEIKKARI_VR_SKY_DOME_VERTEX_GRADIENT)
+			glUniformMatrix4fv(env->skyVertexGradientViewProj, 1, GL_FALSE, viewProj);
 		else
 			glUniformMatrix4fv(env->sky.viewProj, 1, GL_FALSE, viewProj);
 		const float rl = cfg.room_light;
@@ -1528,7 +1580,8 @@ void pleikkari_vr_environment_destroy(PleikkariVrEnvironment *env)
 	if(env->timerAvailable && env->pDeleteQueries)
 		env->pDeleteQueries(kTimerRing, env->timerQueries);
 	GLuint programs[] = {env->roomProgram, env->skyProgram, env->starProgram, env->haloProgram, env->screenProgram, env->glowProgram,
-			env->skyFullscreenProgram, env->skyConstantProgram, env->skyFullscreenConstantProgram};
+			env->skyFullscreenProgram, env->skyConstantProgram, env->skyFullscreenConstantProgram,
+			env->skyVertexGradientProgram};
 	for(GLuint p : programs)
 		if(p) glDeleteProgram(p);
 	GLuint vaos[] = {env->roomVao, env->skyVao, env->starVao, env->haloVao, env->screenVao, env->glowVao};

@@ -33,7 +33,7 @@ import kotlin.math.sin
  * the window, so a frame time measured here is the cost the VrApi activity will pay.
  * A second am start with another environment while the preview runs switches to it.
  * PLE-650: `--ei sky_variant N` picks a debug sky draw for the void and terrace (0 is the
- * shipped dome; see PLEIKKARI_VR_SKY_* in vr-environment.h). Sent alone to a running
+ * shipped dome, 7 is the PLE-665 per-vertex gradient; see PLEIKKARI_VR_SKY_* in vr-environment.h). Sent alone to a running
  * preview it switches the variant in place, without rebuilding, for interleaved A/B.
  */
 class VrEnvironmentPreviewActivity : Activity()

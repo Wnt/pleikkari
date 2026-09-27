@@ -137,7 +137,8 @@ enum {
 	PLEIKKARI_VR_SKY_NONE = 4,                // dome not drawn
 	PLEIKKARI_VR_SKY_DOME_CONSTANT = 5,       // shipped mesh, constant-colour shader
 	PLEIKKARI_VR_SKY_FULLSCREEN_CONSTANT = 6, // one triangle, constant colour
-	PLEIKKARI_VR_SKY_COUNT = 7
+	PLEIKKARI_VR_SKY_DOME_VERTEX_GRADIENT = 7, // PLE-665: shipped mesh, gradient per vertex
+	PLEIKKARI_VR_SKY_COUNT = 8
 };
 void pleikkari_vr_environment_debug_set_sky_variant(PleikkariVrEnvironment *env, int variant);
 
