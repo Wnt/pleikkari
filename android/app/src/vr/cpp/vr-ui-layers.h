@@ -20,6 +20,7 @@
 #include <VrApi_Helpers.h>
 #include <VrApi_Input.h>
 #include <cstdint>
+#include <vector>
 #include "vr-ui-panel.h"
 
 namespace pleikkari {
@@ -49,6 +50,7 @@ struct VrUiDebug {
     float texelScale = 1.0f;      // texture texels per PLEIKKARI_VR_UI_TEXELS_PER_DEGREE (1.5 = 24/degree)
     bool filterExpensive = false; // VRAPI_FRAME_LAYER_FLAG_FILTER_EXPENSIVE on the panel layers
     int maxPanels = 2;            // panel layers submitted at most (1: the menu only)
+    bool reticleLayer = false;    // PLE-776: laser and reticle in their own layer, submitted last
 };
 
 // The Go remote, read once a frame by the cinema's input().
@@ -91,6 +93,10 @@ public:
     // The frame's panel layers, back to front, to submit before the projection layer (after it
     // with the overlay switch).
     int layers(const ovrTracking2 &head, ovrLayer_Union2 *out) const;
+    // PLE-776: with the reticle-layer switch, draws this frame's laser and reticle into a
+    // transparent width x height eye-sized swapchain and fills out, to submit after every other
+    // layer. False (and nothing drawn) without the switch or without a pointer this frame.
+    bool reticleLayer(const ovrTracking2 &head, int width, int height, ovrLayerProjection2 *out);
     void output(float out[VrUiOutCount]) const;
 
 private:
@@ -105,6 +111,16 @@ private:
     };
     Panel panels[VrUiMaxPanels];
     VrUiDebug debug{};
+    // PLE-776: the reticle layer's eye swapchains, made on first use.
+    struct ReticleEye {
+        ovrTextureSwapChain *chain = nullptr;
+        std::vector<GLuint> fbos;
+        int index = 0;
+    };
+    ReticleEye reticleEyes[VRAPI_FRAME_LAYER_EYE_MAX];
+    int reticleWidth = 0, reticleHeight = 0;
+    void drawPointer(const ovrMatrix4f &view, const ovrMatrix4f &projection);
+    void destroyReticle();
     GLuint program = 0, vao = 0, stripVertices = 0, quadVertices = 0;
     GLint mvpLocation = -1, modeLocation = -1, aLocation = -1, bLocation = -1, cLocation = -1,
           colorLocation = -1, rectLocation = -1, opacityLocation = -1;

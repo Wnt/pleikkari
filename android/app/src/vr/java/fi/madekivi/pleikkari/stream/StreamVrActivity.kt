@@ -599,7 +599,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     if(!layerDebug.isDefault) {
                         Log.i("GoCinema", "VR UI layer debug: $layerDebug")
                         VrCinemaNative.debugSetUiLayers(native, layerDebug.quad, layerDebug.overlay, layerDebug.texelScale,
-                            layerDebug.filterExpensive, layerDebug.maxPanels)
+                            layerDebug.filterExpensive, layerDebug.maxPanels, layerDebug.reticleLayer)
                         host.texelScale = layerDebug.texelScale
                     }
                     // PLE-722: one Canvas-drawn Surface per panel, latched by the compositor itself.
@@ -939,7 +939,7 @@ internal object VrCinemaNative {
     external fun submitTiming(handle: Long, out: LongArray)
     /** PLE-761: debug builds only, before createPanel; vr-ui-layers.h's VrUiDebug. */
     external fun debugSetUiLayers(handle: Long, quad: Boolean, overlay: Boolean, texelScale: Float,
-        filterExpensive: Boolean, maxPanels: Int)
+        filterExpensive: Boolean, maxPanels: Int, reticleLayer: Boolean)
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
     external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
