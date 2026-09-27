@@ -238,6 +238,26 @@ warnings, and against 1.50.0's headers too (PLE-623).
   the cinema is the room to A/B first; the void and terrace need the dome drawn after
   the picture with the depth test on (skipping the picture's pixels) before they are
   cheap enough for a stream (§9).
+
+  PLE-630 re-measured the void and the terrace after PLE-622 on the same Go and
+  preview, interleaving the variants in one session (12 one-second `gpu=` samples each,
+  temporary builds, none landed): void 4.9 to 5.1 ms, terrace 5.3 to 5.5 ms per stereo
+  frame; plain 1.0 to 1.2 ms.
+
+  | Sky variant | void | terrace |
+  | --- | ---: | ---: |
+  | as shipped (gradient + hash dither) | 5.0 ms | 5.4 ms |
+  | no dither (a switch through set_config) | 5.1 ms | 5.4 ms |
+  | constant colour, no maths at all | 4.2 ms | 5.0 ms |
+  | dome not drawn | 2.6 ms | 4.1 ms |
+
+  The sky's fragment maths is at most 0.8 ms (void) and 0.3 ms (terrace), and the
+  dither costs nothing measurable. Most of the dome's 2.4 ms (void) and 1.3 ms
+  (terrace) is paid for drawing it at all, so a cheaper shader or a baked cubemap
+  cannot reach the ~2 ms target; the next suspect is the draw itself (a full-sphere,
+  culling-off mesh on the far plane with depth test on and depth writes off). Single
+  back-to-back runs drift by up to 1 ms as the GPU warms, so compare variants only
+  interleaved in one session.
 - Device, inside the VrApi cinema (PLE-623): the debug preview of `StreamVrActivity`
   (`third_party/ovr_sdk_mobile/README.md`, "Debug preview") runs the real cinema with a
   synthetic 60 fps picture through the decoder's `SurfaceTexture`. On the Go on
@@ -265,11 +285,12 @@ warnings, and against 1.50.0's headers too (PLE-623).
 ## 9. Open points
 
 - The void and the terrace cost 6 to 8.5 ms of GPU per stereo frame on the Adreno 530
-  (§8): draw the dome and stars after the picture with the depth test on, and consider
-  a cheaper sky shader, before offering them in a stream. Inside the VrApi activity
-  every room, the cinema included, costs 7.5 to 8.6 ms of GPU per frame and drops 2.5
-  to 5 frames a second at `vrapi_SetClockLevels(2, 2)` (§8, PLE-623): the MSAA share, a
-  higher GPU level while a room is on, and a timer that covers the whole frame are open.
+  (§8) before PLE-622 and about 5 ms after it; PLE-630 showed the remaining sky cost
+  is the dome draw, not its shader (§8), so a cheaper sky shader will not fix it.
+  Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
+  GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
+  (§8, PLE-623): the MSAA share, a higher GPU level while a room is on, and a timer
+  that covers the whole frame are open.
 - Eye buffer size belongs to PLE-602's swapchain. MSAA is done (PLE-615): while an
   environment is active the VrApi cinema renders its eyes through
   `GL_EXT_multisampled_render_to_texture` at 4x, like Skybox, with a matching
