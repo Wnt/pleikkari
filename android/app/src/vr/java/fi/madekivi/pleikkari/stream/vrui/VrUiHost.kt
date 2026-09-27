@@ -192,6 +192,8 @@ class VrUiHost(
 		}
 		else
 			open("modal")
+		if(screen.titleAlert)
+			shake(screen, System.nanoTime())
 	}
 
 	/** PLE-731: takes the modal screen down and closes the panel. */
@@ -449,6 +451,18 @@ class VrUiHost(
 			redrawMenu()
 			spin()
 		}
+	}
+
+	/** PLE-757: shakes an alert modal's title (§10.7's wrong PIN), a redraw per step until it settles or leaves. */
+	private fun shake(screen: VrScreen, startNs: Long)
+	{
+		if(modal?.screen !== screen)
+			return
+		val elapsed = System.nanoTime() - startNs
+		screen.titleShift = VrPinPad.shakeShift(elapsed)
+		redrawMenu()
+		if(elapsed < VrPinPad.SHAKE_NS)
+			handler.postDelayed({ shake(screen, startNs) }, TICK_MS)
 	}
 
 	private fun spin()
