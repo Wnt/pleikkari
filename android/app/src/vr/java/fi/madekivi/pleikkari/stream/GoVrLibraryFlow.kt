@@ -35,6 +35,8 @@ import kotlinx.coroutines.launch
  * [show]; [connect] starts the stream on the same StreamSession path as Connect. Main thread only.
  * With [chooseFirst] (after a Disconnect) it opens the chooser instead of streaming on its own.
  * With [noConsoles] (PLE-739, debug builds only) it ignores every linked console.
+ * With [notFound] (PLE-784, debug builds only) its first look for a console ends on the not-found
+ * sheet at once; Try again and the address pad's Save then look for real.
  *
  * PLE-730: every screen goes to [show] as today's strip text (the touchpad-thirds fallback) and to
  * [home] as a VR Home page (console cards and status sheets), which the VR UI shows when it runs.
@@ -44,6 +46,7 @@ internal class GoVrLibraryFlow(
     private val activity: ComponentActivity,
     private val chooseFirst: Boolean,
     private val noConsoles: Boolean,
+    private var notFound: Boolean,
     private val show: (String) -> Unit,
     private val home: (VrHomeState) -> Unit,
     private val connect: (ConnectInfo, String) -> Unit,
@@ -226,6 +229,14 @@ internal class GoVrLibraryFlow(
     }
 
     private fun find(console: RegisteredHost) {
+        if(notFound) {
+            notFound = false
+            Log.i(TAG, "${GoVrConsolePicker.name(console)} forced not found (debug property)")
+            handler.removeCallbacks(tick)
+            screen = Screen.NotFound(console)
+            render()
+            return
+        }
         screen = Screen.Finding(console, SystemClock.elapsedRealtime())
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, TICK_MS)

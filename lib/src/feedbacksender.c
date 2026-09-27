@@ -330,6 +330,11 @@ static bool state_cond_check(void *user)
 	ChiakiFeedbackSender *feedback_sender = user;
 	if(feedback_sender->should_stop)
 		return true;
+	// PLE-800: a queued history packet (buttons, triggers, touches) goes out at once. The state
+	// minimum below throttles state packets only; waiting it out here slept a press inside it
+	// until the next controller change or the keepalive deadline, up to 200 ms.
+	if(feedback_sender->history_packet_len > 0)
+		return true;
 	if(!feedback_sender->controller_state_changed)
 		return false;
 	uint64_t now_ms = chiaki_time_now_monotonic_ms();

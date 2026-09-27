@@ -35,6 +35,11 @@
 
 #include <stdint.h>
 
+// PLE-711: opt-in floor orientation experiment; shipped surroundings stay unchanged.
+#ifndef PLEIKKARI_VR_ORIENTATION_CUE
+#define PLEIKKARI_VR_ORIENTATION_CUE 0
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -141,6 +146,12 @@ enum {
 	PLEIKKARI_VR_SKY_COUNT = 8
 };
 void pleikkari_vr_environment_debug_set_sky_variant(PleikkariVrEnvironment *env, int variant);
+
+// PLE-808 A/B: when enabled, draw_eye leaves its depth renderbuffer attached to the
+// caller's framebuffer object after the eye (still invalidated) and attaches it only
+// when the framebuffer lacks it, instead of attaching and detaching every eye. Off by
+// default. The caller's framebuffers then keep our depth until the environment is destroyed.
+void pleikkari_vr_environment_debug_set_depth_attach_once(PleikkariVrEnvironment *env, bool enabled);
 
 // Name of an environment kind, for logs and tests.
 const char *pleikkari_vr_environment_name(PleikkariVrEnvironmentKind kind);

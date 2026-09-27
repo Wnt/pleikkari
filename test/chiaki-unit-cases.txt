@@ -32,6 +32,8 @@
 /chiaki/takion/socket_close_waits_for_senders
 /chiaki/senkusha/ends_on_takion_disconnect
 /chiaki/senkusha/mtu_search_reaches_path_mtu
+/chiaki/feedback_sender/history_sent_at_once_inside_state_minimum
+/chiaki/feedback_sender/state_minimum_holds_for_a_stick_moved_with_a_press
 /chiaki/link_watchdog/healthy_stream_never_expires
 /chiaki/link_watchdog/expires_once_the_deadline_passes
 /chiaki/link_watchdog/expires_exactly_once
@@ -94,6 +96,7 @@
 /chiaki/video_frame_latency/pending_overflow_counts_replaced
 /chiaki/video_frame_latency/percentiles_nearest_rank
 /chiaki/video_frame_latency/format_line
+/chiaki/latency_probe/press_buttons_mask
 /chiaki/latency_probe/press_from_key_event_to_packet
 /chiaki/latency_probe/press_without_key_event_and_unsent
 /chiaki/latency_probe/frame_rows_from_the_join
@@ -114,6 +117,7 @@
 /chiaki/vr_frame_pacing/late_start
 /chiaki/vr_frame_pacing/hold_and_period
 /chiaki/vr_frame_pacing/drain
+/chiaki/vr_frame_pacing/hold_drain
 /chiaki/vr_frame_pacing/experiments
 /chiaki/vr_frame_pacing/latch_on_signal
 /chiaki/vr_ui_panel/init

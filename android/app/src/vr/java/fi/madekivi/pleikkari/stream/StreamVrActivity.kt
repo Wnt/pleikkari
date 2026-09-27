@@ -88,7 +88,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // picture, so the Go's cinema and environment cost can be read from adb (README).
         preview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_VR_CINEMA_PREVIEW, false)
         previewEnvironment = if(preview) intent.getStringExtra(EXTRA_ENVIRONMENT) else null
-        if(preview) environmentSamples = intent.getIntExtra(EXTRA_ENVIRONMENT_MSAA, DEFAULT_ENVIRONMENT_SAMPLES)
+        // PLE-753: the rooms' MSAA setting; the preview's PLE-653 extra, when given, overrides it.
+        environmentSamples = if(preview && intent.hasExtra(EXTRA_ENVIRONMENT_MSAA))
+            intent.getIntExtra(EXTRA_ENVIRONMENT_MSAA, DEFAULT_ENVIRONMENT_SAMPLES)
+        else Preferences(this).goVrRoomMsaa
         if(library) {
             // The referrer names the app that started us (com.oculus.vrshell for the Library).
             Log.i(TAG_ENTRY, (if(chooser) "Back in the Library chooser" else "Library VR launch, referrer ${referrer ?: "none"}") +
@@ -114,7 +117,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             // PLE-739: debug builds only, `adb shell setprop debug.pleikkari.go_entry_no_console 1`: the
             // Library flow sees no linked PS5, so its no-console message shows without clearing app data.
             val noConsoles = BuildConfig.DEBUG && debugProperty(NO_CONSOLE_PROPERTY) == "1"
-            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, ::showStatus, ::setHome, ::libraryConnect,
+            // PLE-784: debug builds only, `adb shell setprop debug.pleikkari.go_entry_not_found 1`: the
+            // first console looked for lands on Home's not-found sheet, so the address pad can be driven headless.
+            val notFound = BuildConfig.DEBUG && debugProperty(NOT_FOUND_PROPERTY) == "1"
+            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, notFound, ::showStatus, ::setHome, ::libraryConnect,
                 ::openPanel, ::finish).also { it.start() }
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -624,6 +630,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // PLE-675: debug builds only, `adb shell setprop debug.pleikkari.vr_full_pose 1` before
                 // the stream starts; the screen follows the full head pose so a Go on a table shows it.
                 if(BuildConfig.DEBUG && debugProperty(FULL_POSE_PROPERTY) == "1") VrCinemaNative.setFullPoseRecentre(native, true)
+                // PLE-808: debug builds, `setprop debug.pleikkari.vr_depth_attach_once 1` keeps the rooms' depth attached.
+                if(BuildConfig.DEBUG && debugProperty(DEPTH_ATTACH_ONCE_PROPERTY) == "1") VrCinemaNative.debugSetDepthAttachOnce(native, true)
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
                 // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
                 if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
@@ -656,12 +664,19 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         host.stats(VrStatsPanel.lines(null, refreshHz, preview))
                     }
                 }
-                // PLE-715: when each frame starts relative to VrApi's release. The late start is an A/B
-                // setting; a debug build also takes `adb shell setprop debug.pleikkari.vr_pacing <experiments>`
-                // (vr-frame-pacing.h). The per-second "Frame pacing" line comes with the stats log.
+                // PLE-715: when each frame starts relative to VrApi's release. The late start (plain cinema)
+                // and PLE-753's hold and drain (plain and rooms) are A/B settings; a debug build also takes
+                // `adb shell setprop debug.pleikkari.vr_pacing <experiments>` (vr-frame-pacing.h). The
+                // per-second "Frame pacing" line comes with the stats log.
                 val pacingSpec = if(BuildConfig.DEBUG) debugProperty(PACING_PROPERTY) else ""
+                val holdDrain = Preferences(this@StreamVrActivity).goVrHoldDrain
+                val pacing = when {
+                    Preferences(this@StreamVrActivity).goVrLateStart -> PACING_LATE
+                    holdDrain -> PACING_HOLD
+                    else -> PACING_VRAPI
+                }
                 // PLE-801: the latch on the frame signal, an A/B setting too (or the debug property's `signal`).
-                val latchOnSignal = VrCinemaNative.setPacing(native, if(Preferences(this@StreamVrActivity).goVrLateStart) 1 else 0,
+                val latchOnSignal = VrCinemaNative.setPacing(native, pacing, if(holdDrain) PACING_HOLD else PACING_VRAPI,
                     Preferences(this@StreamVrActivity).goVrLatchOnSignal, frameLatency, pacingSpec, refreshHz)
                 // PLE-755: pay the first-draw cost before the first submit, not inside it.
                 if(Preferences(this@StreamVrActivity).goVrWarmUp) VrCinemaNative.warmUp(native)
@@ -975,8 +990,13 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
+        private const val DEPTH_ATTACH_ONCE_PROPERTY = "debug.pleikkari.vr_depth_attach_once"
         /** PLE-715: debug builds only; frame pacing experiments, see vr-frame-pacing.h. */
         private const val PACING_PROPERTY = "debug.pleikkari.vr_pacing"
+        /** VrCinemaNative.setPacing modes: vr-frame-pacing.h's PleikkariVrPacingMode. */
+        private const val PACING_VRAPI = 0
+        private const val PACING_LATE = 1
+        private const val PACING_HOLD = 2
         /** PLE-722: debug builds only; "x,y" degrees from the open menu's middle for a synthetic pointer. */
         private const val POINTER_PROPERTY = "debug.pleikkari.vr_pointer"
         /** PLE-761: debug builds only; panel layer switches, see VrUiLayerDebug. */
@@ -991,6 +1011,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val CHOOSE_PROPERTY = "debug.pleikkari.go_entry_choose"
         /** PLE-739: debug builds only; a Library launch sees no linked console. */
         private const val NO_CONSOLE_PROPERTY = "debug.pleikkari.go_entry_no_console"
+        /** PLE-784: debug builds only; a Library launch's first console look ends not found. */
+        private const val NOT_FOUND_PROPERTY = "debug.pleikkari.go_entry_not_found"
         /** PLE-739: debug builds only; see [registerDebugInput]. */
         private const val DEBUG_INPUT_ACTION = "fi.madekivi.pleikkari.DEBUG_GO_VR_INPUT"
         private const val EXTRA_DEBUG_KEY = "key"
@@ -1003,7 +1025,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             "up" to ControllerState.BUTTON_DPAD_UP, "down" to ControllerState.BUTTON_DPAD_DOWN,
             "left" to ControllerState.BUTTON_DPAD_LEFT, "right" to ControllerState.BUTTON_DPAD_RIGHT,
             "l1" to ControllerState.BUTTON_L1, "r1" to ControllerState.BUTTON_R1,
-            "options" to ControllerState.BUTTON_OPTIONS, "ps" to ControllerState.BUTTON_PS)
+            "options" to ControllerState.BUTTON_OPTIONS, "ps" to ControllerState.BUTTON_PS,
+            "create" to ControllerState.BUTTON_SHARE, "touchpad" to ControllerState.BUTTON_TOUCHPAD)
         /** PLE-746: probe records taken per render loop; a loop normally has one or none. */
         private const val PROBE_ROWS = 8
         /** PLE-690: set only by [leave]; the activity is not exported. */
@@ -1033,10 +1056,13 @@ internal object VrCinemaNative {
     /** PLE-715: the top of every loop iteration, before input and the latch; sleeps when pacing asks. */
     external fun pace(handle: Long)
     /**
-     * PLE-715: mode 0 VrApi's release (default), 1 the late start; log the per-second pacing line.
+     * PLE-715: mode 0 VrApi's release (default), 1 the late start, 2 (PLE-753) the hold and drain;
+     * [roomMode] the same while a room is drawn (a room never takes the late start); log the
+     * per-second pacing line.
      * PLE-801: [latchOnSignal] waits for the frame signal before the latch; returns it (or the spec's `signal`).
      */
-    external fun setPacing(handle: Long, mode: Int, latchOnSignal: Boolean, log: Boolean, spec: String, refreshHz: Float): Boolean
+    external fun setPacing(handle: Long, mode: Int, roomMode: Int, latchOnSignal: Boolean, log: Boolean, spec: String,
+        refreshHz: Float): Boolean
     /** PLE-801: until when (System.nanoTime) the loop may wait for the frame signal before the latch; 0 latches now. */
     external fun latchDeadline(handle: Long): Long
     /** PLE-801: the wait before the latch, from [waitStartNs] to now; [signalled] if a frame came before the deadline. */
@@ -1064,5 +1090,6 @@ internal object VrCinemaNative {
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
         heightOffset: Float, glow: Float, roomLight: Float)
     external fun debugSetSkyVariant(handle: Long, variant: Int)
+    external fun debugSetDepthAttachOnce(handle: Long, enabled: Boolean)
     external fun destroy(handle: Long)
 }

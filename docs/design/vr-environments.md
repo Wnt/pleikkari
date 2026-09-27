@@ -419,3 +419,25 @@ warnings, and against 1.50.0's headers too (PLE-623).
 - A cylinder compositor layer for the picture (`VRAPI_LAYER_TYPE_CYLINDER2`) would
   sample the decoder texture once instead of through the eye buffer; Skybox does not do
   it for the picture either, but it is the next sharpness step for PLE-602.
+
+
+### PLE-711: optional floor orientation cue
+
+The default picture is unchanged. Build Android with `-PvrOrientationCue=true`
+(applicable to both the preview and the Go native cinema) to add a faint blue-grey
+floor ring to plain and void. Omit the property or set it to `false` for the control
+arm. This is a build-time A/B experiment, not a runtime preference.
+
+The ring is fixed in room coordinates, 1.5 m below eye origin and 6 m out. Its
+front spoke points toward the screen (-z). It stays lit with black video and zero
+room light. Cinema and terrace are unchanged. The cue adds 194 triangles per eye;
+plain gains one room draw per eye and depth, while void uses its existing room draw.
+It does not indicate the screen when looking straight up/down; recenter remains
+necessary for an uncomfortable starting pose.
+
+Host proof: configure `android/vr-environment/host` with
+`-DPLEIKKARI_VR_ORIENTATION_CUE=ON`, build, then run `vr-environment-render --check
+--out <existing-directory>` with `LIBGL_ALWAYS_SOFTWARE=1`. Repeat with `OFF`.
+Repeat with `--yaw 90` and `--yaw 180` to check plain looking away from the
+screen; the default renders cover all rooms at 0 and 40 degrees. Mesa images do not establish headset visibility, comfort,
+or GPU cost; compare both builds on the Go before considering default enablement.

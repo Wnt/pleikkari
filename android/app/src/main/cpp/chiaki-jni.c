@@ -14,12 +14,14 @@
 #include <chiaki/regist.h>
 #include <chiaki/trace.h>
 
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <sched.h>
 #include <unistd.h>
 #include <time.h>
 #include <sys/resource.h>
+#include <sys/system_properties.h>
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <arpa/inet.h>
@@ -977,6 +979,15 @@ JNIEXPORT jboolean JNICALL JNI_FCN(latencyProbeStart)(JNIEnv *env, jobject obj, 
 	bool started = android_chiaki_latency_probe_start(&latency_probe, presses, frames);
 	if(started)
 	{
+		// PLE-803: go-probe.sh's STIMULUS can time another button than Cross (a chiaki button mask).
+		char mask[PROP_VALUE_MAX] = "";
+		__system_property_get("debug.pleikkari.probe_buttons", mask);
+		uint32_t press_buttons = (uint32_t)strtoul(mask, NULL, 0);
+		if(press_buttons)
+		{
+			android_chiaki_latency_probe_set_press_buttons(&latency_probe, press_buttons);
+			CHIAKI_LOGI(&global_log, "Latency probe: presses are buttons 0x%x", (unsigned)press_buttons);
+		}
 		android_chiaki_video_frame_latency_set_row_cb(&cinema_frame_latency, android_chiaki_latency_probe_frame_row, &latency_probe);
 		android_chiaki_latency_trace_arm(true);
 		CHIAKI_LOGI(&global_log, "Latency probe: recording presses and frames to %s", dir);

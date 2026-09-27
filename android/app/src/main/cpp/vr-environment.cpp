@@ -817,6 +817,9 @@ struct PleikkariVrEnvironment
 	GLuint glowTexture = 0, glowFbo = 0;
 	GLuint depthRenderbuffer = 0;
 	int depthWidth = 0, depthHeight = 0, depthSamples = 0;
+	// PLE-808: leave the depth renderbuffer attached to the caller's framebuffers between
+	// eyes (attach only when missing) instead of attaching and detaching every eye.
+	bool depthAttachOnce = false;
 
 	GLsizei roomIndexCount = 0, skyVertexCount = 0, starCount = 0, screenVertexCount = 0;
 	size_t roomVertexBytes = 0;
@@ -1035,6 +1038,25 @@ bool PleikkariVrEnvironment::init()
 	return err == GL_NO_ERROR;
 }
 
+// A thin ring remains visible when looking away from the screen. A short inward
+// spoke on its front side points toward -z (the screen), without tracking the head.
+// Emission keeps the cue visible with room light/glow disabled or a black video.
+void build_orientation_cue(RoomBuilder &b)
+{
+	constexpr int segments = 96;
+	const Rgb tint{0.018f, 0.024f, 0.032f};
+	for(int i = 0; i < segments; ++i)
+	{
+		float a = 2 * kPi * i / segments, c = 2 * kPi * (i + 1) / segments;
+		auto point = [](float angle, float radius) {
+			return Vec3{radius * std::sin(angle), -1.5f, radius * std::cos(angle)};
+		};
+		b.quad(point(a, 5.9f), point(a, 6.0f), point(c, 6.0f), point(c, 5.9f), tint, 1.0f);
+	}
+	b.quad({-0.05f, -1.5f, -6.0f}, {-0.05f, -1.5f, -4.5f},
+		{0.05f, -1.5f, -4.5f}, {0.05f, -1.5f, -6.0f}, tint, 1.0f);
+}
+
 void PleikkariVrEnvironment::rebuild_geometry()
 {
 	RoomBuilder b;
@@ -1054,6 +1076,9 @@ void PleikkariVrEnvironment::rebuild_geometry()
 		default:
 			break;
 	}
+	if(PLEIKKARI_VR_ORIENTATION_CUE && (config.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN
+			|| config.environment == PLEIKKARI_VR_ENVIRONMENT_VOID))
+		build_orientation_cue(b);
 	if(b.vertices.size() > 65535)
 		LOGE("room mesh has %zu vertices, more than 16-bit indices allow", b.vertices.size());
 	roomIndexCount = static_cast<GLsizei>(b.indices.size());
@@ -1335,6 +1360,7 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 	mat4_multiply(viewProj, projection, view);
 	const PleikkariVrEnvironmentConfig &cfg = env->config;
 	const bool plain = cfg.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN;
+	const bool needsDepth = !plain || PLEIKKARI_VR_ORIENTATION_CUE;
 
 	GLint fbo = 0, viewport[4] = {0, 0, 0, 0};
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
@@ -1346,7 +1372,7 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 	glDisable(GL_BLEND);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-	if(plain)
+	if(!needsDepth)
 	{
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_CULL_FACE);
@@ -1360,7 +1386,17 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		if(fbo != 0)
 		{
 			env->ensure_depth(viewport[0] + viewport[2], viewport[1] + viewport[3]);
-			glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, env->depthRenderbuffer);
+			GLint attached = 0, attachedType = GL_NONE;
+			if(env->depthAttachOnce)
+			{
+				glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+						GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &attachedType);
+				if(attachedType == GL_RENDERBUFFER)
+					glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+							GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &attached);
+			}
+			if(attachedType != GL_RENDERBUFFER || static_cast<GLuint>(attached) != env->depthRenderbuffer)
+				glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, env->depthRenderbuffer);
 		}
 		glDepthMask(GL_TRUE);
 		glClearColor(0, 0, 0, 1);
@@ -1535,13 +1571,14 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		glDepthMask(GL_TRUE);
 	}
 
-	if(!plain && fbo != 0)
+	if(needsDepth && fbo != 0)
 	{
 		// Depth is never needed after the eye: tell the tiler not to write it back, then
 		// hand the caller's framebuffer back as it came.
 		const GLenum attachment = GL_DEPTH_ATTACHMENT;
 		glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, 1, &attachment);
-		glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+		if(!env->depthAttachOnce)
+			glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
 	}
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_SCISSOR_TEST);
@@ -1600,6 +1637,14 @@ void pleikkari_vr_environment_debug_set_sky_variant(PleikkariVrEnvironment *env,
 		return;
 	env->skyVariant = variant >= 0 && variant < PLEIKKARI_VR_SKY_COUNT ? variant : PLEIKKARI_VR_SKY_DOME;
 	LOGI("sky variant %d", env->skyVariant);
+}
+
+void pleikkari_vr_environment_debug_set_depth_attach_once(PleikkariVrEnvironment *env, bool enabled)
+{
+	if(!env)
+		return;
+	env->depthAttachOnce = enabled;
+	LOGI("depth attach once %d", enabled ? 1 : 0);
 }
 
 const char *pleikkari_vr_environment_name(PleikkariVrEnvironmentKind kind)

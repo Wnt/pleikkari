@@ -17,6 +17,15 @@
 # Cross flips the whole UI between its normal and high-contrast colours (GPU mean luma about 40 vs 21,
 # a fade of about 200 ms). Invert Colours, the ticket's first choice, only changes the console's HDMI
 # output: Remote Play's video never shows it (2026-09-27, build/ple746/r1-rounds-130039).
+# PLE-803: STIMULUS picks the button a round presses and the probe times (debug.pleikkari.probe_buttons,
+# set for the session and cleared at its end); park the console with PADS first:
+#  high-contrast (default)  Cross on the High Contrast toggle, above. The fallback.
+#  create      Create on any screen: the PS5's Create menu opens (the picture dims under it) and the next
+#              press closes it. Keep PRESSES even.
+#  home-focus  right and left in turn on the PS5 home screen, focus on a game tile with another beside it:
+#              the tile focus and the background art change. Presses alternate, so PRESSES even ends where
+#              it began.
+#  PRESS=key works only with high-contrast (it sends KEYCODE_BUTTON_A).
 #  restore  PLE-654's restore: the snapshot APK and prefs back.
 # Every streaming mode: PLE-654's go-live.sh `setup` (prefs, databases, app data and base.apk into
 # $BACKUP, once) and `ensure <apk>` (install -r, never uninstall or clear); the snapshot prefs plus
@@ -49,6 +58,14 @@ PRESS_SLEEP=${PRESS_SLEEP:-0.6} # plus the press command's own time: 1-2.5 s for
 # but its down and up are about 1 ms apart and the PS5 acted on only 36 of 96 (2026-09-27, b1-rounds-132644).
 PRESS=${PRESS:-pad}
 PRESS_HOLD_MS=${PRESS_HOLD_MS:-100}
+STIMULUS=${STIMULUS:-high-contrast}
+case "$STIMULUS" in # <pad buttons pressed in turn> <chiaki button mask the probe times>
+	high-contrast) STIM_PADS="cross"; STIM_MASK=0x1 ;;
+	create) STIM_PADS="create"; STIM_MASK=0x2000 ;;
+	home-focus) STIM_PADS="right left"; STIM_MASK=0x30 ;;
+	*) echo "unknown STIMULUS $STIMULUS (high-contrast, create, home-focus)" >&2; exit 2 ;;
+esac
+[ "$PRESS" = key ] && [ "$STIMULUS" != high-contrast ] && { echo "PRESS=key needs STIMULUS=high-contrast" >&2; exit 2; }
 ATRACE_CATS=${ATRACE_CATS:-gfx input view sched freq hal}
 ATRACE_KB=${ATRACE_KB:-16384}
 PADS=${PADS:-}
@@ -90,6 +107,7 @@ cleanup_props() {
 	a shell setprop debug.pleikkari.go_entry_choose 0
 	local kv
 	for kv in $ARM_PROPS; do a shell setprop "${kv%%=*}" "''"; done
+	a shell setprop debug.pleikkari.probe_buttons "''"
 }
 
 step_prefs() {
@@ -138,6 +156,7 @@ step_launch() {
 	a shell setprop debug.pleikkari.vr_full_pose 1
 	local kv
 	for kv in $ARM_PROPS; do a shell setprop "${kv%%=*}" "${kv#*=}"; say "arm prop: $kv"; done
+	a shell setprop debug.pleikkari.probe_buttons $STIM_MASK # read when the cinema starts the probe
 	"$ROOT/scripts/dev/go-keepawake.sh" wake 2>&1 | tail -1 | tee -a "$LOG"
 	mark_since
 	echo "== launch $since" >> "$OUT/markers.txt"
@@ -210,8 +229,8 @@ step_rounds() {
 			say "round $r: $PRESSES presses of KEYCODE_BUTTON_A, one each $PRESS_SLEEP s plus the input command's own time"
 			a shell "i=0; while [ \$i -lt $PRESSES ]; do input keyevent KEYCODE_BUTTON_A; sleep $PRESS_SLEEP; i=\$((i+1)); done"
 		else
-			say "round $r: $PRESSES Cross presses held $PRESS_HOLD_MS ms (debug pad broadcast), one each $PRESS_SLEEP s plus the am command's own time"
-			a shell "i=0; while [ \$i -lt $PRESSES ]; do am broadcast -a $DEBUG_INPUT --es pad cross --ei hold_ms $PRESS_HOLD_MS >/dev/null; sleep $PRESS_SLEEP; i=\$((i+1)); done"
+			say "round $r: $PRESSES $STIMULUS presses ($STIM_PADS in turn) held $PRESS_HOLD_MS ms (debug pad broadcast), one each $PRESS_SLEEP s plus the am command's own time"
+			a shell "i=0; while [ \$i -lt $PRESSES ]; do for b in $STIM_PADS; do [ \$i -lt $PRESSES ] || break; am broadcast -a $DEBUG_INPUT --es pad \$b --ei hold_ms $PRESS_HOLD_MS >/dev/null; sleep $PRESS_SLEEP; i=\$((i+1)); done; done"
 		fi
 		sleep 2
 		a exec-out "atrace --async_stop -z -b $ATRACE_KB -a $PKG $ATRACE_CATS" > "$OUT/round-$r.atrace" 2>/dev/null
@@ -258,7 +277,7 @@ step_stop() {
 	case "$cur" in *vrshell*) ;; *) "$ROOT/scripts/dev/go.sh" recover 2>&1 | tail -3 | tee -a "$LOG"; say "after recover: $(resumed)" ;; esac
 }
 
-say "PLE-746 $MODE; $(( DEADLINE - $(date +%s) ))s before the deadline; serial $(a shell getprop ro.serialno | tr -d '\r'); $(a shell 'dumpsys power | grep mWakefulness=' | tr -d '\r ')"
+say "PLE-746 $MODE (STIMULUS=$STIMULUS); $(( DEADLINE - $(date +%s) ))s before the deadline; serial $(a shell getprop ro.serialno | tr -d '\r'); $(a shell 'dumpsys power | grep mWakefulness=' | tr -d '\r ')"
 a shell getprop ro.serialno | tr -d '\r' > "$OUT/serial.txt"
 a shell getprop ro.build.fingerprint | tr -d '\r' > "$OUT/fingerprint.txt"
 if [ "$MODE" = restore ]; then
