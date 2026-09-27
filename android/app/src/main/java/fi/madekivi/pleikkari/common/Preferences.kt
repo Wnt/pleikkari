@@ -283,6 +283,16 @@ class Preferences(context: Context)
 		set(value) { sharedPreferences.edit().apply { if(value == null) remove(lastConsoleMacKey) else putLong(lastConsoleMacKey, value.value) }.apply() }
 
 	// PLE-636: native Go cinema at 60 Hz for a 60 fps stream; off keeps PLE-602's 72 Hz.
+	/**
+	 * PLE-722: the Go's VR UI toolkit menu (panels, laser pointer, pad focus; docs/design/vr-ui.md).
+	 * On by default (operator ruling: on the Go the VR UI is the product); off keeps PLE-602's
+	 * head-locked strip menu, for the head-loop A/B.
+	 */
+	val goVrUiKey get() = "stream_go_vr_ui"
+	var goVrUi
+		get() = sharedPreferences.getBoolean(goVrUiKey, true)
+		set(value) { sharedPreferences.edit().putBoolean(goVrUiKey, value).apply() }
+
 	val goVrMatch60HzKey get() = "stream_go_vr_match_60hz"
 	var goVrMatch60Hz
 		get() = sharedPreferences.getBoolean(goVrMatch60HzKey, false)

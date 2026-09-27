@@ -252,6 +252,25 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		return true
 	}
 
+	/**
+	 * PLE-722: the Go's VR menu took the pad. The console sees every pad button up and both
+	 * sticks and triggers at rest until the pad's next event after the menu closes.
+	 */
+	fun releasePad()
+	{
+		for(state in listOf(keyControllerState, motionControllerState))
+		{
+			state.buttons = 0U
+			state.l2State = 0U
+			state.r2State = 0U
+			state.leftX = 0
+			state.leftY = 0
+			state.rightX = 0
+			state.rightY = 0
+		}
+		controllerStateUpdated()
+	}
+
 	fun onGenericMotionEvent(event: MotionEvent): Boolean
 	{
 		if(event.source and InputDevice.SOURCE_CLASS_JOYSTICK != InputDevice.SOURCE_CLASS_JOYSTICK)
