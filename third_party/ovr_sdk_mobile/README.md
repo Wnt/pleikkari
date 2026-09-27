@@ -3,10 +3,13 @@
 This directory is intentionally empty except for this README. Obtain a **Go-compatible
 legacy Oculus Mobile SDK** through the operator's Pleikkari organization at
 [Meta developer downloads](https://developers.meta.com/horizon/downloads/), accepting
-its license there. The ticket targets the approximately v23 / 1.50 generation;
-confirm Go support in the downloaded release's notes. Modern OpenXR SDKs cannot
-replace VrApi on the Go. Do not download an unofficial binary mirror or commit the
-SDK, its headers, libraries, archives, or license-protected samples.
+its license there. Use **1.35.0** (v18, API 1.35): it matches the Go's VrApi runtime
+(`com.oculus.systemdriver` 18.0.0.x) and its release notes name the Go, while 1.50.0
+(v33) no longer defines `VRAPI_DEVICE_TYPE_OCULUSGO` (PLE-617). On CT950 it is stored
+outside git at `/home/wnt/gta6/build/sdk/ovr_sdk_mobile/`; link it into a worktree with
+`ln -s /home/wnt/gta6/build/sdk/ovr_sdk_mobile/VrApi third_party/ovr_sdk_mobile/VrApi`.
+Modern OpenXR SDKs cannot replace VrApi on the Go. Do not download an unofficial binary
+mirror or commit the SDK, its headers, libraries, archives, or license-protected samples.
 
 Extract the SDK here, with no extra enclosing version directory:
 
@@ -60,9 +63,11 @@ PLE-603 adds the room around the screen: the Go-only settings under **VR cinema
 (Oculus Go)** pick an environment (plain, the default, keeps the path above unchanged;
 void, cinema hall, night terrace) and the screen's distance, width, curve radius and
 height. `libpleikkari-vr.so` links `libpleikkari-vr-environment.so` (plain GLES 3.0,
-built in every gate) for it; see `docs/design/vr-environments.md` §7. The wired
-`vr-cinema.cpp` was type-checked against a local stub of the VrApi declarations, not
-compiled against the SDK.
+built in every gate) for it; see `docs/design/vr-environments.md` §7. `vr-cinema.cpp`,
+with PLE-603's environment and PLE-615's MSAA wired in, compiles and links against the
+real SDK 1.35.0 headers and `libvrapi.so`, and has no warnings under `-Wall -Wextra`
+against either 1.35.0 or 1.50.0 (PLE-623). The stub it was first type-checked against
+did not differ from the real declarations.
 
 The screen remains world-locked. Go touchpad click recentres it. Go Back opens a
 head-following menu: click the left/centre/right third of the touchpad for
@@ -79,14 +84,38 @@ and leave VR, then returns the window to Android. Nothing uses GLSurfaceView.
 explicitly rules out GLSurfaceView for VrApi. Go input uses
 [VrApi's input API](https://developers.meta.com/horizon/documentation/native/android/mobile-vrapi-input-api/).
 
+## Debug preview: the cinema with no console
+
+A debug build runs the real VrApi cinema without a PS5 or the setting (PLE-623):
+`StreamVrActivity` with `--ez vr_cinema_preview true` skips the session and queues a
+moving 1280x720 test picture into the decoder's `SurfaceTexture` at 60 fps, so the
+picture, the environment's glow map and `Environment frame:` run as in a stream.
+`--es environment plain|void|cinema|terrace` overrides the stored environment for that
+run; no preference is written. The activity is not exported, so start it as the app's
+own uid, with `--user 0` (`am`'s default `current` user needs a permission the app lacks):
+
+```
+adb -s 192.168.1.202:5555 shell run-as fi.madekivi.pleikkari am start --user 0 \
+    -n fi.madekivi.pleikkari/.stream.StreamVrActivity --ez vr_cinema_preview true --es environment cinema
+adb -s 192.168.1.202:5555 logcat -s GoCinema VrApi
+```
+
+`am force-stop fi.madekivi.pleikkari` ends it. A release build ignores the extra.
+The Go's first results with it (every room 7.5 to 8.6 ms of GPU in VrApi, and
+`Environment frame:` under-reporting that) are in `docs/design/vr-environments.md` §8.
+Reaching the streaming cinema from adb is harder: the Library path opens
+`MainActivity` inside the Oculus TV panel (PLE-600's `go.sh launch`), where
+`input tap` cannot reach it, and a plain `am start` of `MainActivity` on display 0 is
+covered at once by vrshell's `ClearActivity`, which stops it and its discovery.
+
 ## Required device validation
 
-The SDK was absent; SDK-enabled headset acceptance and latency were not run.
-Before treating this as a usable Go build:
+Built with SDK 1.35.0 (PLE-617, PLE-623); the streaming path's headset acceptance and
+latency were not run. Before treating this as a usable Go build:
 
-1. Build with the licensed Go SDK and inspect the APK for arm64 `libvrapi.so` and
-   `libpleikkari-vr.so`. Resolve any API differences against that SDK, then run the
-   full gate with it present. Also run `-PchiakiGoVr=false` to check the baseline.
+1. Done (PLE-617, PLE-623): the SDK build packages arm64 `libvrapi.so`,
+   `libpleikkari-vr.so` and `libpleikkari-vr-environment.so`, `vr-cinema.cpp` needed no
+   API changes, and the gate passes with the SDK linked in.
 2. Preserve registration: back up app data before any `adb install -r`; never
    uninstall or clear `fi.madekivi.pleikkari`. Launch from the headset Library,
    not `adb shell am start`. PLE-600 owns scripted Oculus TV launch.
