@@ -244,6 +244,7 @@
     <string name="session_logs_empty_info">No Session Logs recorded.</string>
     <string name="registered_hosts_empty_info">No Consoles registered.</string>
     <string name="consoles_empty">No consoles</string>
+    <string name="psn_no_remote_play_consoles">No consoles with Remote Play enabled on your PSN account</string>
     <string name="console_status_on">On</string>
     <string name="console_status_standby">Standby</string>
     <string name="console_status_remote">Remote</string>

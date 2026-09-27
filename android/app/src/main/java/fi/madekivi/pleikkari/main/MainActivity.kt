@@ -304,6 +304,8 @@ class MainActivity : AppCompatActivity()
 			return
 		val atTop = binding.hostsRecyclerView.computeVerticalScrollOffset() == 0
 		consoleAdapter.consoles = mergeHomeConsoles(localHosts, psnConsoles)
+		binding.psnNoRemotePlayTextView.visibility =
+			if(showPsnNoRemotePlayConsoles(viewModel.psnListState.value, psnConsoles)) View.VISIBLE else View.GONE
 		if(atTop)
 			binding.hostsRecyclerView.scrollToPosition(0)
 		val listUnavailable = viewModel.psnListState.value is PsnConsoleListState.Error ||

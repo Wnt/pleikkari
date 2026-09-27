@@ -87,4 +87,16 @@ class PsnConsoleTest
 		assertFalse(shouldReloadPsnConsoleList(PsnConsoleListState.Ready))
 		assertFalse(shouldReloadPsnConsoleList(null))
 	}
+
+	@Test
+	fun emptyReadyPsnListExplainsItself()
+	{
+		val one = listOf(PsnConsole(PsnDevice("one", "PS5-466"), null))
+		assertTrue(showPsnNoRemotePlayConsoles(PsnConsoleListState.Ready, emptyList()))
+		assertFalse(showPsnNoRemotePlayConsoles(PsnConsoleListState.Ready, one))
+		assertFalse(showPsnNoRemotePlayConsoles(PsnConsoleListState.Loading, emptyList()))
+		assertFalse(showPsnNoRemotePlayConsoles(PsnConsoleListState.Hidden, emptyList()))
+		assertFalse(showPsnNoRemotePlayConsoles(PsnConsoleListState.Error("x", PsnErrorRecovery.RETRY), emptyList()))
+		assertFalse(showPsnNoRemotePlayConsoles(null, emptyList()))
+	}
 }
