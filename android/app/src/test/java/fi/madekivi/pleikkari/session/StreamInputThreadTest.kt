@@ -16,7 +16,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.time.Duration
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -217,6 +219,45 @@ class StreamInputThreadTest
 		assertEquals(padChanges + mainChanges, sent.get())
 		assertEquals("torn states, the first ${firstTorn.get()}", 0, torn.get())
 		assertEquals(input.controllerState, last.get())
+	}
+
+	/** PLE-830: which thread sends a coalesced press made on the input thread. */
+	private fun coalescedSenderThread(flushOnInputThread: Boolean): Thread
+	{
+		preferences.controllerInputCoalescingEnabled = true
+		preferences.goVrInputThreadFlush = flushOnInputThread
+		val input = StreamInput(context, preferences)
+		val sender = AtomicReference<Thread>()
+		val sentState = AtomicReference<ControllerState>()
+		val sent = CountDownLatch(1)
+		input.controllerStateChangedCallback = {
+			sender.set(Thread.currentThread())
+			sentState.set(it)
+			sent.countDown()
+		}
+		val thread = HandlerThread("GoPadInput").apply { start() }
+		Handler(thread.looper).post { input.dispatchKeyEvent(key(preferences.mappingCross, true, 1L)) }
+		val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+		while(sent.count > 0 && System.nanoTime() < deadline)
+		{
+			shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(20))
+			sent.await(5, TimeUnit.MILLISECONDS)
+		}
+		thread.quitSafely()
+		assertEquals(ControllerState(buttons = ControllerState.BUTTON_CROSS), sentState.get())
+		return sender.get()
+	}
+
+	@Test
+	fun coalescedInputThreadChangesFlushOnTheMainThreadByDefault()
+	{
+		assertEquals(Looper.getMainLooper().thread, coalescedSenderThread(flushOnInputThread = false))
+	}
+
+	@Test
+	fun coalescedInputThreadChangesFlushOnTheInputThreadWithTheSetting()
+	{
+		assertEquals("GoPadInput", coalescedSenderThread(flushOnInputThread = true).name)
 	}
 
 	/** Not half of one of the concurrency test's joystick events and half of another. */

@@ -44,6 +44,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.goVrWarmUpKey -> preferences.goVrWarmUp
 		preferences.goVrFlushEyesKey -> preferences.goVrFlushEyes
 		preferences.goVrInputThreadKey -> preferences.goVrInputThread
+		preferences.goVrInputThreadFlushKey -> preferences.goVrInputThreadFlush
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -100,6 +101,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.goVrWarmUpKey -> preferences.goVrWarmUp = value
 			preferences.goVrFlushEyesKey -> preferences.goVrFlushEyes = value
 			preferences.goVrInputThreadKey -> preferences.goVrInputThread = value
+			preferences.goVrInputThreadFlushKey -> preferences.goVrInputThreadFlush = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
@@ -341,6 +343,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				title = getString(R.string.go_vr_input_thread_title)
 				summary = getString(R.string.go_vr_input_thread_summary)
 				isChecked = preferences.goVrInputThread
+			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrInputThreadFlushKey
+				title = getString(R.string.go_vr_input_thread_flush_title)
+				summary = getString(R.string.go_vr_input_thread_flush_summary)
+				isChecked = preferences.goVrInputThreadFlush
 			})
 			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
 				key = preferences.goVrLateStartKey

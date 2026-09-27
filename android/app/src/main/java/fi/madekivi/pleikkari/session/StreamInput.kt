@@ -5,6 +5,7 @@ import android.hardware.*
 import android.os.Handler
 import android.os.Looper
 import android.view.*
+import java.util.Collections
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -22,6 +23,11 @@ import fi.madekivi.pleikkari.lib.LatencyProbe
  * state never loses another thread's change, and the state sent last is always computed after the
  * last change: the console ends on the newest state whichever thread changed it. With a single thread
  * the lock is uncontended and the states sent are the same as before.
+ *
+ * PLE-830: with `stream_go_vr_input_thread_flush` the coalesced flush of a change made on another
+ * looper thread (GoPadInput) runs on that thread's own Choreographer instead of hopping to the main
+ * looper. Each looper has its own [FlushScheduler]; a flush sends only if [controllerStateDirty] is
+ * still set under [stateLock], so two schedulers never send the same change twice.
  */
 class StreamInput(val context: Context, val preferences: Preferences)
 {
@@ -49,12 +55,51 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		fallbackForReportedRanges = preferences.gamepadTriggerFallbackEnabled
 	)
 	private val mainHandler = Handler(Looper.getMainLooper())
+	private val flushOnInputThread = preferences.goVrInputThreadFlush
 	private var controllerStateDirty = false
-	private var controllerStateFlushScheduled = false
-	private var frameCallbacksRunning = false
+	@Volatile private var frameCallbacksRunning = false
 
-	private val frameCallback = Choreographer.FrameCallback { flushControllerState() }
-	private val frameFallback = Runnable { flushControllerState() }
+	/** One looper's pending flush; touched only on that looper's thread. */
+	private inner class FlushScheduler(looper: Looper)
+	{
+		val handler = Handler(looper)
+		var scheduled = false
+		var choreographer: Choreographer? = null
+		val frameCallback = Choreographer.FrameCallback { flush() }
+		val frameFallback = Runnable { flush() }
+
+		fun schedule()
+		{
+			if(scheduled)
+				return
+			scheduled = true
+			if(frameCallbacksRunning)
+				Choreographer.getInstance().also { choreographer = it }.postFrameCallback(frameCallback)
+			else
+				handler.postDelayed(frameFallback, FRAME_FALLBACK_DELAY_MS)
+		}
+
+		/** The activity paused: vsync may stop, so the pending flush falls back to a delay. */
+		fun pause()
+		{
+			if(!scheduled)
+				return
+			choreographer?.removeFrameCallback(frameCallback)
+			handler.removeCallbacks(frameFallback)
+			handler.postDelayed(frameFallback, FRAME_FALLBACK_DELAY_MS)
+		}
+
+		fun flush()
+		{
+			handler.removeCallbacks(frameFallback)
+			choreographer?.removeFrameCallback(frameCallback)
+			scheduled = false
+			flushControllerState()
+		}
+	}
+
+	private val mainScheduler = FlushScheduler(Looper.getMainLooper())
+	private val inputThreadSchedulers = Collections.synchronizedMap(HashMap<Looper, FlushScheduler>())
 
 	val controllerState: ControllerState get() = synchronized(stateLock) { mergedControllerState() }
 
@@ -169,10 +214,10 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		fun onPause()
 		{
 			frameCallbacksRunning = false
-			if(controllerStateFlushScheduled)
-			{
-				Choreographer.getInstance().removeFrameCallback(frameCallback)
-				mainHandler.postDelayed(frameFallback, FRAME_FALLBACK_DELAY_MS)
+			mainScheduler.pause()
+			synchronized(inputThreadSchedulers) {
+				for(scheduler in inputThreadSchedulers.values)
+					scheduler.handler.post { scheduler.pause() }
 			}
 		}
 	}
@@ -204,27 +249,17 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		}
 
 		controllerStateDirty = true
-		if(Looper.myLooper() == Looper.getMainLooper())
-			scheduleControllerStateFlush()
+		val looper = Looper.myLooper()
+		if(looper == Looper.getMainLooper())
+			mainScheduler.schedule()
+		else if(flushOnInputThread && looper != null)
+			inputThreadSchedulers.getOrPut(looper) { FlushScheduler(looper) }.schedule()
 		else
-			mainHandler.post { scheduleControllerStateFlush() }
-	}
-
-	private fun scheduleControllerStateFlush()
-	{
-		if(controllerStateFlushScheduled)
-			return
-		controllerStateFlushScheduled = true
-		if(frameCallbacksRunning)
-			Choreographer.getInstance().postFrameCallback(frameCallback)
-		else
-			mainHandler.postDelayed(frameFallback, FRAME_FALLBACK_DELAY_MS)
+			mainHandler.post { mainScheduler.schedule() }
 	}
 
 	private fun flushControllerState()
 	{
-		mainHandler.removeCallbacks(frameFallback)
-		controllerStateFlushScheduled = false
 		synchronized(stateLock)
 		{
 			if(!controllerStateDirty)
