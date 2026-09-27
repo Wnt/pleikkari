@@ -33,6 +33,13 @@ class VrSettingsTest
 		override var codec = Preferences.Codec.CODEC_H265
 		override fun back() { calls += "back" }
 		override fun openOculusTv() { calls += "oculus tv" }
+		val experiments = mutableMapOf<String, Boolean>()
+		override fun experiment(key: String) = experiments[key] ?: false
+		override fun setExperiment(key: String, on: Boolean) { experiments[key] = on }
+		override var roomMsaa = 4
+		override fun resetExperiments() { calls += "reset" }
+		override fun restartStream() { calls += "restart" }
+		override var readout = emptyList<String>()
 	}
 
 	private val menuText = VrMenuText("Pleikkari cinema", "Resume", "Recentre", "Disconnect", "Exit", "Settings", "Room",
@@ -40,11 +47,14 @@ class VrSettingsTest
 		"Distance", "Size", "Rooms only", "Match 60 Hz", "From the next stream", "Stats overlay")
 	private val text = VrSettingsText("Settings", "Back", "Oculus TV screen", "Stream", "From the next stream",
 		Preferences.Resolution.values().associateWith { it.value }, Preferences.FPS.values().associateWith { "${it.value} fps" },
-		"Bitrate", "Auto (%s)", Preferences.Codec.values().associateWith { it.value.uppercase() })
+		"Bitrate", "Auto (%s)", Preferences.Codec.values().associateWith { it.value.uppercase() },
+		"Latency experiments", VrSettings.EXPERIMENTS.associateWith { it.removePrefix("stream_") }, "Room anti-aliasing",
+		mapOf(4 to "4x", 2 to "2x"), "Apply and restart stream", "Reset to defaults")
 	private val model = Model()
 	private val sheet = VrSettings.build(model, model, menuText, text)
 	private fun button(label: String) = sheet.all.filterIsInstance<VrButton>().single { it.text == label }
 	private fun segment(label: String) = sheet.all.filterIsInstance<VrSegment>().single { it.text == label }
+	private fun toggle(label: String) = sheet.all.filterIsInstance<VrToggle>().single { it.label == label }
 	private fun slider(label: String) = sheet.all.filterIsInstance<VrSlider>().single { it.label == label }
 
 	@Test fun everyWidgetFitsThePanelAndNothingOverlaps()
@@ -111,8 +121,38 @@ class VrSettingsTest
 		focus.move(sheet, 0, 1)
 		assertSame(button("Oculus TV screen"), focus.focused)
 		focus.set(segment("Plain"))
-		repeat(20) { focus.move(sheet, 0, 1) }
-		assertSame(slider("Bitrate"), focus.focused)
+		repeat(40) { focus.move(sheet, 0, 1) }
+		assertSame(button("Reset to defaults"), focus.focused)
 		assertTrue(sheet.lists[0].scroll > 0f)
+	}
+
+	/** PLE-844: one row per experiment, bound by its key; Match 60 Hz keeps its screen row. */
+	@Test fun experimentRowsBindTheirKeys()
+	{
+		for(key in VrSettings.EXPERIMENTS.filter { it != VrSettings.MATCH_60HZ_KEY })
+		{
+			val row = toggle(key.removePrefix("stream_"))
+			assertEquals("From the next stream", row.detail)
+			assertFalse(row.checked)
+			row.activate()
+			assertEquals(true, model.experiments[key])
+			assertTrue(row.checked)
+		}
+		assertTrue(sheet.all.filterIsInstance<VrToggle>().none { it.label == "go_vr_match_60hz" })
+		assertEquals(1, sheet.all.filterIsInstance<VrToggle>().count { it.label == "Match 60 Hz" })
+		assertTrue(segment("4x").isSelected)
+		segment("2x").activate()
+		assertEquals(2, model.roomMsaa)
+	}
+
+	@Test fun experimentButtonsAndReadout()
+	{
+		button("Apply and restart stream").activate()
+		button("Reset to defaults").activate()
+		assertEquals(listOf("restart", "reset"), model.calls)
+		assertEquals(listOf("", "", ""), VrSettings.readout(sheet).map { it.text })
+		model.readout = listOf("stream 60.0 fps", "decode 3.0 ms", "network 10.0 / 10.0 Mbps")
+		VrSettings.refresh(sheet, model, model)
+		assertEquals(model.readout, VrSettings.readout(sheet).map { it.text })
 	}
 }

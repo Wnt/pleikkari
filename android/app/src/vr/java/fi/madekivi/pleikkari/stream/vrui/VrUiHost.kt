@@ -273,6 +273,16 @@ class VrUiHost(
 		}
 	}
 
+	/** PLE-844: the Settings sheet's readout changed; refresh and redraw the open Settings page. */
+	fun refreshSettings() = handler.post {
+		val screen = menu ?: return@post
+		if(page != VrPage.SETTINGS || modal != null)
+			return@post
+		refreshMenu(page, screen)
+		if(menuOpen)
+			redrawMenu()
+	}
+
 	fun showStats(show: Boolean)
 	{
 		statsOpen = show

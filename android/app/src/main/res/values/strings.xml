@@ -457,6 +457,9 @@
     <string name="go_vr_ui_stream">Stream</string>
     <string name="go_vr_ui_bitrate">Bitrate</string>
     <string name="go_vr_ui_bitrate_auto">Auto (%s)</string>
+    <string name="go_vr_ui_experiments">Latency experiments</string>
+    <string name="go_vr_ui_apply_restart">Apply and restart stream</string>
+    <string name="go_vr_ui_reset_defaults">Reset to defaults</string>
     <string name="go_vr_menu_help_exit">Click left: Resume · centre: Recentre · right: Exit</string>
     <!-- PLE-690: the Go Library's VR launch, drawn in the cinema; keep lines under about 60 characters. -->
     <string name="go_vr_entry_loading">Pleikkari\n\nLooking for your PlayStation…</string>
