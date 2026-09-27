@@ -21,7 +21,8 @@ import kotlin.math.abs
  * loop never waits on the UI. Redraws happen only on change.
  *
  * Panels: [MENU] (the in-stream menu, summoned at the gaze) and [STATS] (the stats readout,
- * anchored to the picture).
+ * anchored to the picture). PLE-730: while [home] has a page (VR Home before a stream), [MENU]
+ * shows it whenever the menu is closed.
  */
 class VrUiHost(
 	context: Context,
@@ -33,8 +34,10 @@ class VrUiHost(
 	/** Share and Options, as the console mapping has them: held together they open the menu. */
 	private val shareKey: Int,
 	private val optionsKey: Int,
-	/** Debug builds: `debug.pleikkari.vr_pointer` = "x,y" degrees, read while the menu is open. */
-	private val debugPointer: (() -> String)?
+	/** Debug builds: `debug.pleikkari.vr_pointer` = "x,y" degrees, read while the menu or Home is open. */
+	private val debugPointer: (() -> String)?,
+	/** PLE-730: a Home button, on this thread; the activity acts on it on the main thread. */
+	private val homeAction: (VrHomeAction) -> Unit = {}
 )
 {
 	private val thread = HandlerThread("GoVrUi", Process.THREAD_PRIORITY_DEFAULT).apply { start() }
@@ -47,9 +50,15 @@ class VrUiHost(
 	/** PLE-731: a screen shown on the menu panel in place of the menu (the PIN pad) until [closeModal]. */
 	private class Modal(val screen: VrScreen, val refresh: () -> Unit, val back: () -> Unit)
 	private var modal: Modal? = null
-	/** What the menu panel shows: the modal screen when there is one. */
-	private val current get() = modal?.screen ?: menu
-	private fun refreshCurrent(screen: VrScreen) = modal?.refresh?.invoke() ?: refreshMenu(page, screen)
+	/** PLE-730: Home's page, if any; shown on [MENU] while the menu is closed. */
+	private var home: VrHomePage? = null
+	/** What the menu panel shows: the modal screen when there is one, the menu while open, else Home's page. */
+	private val current get() = modal?.screen ?: if(menuOpen) menu else home?.screen
+	private fun refreshCurrent(screen: VrScreen)
+	{
+		val m = modal
+		if(m != null) m.refresh() else if(screen === menu) refreshMenu(page, screen)
+	}
 	private val pointer = VrPointer()
 	private val focus = VrFocus()
 	private val stick = VrStickRepeat()
@@ -61,6 +70,12 @@ class VrUiHost(
 
 	@Volatile var menuOpen = false
 		private set
+	/** PLE-730: Home is up (the panel stays open with the menu closed); the cinema draws no status text under it. */
+	@Volatile var homeShown = false
+		private set
+	/** The panels have their Surfaces and their first pixels: the panel may show. */
+	@Volatile private var attached = false
+	private var debugPolling = false
 	@Volatile var statsOpen = false
 	/** A click with no menu open opens it, except while a Library launch picks its console. */
 	@Volatile var clickOpensMenu = true
@@ -94,6 +109,8 @@ class VrUiHost(
 		redrawMenu()
 		if(statsOpen)
 			redrawStats()
+		attached = true
+		spin()
 	}
 
 	/** Fills the frame's VrUiFrame control slots (vr-cinema.cpp's draw). */
@@ -103,8 +120,9 @@ class VrUiHost(
 		var flags = 0
 		if(interactive) flags = flags or FLAG_INTERACTIVE
 		if(placeRequest.getAndSet(false)) flags = flags or FLAG_PLACE
-		if(override != null && menuOpen) flags = flags or FLAG_DEBUG_POINTER
-		out[0] = ((if(menuOpen) 1 shl MENU else 0) or (if(statsOpen) 1 shl STATS else 0)).toFloat()
+		val panel = menuOpen || homeShown && attached
+		if(override != null && panel) flags = flags or FLAG_DEBUG_POINTER
+		out[0] = ((if(panel) 1 shl MENU else 0) or (if(statsOpen) 1 shl STATS else 0)).toFloat()
 		out[1] = flags.toFloat()
 		out[2] = override?.get(0) ?: 0f
 		out[3] = override?.get(1) ?: 0f
@@ -136,16 +154,19 @@ class VrUiHost(
 		handler.post { pointerSample(sample) }
 	}
 
-	/** The remote's Back: opens the menu; on a modal screen, its own Back; returns from Settings to the menu, or closes it. */
-	fun back() = handler.post {
-		val m = modal
-		when
-		{
-			m != null -> m.back()
-			!menuOpen -> open("back")
-			page != VrPage.MENU -> switchPage(VrPage.MENU)
-			else -> close("back")
-		}
+	/**
+	 * The remote's Back: on a modal screen, its own Back; returns from Settings to the menu, or
+	 * closes it; with the menu closed, Home's Back (a status sheet's Cancel, PLE-730) or opens it.
+	 */
+	fun back() = handler.post { backPressed("back") }
+
+	/**
+	 * PLE-730: debug builds, the PLE-739 broadcast's touchpad thirds while Home is up: left and
+	 * right move the pad focus up and down, centre is the pad's A. The real remote uses the pointer.
+	 */
+	fun debugKey(code: Int) = handler.post {
+		menuKey(code, true, 0)
+		menuKey(code, false, 0)
 	}
 
 	/** PLE-732: swaps the menu panel to [target] (Settings and back), keeping it open where it is. */
@@ -200,6 +221,12 @@ class VrUiHost(
 					handler.post { open("pad Menu key") }
 				return true
 			}
+			// PLE-730: Home takes the pad; no stream has its keys yet.
+			if(homeShown && isPad(event))
+			{
+				handler.post { menuKey(code, down, event.repeatCount) }
+				return true
+			}
 			if(code == shareKey || code == optionsKey)
 				handler.post { chord(code, down) }
 			return false
@@ -213,7 +240,7 @@ class VrUiHost(
 	/** Sticks and the hat while the menu is open; the console gets nothing. */
 	fun motion(event: MotionEvent): Boolean
 	{
-		if(!menuOpen || event.source and InputDevice.SOURCE_CLASS_JOYSTICK != InputDevice.SOURCE_CLASS_JOYSTICK)
+		if(!menuOpen && !homeShown || event.source and InputDevice.SOURCE_CLASS_JOYSTICK != InputDevice.SOURCE_CLASS_JOYSTICK)
 			return false
 		val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
 		val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
@@ -266,6 +293,15 @@ class VrUiHost(
 			closeNow(reason)
 	}
 
+	/** PLE-730: Home's page, or null when a stream shows (or Home is not for this launch). Any thread. */
+	fun home(state: VrHomeState?) = handler.post { setHome(state) }
+
+	/** PLE-730: Home's Settings: the menu panel on PLE-732's Settings page; Back returns to the menu, then Home. */
+	fun openSettings(reason: String) = handler.post {
+		open(reason)
+		switchPage(VrPage.SETTINGS)
+	}
+
 	private fun closeNow(reason: String)
 	{
 		if(!menuOpen)
@@ -283,6 +319,12 @@ class VrUiHost(
 		chordDown.clear()
 		Log.i(TAG, "Menu closed ($reason)")
 		main.post { menuChanged(false) }
+		// PLE-730: Home again, where the menu was.
+		if(homeShown)
+		{
+			redrawMenu()
+			spin()
+		}
 	}
 
 	/** Stops the UI thread; call before the panels' swapchains go (the cinema's destroy). */
@@ -325,17 +367,111 @@ class VrUiHost(
 		pollDebugPointer()
 	}
 
+	private fun backPressed(reason: String)
+	{
+		val m = modal
+		val homeBack = home?.back
+		when
+		{
+			m != null -> m.back()
+			menuOpen && page != VrPage.MENU -> switchPage(VrPage.MENU)
+			menuOpen -> closeNow(reason)
+			homeShown && homeBack != null ->
+			{
+				Log.i(TAG, "Home Back: $homeBack")
+				homeAction(homeBack)
+			}
+			else -> open(reason)
+		}
+	}
+
+	/** PLE-730: a new page builds its widgets; the same page with new words keeps its pointer and focus. */
+	private fun setHome(state: VrHomeState?)
+	{
+		val existing = home
+		if(state == null)
+		{
+			if(existing == null)
+				return
+			home = null
+			homeShown = false
+			if(!menuOpen)
+			{
+				interactive = false
+				pointer.reset(lastSelect)
+				focus.reset()
+			}
+			Log.i(TAG, "Home closed")
+			return
+		}
+		if(existing != null && existing.state == state)
+			return
+		if(existing != null && existing.update(state))
+		{
+			Log.i(TAG, "Home: ${existing.name}")
+			if(!menuOpen)
+				redrawMenu()
+			return
+		}
+		val built = VrHomePage.build(state, homeAction)
+		home = built
+		if(!menuOpen)
+		{
+			pointer.reset(lastSelect)
+			focus.reset()
+			lastHoverName = null
+		}
+		Log.i(TAG, "Home: ${built.name}")
+		if(!homeShown)
+		{
+			homeShown = true
+			pollDebugPointer()
+		}
+		if(!menuOpen)
+			redrawMenu()
+		spin()
+	}
+
+	// PLE-730: the status sheet's spinner turns while it shows (§10.5 Progress), a step per redraw.
+	private var spinning = false
+	private val spinStep = object: Runnable
+	{
+		override fun run()
+		{
+			spinning = false
+			// Stops while the menu covers Home or the page has no spinner; closeNow and setHome start it again.
+			val spinner = home?.spinner?.takeIf { attached && homeShown && !menuOpen } ?: return
+			spinner.phase = (System.nanoTime() % SPIN_PERIOD_NS).toFloat() / SPIN_PERIOD_NS
+			redrawMenu()
+			spin()
+		}
+	}
+
+	private fun spin()
+	{
+		if(spinning || home?.spinner == null)
+			return
+		spinning = true
+		handler.postDelayed(spinStep, SPIN_STEP_MS)
+	}
+
 	private fun pointerSample(s: PointerSample)
 	{
 		val previous = lastSelect
 		lastSelect = s.select
-		if(!menuOpen)
+		val screen = current
+		if(screen == null)
 		{
 			if(s.select && !previous && clickOpensMenu)
 				open(if(s.trigger) "trigger" else "touchpad click")
 			return
 		}
-		val screen = current ?: return
+		// PLE-730: a click away from Home brings it back in front of the gaze (it is summoned, then world-locked).
+		if(!menuOpen && s.select && !previous && !s.onPanel)
+		{
+			placeRequest.set(true)
+			Log.i(TAG, "Home summoned to the gaze")
+		}
 		var changed = pointer.sample(screen, s) { widget, part ->
 			Log.i(TAG, "Activate ${name(widget)}${if(part != Part.WHOLE) " (${part.name.lowercase(Locale.US)})" else ""}")
 			widget.activate(part)
@@ -396,12 +532,9 @@ class VrUiHost(
 						redrawMenu()
 					}
 				}
+			// PLE-730: B is Back, as on the remote (a modal's Back, Settings to the menu, close, Home's Back).
 			KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU ->
-				if(!down)
-				{
-					val m = modal
-					if(m != null) m.back() else if(page != VrPage.MENU) switchPage(VrPage.MENU) else closeNow("pad")
-				}
+				if(!down) backPressed("pad")
 			KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 ->
 				if(down)
 				{
@@ -437,8 +570,6 @@ class VrUiHost(
 		{
 			ticking = false
 			val screen = current ?: return
-			if(!menuOpen)
-				return
 			val now = System.nanoTime()
 			val dt = ((now - lastTickNs) / 1e9f).coerceIn(0f, 0.1f)
 			lastTickNs = now
@@ -474,6 +605,10 @@ class VrUiHost(
 	private fun pollDebugPointer()
 	{
 		val read = debugPointer ?: return
+		// PLE-730: one poll for the menu and Home together.
+		if(debugPolling)
+			return
+		debugPolling = true
 		handler.postDelayed(object: Runnable
 		{
 			override fun run()
@@ -485,15 +620,18 @@ class VrUiHost(
 					pointerOverride = next
 					Log.i(TAG, "Debug pointer ${next?.let { "at ${it[0]}, ${it[1]} degrees" } ?: "off"}")
 				}
-				if(menuOpen)
+				if(menuOpen || homeShown)
 					handler.postDelayed(this, DEBUG_POINTER_POLL_MS)
+				else
+					debugPolling = false
 			}
 		}, 0)
 	}
 
+	/** [MENU]'s screen; with the menu closed and no Home, the menu itself, drawn ahead of its opening. */
 	private fun redrawMenu()
 	{
-		val screen = current ?: return
+		val screen = current ?: menu ?: return
 		draw(surfaces[MENU]) { painter.draw(it, screen, focus) }
 	}
 
@@ -550,6 +688,7 @@ class VrUiHost(
 		is VrToggle -> "toggle '${widget.label}' ${if(widget.checked) "on" else "off"}"
 		is VrSlider -> "slider '${widget.label}' ${widget.format(widget.current)}"
 		is VrLabel -> "label '${widget.text}'"
+		is VrCard -> "card '${widget.name}'"
 		else -> widget.javaClass.simpleName
 	}
 
@@ -575,6 +714,9 @@ class VrUiHost(
 		private const val STICK_DEAD_ZONE = 0.25f
 		private const val STICK_SCROLL_PER_S = 600f
 		private const val DEBUG_POINTER_POLL_MS = 250L
+		/** PLE-730: the spinner's turn and its step: 8 redraws a second while a status sheet shows. */
+		private const val SPIN_PERIOD_NS = 1_000_000_000L
+		private const val SPIN_STEP_MS = 125L
 	}
 }
 
