@@ -97,6 +97,19 @@ static int64_t monotonic_ns(void)
 	return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
+/** PLE-698: logs the cinema's "Cinema latency:" window since the last call, if it recorded a frame. */
+static void log_cinema_frame_latency(ChiakiLog *log)
+{
+	AndroidChiakiVideoFrameLatencyWindow window;
+	if(!cinema_frame_latency_ready
+			|| !android_chiaki_video_frame_latency_take_window(&cinema_frame_latency, monotonic_ns(), &window)
+			|| !(window.decoded || window.latched))
+		return;
+	char line[512];
+	android_chiaki_video_frame_latency_format(&window, line, sizeof(line));
+	CHIAKI_LOGI(log, "%s", line);
+}
+
 // Off by default: current behavior is unchanged until a session enables it via
 // ConnectInfo.threadPriorityBoostEnabled (see the "Thread priority boost" setting).
 static bool g_thread_priority_boost_enabled = false;
@@ -472,15 +485,7 @@ static void android_chiaki_event_cb(ChiakiEvent *event, void *user)
 					(unsigned long long)(diagnostics.decode_p95_us / 1000),
 					(unsigned long long)(diagnostics.decode_p95_us % 1000), performance_status);
 				// PLE-698: the Go cinema's per-frame latency over the same window; only while a cinema records.
-				AndroidChiakiVideoFrameLatencyWindow latency_window;
-				if(cinema_frame_latency_ready
-						&& android_chiaki_video_frame_latency_take_window(&cinema_frame_latency, monotonic_ns(), &latency_window)
-						&& (latency_window.decoded || latency_window.latched))
-				{
-					char latency_line[512];
-					android_chiaki_video_frame_latency_format(&latency_window, latency_line, sizeof(latency_line));
-					CHIAKI_LOGI(session->log, "%s", latency_line);
-				}
+				log_cinema_frame_latency(session->log);
 			}
 			E->CallVoidMethod(env, session->java_session,
 					session->java_session_event_stream_stats_meth,
@@ -915,6 +920,12 @@ JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyLatched)(JNIEnv *env, jobject o
 	if(cinema_frame_latency_ready)
 		android_chiaki_video_frame_latency_record_latched(&cinema_frame_latency, buffer_timestamp_ns,
 				latched_ns, submitted_ns, predicted_display_ns);
+}
+
+// PLE-698: the debug preview has no session and so no stats window; its cinema logs one itself, once a second.
+JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyLog)(JNIEnv *env, jobject obj)
+{
+	log_cinema_frame_latency(&global_log);
 }
 
 JNIEXPORT jint JNICALL JNI_FCN(sessionStart)(JNIEnv *env, jobject obj, jlong ptr)

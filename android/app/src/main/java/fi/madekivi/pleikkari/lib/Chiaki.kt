@@ -145,6 +145,8 @@ object CinemaFrameLatency
 	/** [submittedNs] and [predictedDisplayNs] are 0 when the submit did not show the video. */
 	fun latched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long, predictedDisplayNs: Long) =
 		ChiakiNative.cinemaFrameLatencyLatched(bufferTimestampNs, latchedNs, submittedNs, predictedDisplayNs)
+	/** Logs the window since the last call; only for a cinema with no session (the debug preview). */
+	fun logWindow() = ChiakiNative.cinemaFrameLatencyLog()
 }
 
 private class ChiakiNative
@@ -180,6 +182,7 @@ private class ChiakiNative
 		@JvmStatic external fun cinemaFrameLatencyEnable(enabled: Boolean)
 		@JvmStatic external fun cinemaFrameLatencyLatched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long,
 			predictedDisplayNs: Long)
+		@JvmStatic external fun cinemaFrameLatencyLog()
 		@JvmStatic external fun discoveryServiceCreate(result: CreateResult, options: DiscoveryServiceOptions, javaService: DiscoveryService)
 		@JvmStatic external fun discoveryServiceFree(ptr: Long)
 		@JvmStatic external fun discoveryServiceWakeup(ptr: Long, host: String, userCredential: Long, ps5: Boolean)

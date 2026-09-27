@@ -155,11 +155,15 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var decoder: Surface? = null
             var listenerThread: HandlerThread? = null
             // PLE-698: per-frame latency (arrival, decode, latch, submit, predicted photon) for the
-            // stats log's "Cinema latency" line; measurement, so only with that setting on.
-            val frameLatency = !preview && (info?.feedbackStatsLogIntervalMs ?: 0) > 0
+            // stats log's "Cinema latency" line; measurement, so only with that setting on. The debug
+            // preview has no decoder: its frames time the latch, submit and predicted photon only.
+            val frameLatency = if(preview) Preferences(this@StreamVrActivity).feedbackStatsLogEnabled
+                else (info?.feedbackStatsLogIntervalMs ?: 0) > 0
             try {
-                // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
-                val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
+                // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps. PLE-698: the
+                // preview's picture is 60 fps too, so it can time both panel rates.
+                val streamFps = if(preview) 60 else info?.videoProfile?.maxFPS
+                val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && streamFps == 60) 60f else 72f
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
                 // PLE-675: debug builds only, `adb shell setprop debug.pleikkari.vr_full_pose 1` before
@@ -217,6 +221,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 var shown = 0
                 var latchedNs = 0L
                 val submitTiming = LongArray(2)
+                var latencyWindowStartNs = windowStartNs
                 while(running.get()) {
                     val input = VrCinemaNative.input(native)
                     if(input and MENU != 0) menu = !menu
@@ -257,6 +262,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                             if(video) submitTiming[0] else 0L, if(video) submitTiming[1] else 0L)
                     }
                     val nowNs = System.nanoTime()
+                    // PLE-698: a stream logs the latency with its 1 s stats window; the preview has no session.
+                    if(preview && frameLatency && nowNs - latencyWindowStartNs >= LATENCY_WINDOW_NS) {
+                        CinemaFrameLatency.logWindow()
+                        latencyWindowStartNs = nowNs
+                    }
                     if(nowNs - windowStartNs >= VIDEO_STATS_WINDOW_NS) {
                         val seconds = (nowNs - windowStartNs) / 1e9
                         Log.i("GoCinema", String.format(Locale.US,
@@ -365,6 +375,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val PREVIEW_WIDTH = 1280
         private const val PREVIEW_HEIGHT = 720
         private const val VIDEO_STATS_WINDOW_NS = 5_000_000_000L
+        /** PLE-698: the preview's "Cinema latency" window, the stats log's 1 s (Preferences.feedbackStatsLogIntervalMs). */
+        private const val LATENCY_WINDOW_NS = 1_000_000_000L
     }
 }
 
