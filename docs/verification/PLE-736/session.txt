@@ -1,0 +1,25 @@
+12:50:26 device pacific android 7.1.1
+12:50:26 start; 579s before the deadline; mWakefulness=Awake
+12:50:29 backup: prefs 981 B, db chiaki chiaki-shm chiaki-wal , appdata 474624 B, apk 256852eb452c125d;     versionCode=12 minSdk=24 targetSdk=35     lastUpdateTime=2026-09-27 15:50:22 
+12:50:30 installed APK eef01a8cce9c488495758e84da17c1a9 is not ours (1c6716e848845106da07d737832c94c6, 5076171756b94b82): install -r
+Success
+12:50:38 done
+12:50:42 start preview stats-off: Starting: Intent { cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity (has extras) }
+12:50:54 shot closed: 178206 bytes
+12:50:54 keyboard BACK
+12:50:59 gamepad BACK
+12:51:04 keyboard long BACK (--longpress)
+12:51:08 menu key (keyboard)
+12:51:14 shot after-menu-key: 182680 bytes
+12:51:18 start preview stats-on: Starting: Intent { cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity (has extras) }
+12:51:30 shot stats-on: 125623 bytes
+12:51:34 after: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:51:34 vr_full_pose restored to '0'
+after-menu-key.png: mean luma 45.4, max 247, 31.5 % of the frame lit: picture
+closed.png: mean luma 45.4, max 247, 31.6 % of the frame lit: picture
+stats-on.png: mean luma 21.7, max 247, 16.6 % of the frame lit: picture
+12:51:36 start; 510s before the deadline; mWakefulness=Awake
+Success
+12:51:47 original APK back
+12:51:48 prefs restored byte-identically
+12:51:48 done
