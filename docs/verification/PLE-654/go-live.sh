@@ -18,6 +18,9 @@
 #  restore  force-stop, reinstall the snapshot APK if the installed one differs, snapshot prefs
 #           back byte-identically
 # Values: key=true|false, key=s:<string>.
+# PLE-696: before each arm0 the Go must report mWakefulness=Awake. If it has fallen asleep (off
+# head, LED off) the arm and every later arm are skipped with "asleep", restore still runs, and
+# the script exits 10 so a caller can tell a sleeping Go from a finished session.
 set -uo pipefail
 ROOT=/home/wnt/gta6
 A=$ROOT/scripts/dev/device-bin/adb
@@ -198,13 +201,18 @@ state | tee -a "$LOG"
 a shell getprop ro.build.fingerprint | tr -d '\r' > "$OUT/fingerprint.txt"
 a shell getprop ro.serialno | tr -d '\r' > "$OUT/serial.txt"
 did_setup=0
+asleep=0
+awake() { [ "$(a shell 'dumpsys power' | tr -d '\r' | sed -n 's/^ *mWakefulness=//p' | head -1)" = Awake ]; }
 while [ $# -gt 0 ]; do
 	case "$1" in
 	setup) shift; fits 150 || { say "deferred: no time for setup"; exit 9; }; step_setup; did_setup=1 ;;
 	ensure) if fits 150; then step_ensure "$2"; else say "deferred ensure"; fi; shift 2 ;;
-	arm0) if fits $(( SECS + 150 )); then step_arm0 "$2" "$3" || say "arm $2 failed rc=$?"; else say "deferred arm $2"; fi; shift 3 ;;
+	arm0) if [ "$asleep" = 1 ]; then say "skipped arm $2: the Go is asleep"
+		elif ! awake; then asleep=1; say "stop: the Go is asleep before arm $2 ($(a shell 'dumpsys power | grep mWakefulness=' | tr -d '\r ')); skipping it and every later arm"
+		elif fits $(( SECS + 150 )); then step_arm0 "$2" "$3" || say "arm $2 failed rc=$?"; else say "deferred arm $2"; fi; shift 3 ;;
 	restore) shift; step_restore ;;
 	*) say "unknown step $1"; exit 2 ;;
 	esac
 done
+[ "$asleep" = 1 ] && { say "done early: the Go fell asleep; arms after that were not run"; exit 10; }
 say "done"
