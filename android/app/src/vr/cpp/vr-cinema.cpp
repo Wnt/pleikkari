@@ -145,6 +145,8 @@ struct Cinema {
     // PLE-715: when each frame starts (after the loop's own sleep, if any) and what VrApi's
     // scheduler did with it; the per-second "Frame pacing" line with the stats log on.
     PleikkariVrPacing pacing;
+    // The mode asked for; the late start is for the plain cinema only (see applyPacingMode).
+    PleikkariVrPacingMode pacingRequested = PLEIKKARI_VR_PACING_VRAPI;
     bool pacingLog = false;
     int64_t frameStartNs = 0;
     int64_t frameSleptNs = 0;
@@ -314,6 +316,7 @@ struct Cinema {
     void setEnvironment(const PleikkariVrEnvironmentConfig &requested) {
         setEnvironmentRenderer(requested);
         applyClockLevels();
+        applyPacingMode();
     }
 
     void setEnvironmentRenderer(const PleikkariVrEnvironmentConfig &requested) {
@@ -340,11 +343,25 @@ struct Cinema {
         config.mode = mode;
         const int read = pleikkari_vr_pacing_config_parse(&config, spec);
         pleikkari_vr_pacing_init(&pacing, &config);
+        pacingRequested = config.mode;
         pacingLog = log || config.trace;
         pacingWindowStartNs = 0;
         if(read || mode != PLEIKKARI_VR_PACING_VRAPI)
             LOGI("Frame pacing: %s, budget %.1f ms, period %.3f ms%s%s", pleikkari_vr_pacing_mode_name(config.mode),
                 config.budget_ns / 1e6, config.period_ns / 1e6, read ? "; debug experiments: " : "", read ? spec : "");
+        applyPacingMode();
+    }
+
+    // PLE-715: a room's eye frame takes about 8 ms of GPU (VrApi App=, PLE-623), which the late
+    // start's budget does not leave, and the rooms were never measured with it: they keep VrApi's
+    // release, today's loop.
+    void applyPacingMode() {
+        const PleikkariVrPacingMode mode = pacingRequested == PLEIKKARI_VR_PACING_LATE && environment
+            ? PLEIKKARI_VR_PACING_VRAPI : pacingRequested;
+        if(pacing.config.mode == mode) return;
+        pacing.config.mode = mode;
+        LOGI("Frame pacing: %s%s", pleikkari_vr_pacing_mode_name(mode),
+            mode != pacingRequested ? " (late start is for the plain cinema; a room is drawn)" : "");
     }
 
     // PLE-715: at the top of the loop, before input and the video latch.
