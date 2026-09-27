@@ -817,6 +817,9 @@ struct PleikkariVrEnvironment
 	GLuint glowTexture = 0, glowFbo = 0;
 	GLuint depthRenderbuffer = 0;
 	int depthWidth = 0, depthHeight = 0, depthSamples = 0;
+	// PLE-808: leave the depth renderbuffer attached to the caller's framebuffers between
+	// eyes (attach only when missing) instead of attaching and detaching every eye.
+	bool depthAttachOnce = false;
 
 	GLsizei roomIndexCount = 0, skyVertexCount = 0, starCount = 0, screenVertexCount = 0;
 	size_t roomVertexBytes = 0;
@@ -1360,7 +1363,17 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		if(fbo != 0)
 		{
 			env->ensure_depth(viewport[0] + viewport[2], viewport[1] + viewport[3]);
-			glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, env->depthRenderbuffer);
+			GLint attached = 0, attachedType = GL_NONE;
+			if(env->depthAttachOnce)
+			{
+				glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+						GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &attachedType);
+				if(attachedType == GL_RENDERBUFFER)
+					glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+							GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &attached);
+			}
+			if(attachedType != GL_RENDERBUFFER || static_cast<GLuint>(attached) != env->depthRenderbuffer)
+				glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, env->depthRenderbuffer);
 		}
 		glDepthMask(GL_TRUE);
 		glClearColor(0, 0, 0, 1);
@@ -1541,7 +1554,8 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		// hand the caller's framebuffer back as it came.
 		const GLenum attachment = GL_DEPTH_ATTACHMENT;
 		glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, 1, &attachment);
-		glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+		if(!env->depthAttachOnce)
+			glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
 	}
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_SCISSOR_TEST);
@@ -1600,6 +1614,14 @@ void pleikkari_vr_environment_debug_set_sky_variant(PleikkariVrEnvironment *env,
 		return;
 	env->skyVariant = variant >= 0 && variant < PLEIKKARI_VR_SKY_COUNT ? variant : PLEIKKARI_VR_SKY_DOME;
 	LOGI("sky variant %d", env->skyVariant);
+}
+
+void pleikkari_vr_environment_debug_set_depth_attach_once(PleikkariVrEnvironment *env, bool enabled)
+{
+	if(!env)
+		return;
+	env->depthAttachOnce = enabled;
+	LOGI("depth attach once %d", enabled ? 1 : 0);
 }
 
 const char *pleikkari_vr_environment_name(PleikkariVrEnvironmentKind kind)
