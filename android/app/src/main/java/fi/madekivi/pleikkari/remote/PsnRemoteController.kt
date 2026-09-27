@@ -101,16 +101,20 @@ class PsnRemoteController(
 		check(session == null) { "A PSN remote session is already active" }
 		try
 		{
+			// Like upstream, have our side of the OFFER ready before the console is started (PLE-319).
+			holePuncher.discoverAhead()
 			val (created, registration) = prepareConsole(device)
 
 			val control = signalAndPunch(created, device, isData = false)
 			openSockets += control
+			holePuncher.discoverAhead()
 			current = PsnRemoteState.ControlPunched(control.candidate)
 			current = PsnRemoteState.NativeStarting
 			when(val result = nativeBridge.start(control, registration))
 			{
 				is PsnNativeStartResult.Registered ->
 				{
+					holePuncher.discardAhead()
 					cleanup(PsnRemoteState.Registered(result.host))
 				}
 				PsnNativeStartResult.DataSocketNeeded ->
@@ -332,6 +336,7 @@ class PsnRemoteController(
 
 	private suspend fun cleanup(finalState: PsnRemoteState = PsnRemoteState.Idle) = withContext(NonCancellable) {
 		current = PsnRemoteState.DeletingSession
+		holePuncher.discardAhead()
 		nativeBridge.stop()
 		val active = session
 		if(active != null) runCatching { withTimeout(3_000) { api.deleteSession(active.sessionId) } }
@@ -349,6 +354,7 @@ class PsnRemoteController(
 
 	override fun close()
 	{
+		holePuncher.discardAhead()
 		nativeBridge.stop()
 		push?.close()
 		openSockets.forEach { it.socket.close() }

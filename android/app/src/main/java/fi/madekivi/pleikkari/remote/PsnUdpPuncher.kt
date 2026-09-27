@@ -3,7 +3,11 @@
 
 package fi.madekivi.pleikkari.remote
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.net.DatagramPacket
@@ -37,6 +41,16 @@ interface PsnPunchPreparation : Closeable
 interface PsnHolePuncher
 {
 	suspend fun prepare(peer: PsnConnectionRequest, accountId: String): PsnPunchPreparation
+
+	/**
+	 * Starts the peer-independent part of the next [prepare] (socket and STUN mapping) now, so it
+	 * overlaps the wait for the console's OFFER instead of following it (PLE-319). It runs detached from
+	 * the caller: a blocking STUN receive cannot be interrupted, and nobody should wait on a discarded one.
+	 */
+	fun discoverAhead() = Unit
+
+	/** Drops a [discoverAhead] that no [prepare] will consume, closing its socket. */
+	fun discardAhead() = Unit
 }
 
 object PsnStunCodec
@@ -171,7 +185,33 @@ class DatagramPsnHolePuncher(
 	private val localSid by lazy { random.nextInt(0x10000) }
 	private val localHash by lazy { ByteArray(20).also(random::nextBytes) }
 
-	override suspend fun prepare(peer: PsnConnectionRequest, accountId: String): PsnPunchPreparation = withContext(Dispatchers.IO) {
+	private class Discovery(val socket: DatagramSocket, val mapping: InetSocketAddress)
+
+	/**
+	 * Upstream builds its OFFER (STUN included) before the console's OFFER is awaited; preparing only after
+	 * it arrived cost up to 5 s per STUN server and made our OFFER late (PLE-313's follow-up). The Result
+	 * wrapper keeps a STUN failure from cancelling the caller's scope before [prepare] rethrows it.
+	 */
+	@Volatile private var ahead: Deferred<Result<Discovery>>? = null
+
+	override fun discoverAhead()
+	{
+		discardAhead()
+		ahead = CoroutineScope(Dispatchers.IO).async { runCatching { discover() } }
+	}
+
+	override fun discardAhead()
+	{
+		val pending = ahead ?: return
+		ahead = null
+		pending.invokeOnCompletion { if(it == null) runCatching { pending.getCompletedResult()?.socket?.close() } }
+		pending.cancel()
+	}
+
+	@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+	private fun Deferred<Result<Discovery>>.getCompletedResult(): Discovery? = getCompleted().getOrNull()
+
+	private suspend fun discover(): Discovery = withContext(Dispatchers.IO) {
 		val socket = DatagramSocket(null).apply {
 			reuseAddress = true
 			bind(InetSocketAddress(InetAddress.getByName("0.0.0.0"), 0))
@@ -179,6 +219,23 @@ class DatagramPsnHolePuncher(
 		try
 		{
 			val mapping = discoverMapping(socket)
+			ensureActive()
+			Discovery(socket, mapping)
+		}
+		catch(error: Throwable)
+		{
+			socket.close()
+			throw error
+		}
+	}
+
+	override suspend fun prepare(peer: PsnConnectionRequest, accountId: String): PsnPunchPreparation = withContext(Dispatchers.IO) {
+		// Cleared only once awaited, so a cancelled prepare leaves it for discardAhead to close.
+		val discovery = ahead?.let { pending -> pending.await().also { ahead = null }.getOrThrow() } ?: discover()
+		val socket = discovery.socket
+		try
+		{
+			val mapping = discovery.mapping
 			val localAddress = socket.localAddress.takeUnless { it.isAnyLocalAddress } as? Inet4Address
 				?: routeAddress(resolve(stunServers.first()))
 			val stun = PsnCandidate("STUN", mapping.address.hostAddress ?: "0.0.0.0", port = mapping.port)
