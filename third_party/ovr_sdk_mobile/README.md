@@ -103,6 +103,32 @@ adb -s 192.168.1.202:5555 logcat -s GoCinema VrApi
 ```
 
 `am force-stop fi.madekivi.pleikkari` ends it. A release build ignores the extra.
+
+**A Go on a table screencaps the room's floor or sky, not the screen.** The screen sits
+level, at the head's yaw, and the Go lies at about -87 degrees of pitch. In the void,
+that view is near-black by design (luma mean 1.4, max 3). It looks exactly like a
+broken cinema, and PLE-702 was filed as a black-eye-buffer regression because of it. For
+a screencap that shows the picture, run `adb shell setprop debug.pleikkari.vr_full_pose 1`
+before the cinema starts. That makes a debug build place the screen along the full head
+pose (PLE-675). The workspace's `scripts/dev/go-latency/go_stream.sh --path native` sets it,
+and `screen_check.py` fails a near-black native screencap. Every placement is logged:
+`GoCinema: Screen placed at frame N (reason): head yaw Y, pitch P degrees, runtime recentres C[, full pose][; provisional, …]`.
+
+The runtime recentres its LOCAL tracking space by itself. It does so once as it handles
+`HMT was mounted` in the first frame's submit, again when a worn Go is put back on, and
+on a long press of the Oculus button. `VRAPI_SYS_STATUS_RECENTER_COUNT` rises each time,
+and since PLE-702 the cinema places the screen again after every rise (`runtime recentre`).
+Before that, the first frame's placement survived the re-base, so the screen sat off by
+however far the head had turned since the runtime's last recentre.
+
+A placement made with the head steeper than 60 degrees is `provisional`, unless it uses the
+full pose. The screen is placed again once the head has stayed within 30 degrees of level
+for 36 frames (`head came level`). A stream started on the table places the screen at the
+face-down Go's yaw. While `go-keepawake.sh` pins the proximity sensor, picking the Go up
+fires no mount event, so before this the screen could stay behind the new wearer. In the
+void or plain room that looks totally black (PLE-702). The decision is
+`android/app/src/main/cpp/vr-screen-placement.c`, tested in chiaki-unit
+(`/chiaki/vr_screen_placement`).
 The Go's first results with it (every room 7.5 to 8.6 ms of GPU in VrApi, and
 `Environment frame:` under-reporting that) are in `docs/design/vr-environments.md` §8.
 The streaming cinema can be reached from adb too, through the real Connect path

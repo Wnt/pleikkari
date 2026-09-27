@@ -11,6 +11,7 @@
 #include <VrApi_Helpers.h>
 #include <VrApi_Input.h>
 #include "vr-environment.h" // PLE-603: the room around the screen (plain GLES, no VrApi)
+#include "vr-screen-placement.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -108,7 +109,12 @@ struct Cinema {
     GLuint video = 0, message = 0, videoProgram = 0, messageProgram = 0, vao = 0, vertices = 0;
     int width = 0, height = 0;
     long long frameIndex = 0;
-    bool recenterPending = true;
+    // PLE-702: when the screen goes to the head's gaze. Besides the first frame and the
+    // wearer's recentre: after every recentre the runtime makes by itself (the mount event in
+    // the first frame's submit, a long press of the Oculus button), because the screen sits in
+    // the LOCAL space it re-bases; and once the head comes level after a placement made looking
+    // steeply up or down, such as a Go started on the table and then picked up.
+    PleikkariVrScreenPlacement placement;
     // PLE-675: debug builds only. Recentre along the full head orientation (pitch and roll
     // too), so a Go lying on a table still has the screen in view for a display-0 screencap.
     bool fullPoseRecentre = false;
@@ -121,6 +127,8 @@ struct Cinema {
     // PLE-652: GPU clock level while a room is drawn; 2 (the PLE-623 baseline) unless the A/B setting raises it.
     int roomGpuLevel = 2;
     int skyVariant = PLEIKKARI_VR_SKY_DOME; // PLE-666: debug sky draw, kept across environment rebuilds
+
+    Cinema() { pleikkari_vr_screen_placement_init(&placement); }
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
@@ -328,14 +336,24 @@ struct Cinema {
         ++frameIndex;
         double time = vrapi_GetPredictedDisplayTime(vr, frameIndex);
         ovrTracking2 tracking = vrapi_GetPredictedTracking2(vr, time);
-        if(recenterPending) {
+        // PLE-702: about 1 us a read on the Go. The count rises between frames 1 and 2 of every
+        // session, so the first placement alone could leave the screen out of view.
+        const int recenters = vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_RECENTER_COUNT);
+        const auto &q = tracking.HeadPose.Pose.Orientation;
+        // A pitch near +-90 is a Go lying on a table: its view is the room's floor or sky,
+        // near-black in the void, and its yaw says nothing about where a wearer will face.
+        const float pitch = std::asin(std::clamp(2.0f * (q.w*q.x - q.y*q.z), -1.0f, 1.0f)) * 57.2958f;
+        const PleikkariVrScreenPlace place = pleikkari_vr_screen_placement_frame(&placement, recenters, pitch, fullPoseRecentre);
+        if(place != PLEIKKARI_VR_SCREEN_KEEP) {
             // Move the screen to the current horizontal gaze without resetting the tracking space.
-            const auto &q = tracking.HeadPose.Pose.Orientation;
             float yaw = std::atan2(2.0f * (q.w*q.y + q.x*q.z), 1.0f - 2.0f * (q.y*q.y + q.x*q.x));
             screen = fullPoseRecentre ? ovrMatrix4f_CreateFromQuaternion(&q) : ovrMatrix4f_CreateRotation(0, yaw, 0);
             const auto &p = tracking.HeadPose.Pose.Position;
             screen.M[0][3] = p.x; screen.M[1][3] = p.y; screen.M[2][3] = p.z;
-            recenterPending = false;
+            LOGI("Screen placed at frame %lld (%s): head yaw %.0f, pitch %.0f degrees, runtime recentres %d%s%s",
+                frameIndex, pleikkari_vr_screen_place_name(place), yaw * 57.2958f, pitch, recenters,
+                fullPoseRecentre ? ", full pose" : "",
+                placement.provisional ? "; provisional, placed again once the head is level" : "");
         }
         auto layer = vrapi_DefaultLayerProjection2();
         layer.HeadPose = tracking.HeadPose;
@@ -441,10 +459,10 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobj
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->video; }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(messageTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->message; }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) { return cinema(h)->input(); }
-extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { cinema(h)->recenterPending = true; }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { pleikkari_vr_screen_placement_request(&cinema(h)->placement); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(setFullPoseRecentre)(JNIEnv *, jobject, jlong h, jboolean enabled) {
     cinema(h)->fullPoseRecentre = enabled;
-    cinema(h)->recenterPending = true;
+    pleikkari_vr_screen_placement_request(&cinema(h)->placement);
 }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h, jfloatArray transform, jboolean video, jboolean menu, jboolean newFrame) {
     float matrix[16];
