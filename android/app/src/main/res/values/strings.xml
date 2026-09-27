@@ -408,6 +408,8 @@
     <string name="go_vr_frame_listener_thread_summary">Deliver the decoder\'s new-frame signal to the cinema on its own thread instead of the app\'s main thread, to latch more decoded frames in time.</string>
     <string name="go_vr_input_thread_title">Controller input off the main thread</string>
     <string name="go_vr_input_thread_summary">Read the controller\'s buttons and sticks on their own thread instead of the app\'s main thread, so a press never waits behind other work there.</string>
+    <string name="go_vr_input_thread_flush_title">Paced controller input on the input thread</string>
+    <string name="go_vr_input_thread_flush_summary">With vsync-paced controller input and controller input off the main thread, send each frame\'s merged controller state from the input thread instead of the app\'s main thread.</string>
     <string name="go_vr_late_start_title">Cinema frames start late</string>
     <string name="go_vr_late_start_summary">Draw each frame of the plain cinema just before the headset takes it, instead of right after the last one, and keep the headset from running a frame ahead, so it shows a newer video frame.</string>
     <string name="go_vr_hold_drain_title">Keep the headset from running ahead</string>

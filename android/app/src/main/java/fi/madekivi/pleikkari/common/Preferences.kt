@@ -337,6 +337,12 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrInputThreadKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrInputThreadKey, value).apply() }
 
+	/** PLE-830: with [goVrInputThread] and controller input coalescing, flush on the input thread's Choreographer. */
+	val goVrInputThreadFlushKey get() = "stream_go_vr_input_thread_flush"
+	var goVrInputThreadFlush
+		get() = sharedPreferences.getBoolean(goVrInputThreadFlushKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrInputThreadFlushKey, value).apply() }
+
 	// PLE-715: A/B the cinema starting each frame just before VrApi's release instead of right after the last.
 	val goVrLateStartKey get() = "stream_go_vr_late_start"
 	var goVrLateStart

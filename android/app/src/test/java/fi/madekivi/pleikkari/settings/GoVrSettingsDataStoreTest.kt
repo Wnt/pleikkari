@@ -30,6 +30,7 @@ class GoVrSettingsDataStoreTest
 			preferences.goVrMatch60HzKey to { preferences.goVrMatch60Hz },
 			preferences.goVrRoomHighGpuKey to { preferences.goVrRoomHighGpu },
 			preferences.goVrFrameListenerThreadKey to { preferences.goVrFrameListenerThread },
+			preferences.goVrInputThreadFlushKey to { preferences.goVrInputThreadFlush },
 			preferences.goVrLateStartKey to { preferences.goVrLateStart },
 			preferences.goVrHoldDrainKey to { preferences.goVrHoldDrain },
 			preferences.goVrWarmUpKey to { preferences.goVrWarmUp },
