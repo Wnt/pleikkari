@@ -1,0 +1,17 @@
+$ check-go-vr-apk.sh (local CI-recipe build)
+ok: lib/arm64-v8a/libpleikkari-vr.so
+ok: lib/arm64-v8a/libvrapi.so
+ok: manifest "fi.madekivi.pleikkari.stream.StreamVrActivity"
+ok: manifest "fi.madekivi.pleikkari.stream.GoVrLibraryEntry"
+ok: manifest "com.oculus.intent.category.VR"
+/tmp/ple741-go-vr.apk is the Go VR variant
+rc=0
+$ check-go-vr-apk.sh (android-latest flat APK)
+::error::/tmp/ple741-flat/pleikkari-android-debug.apk has no lib/arm64-v8a/libpleikkari-vr.so
+::error::/tmp/ple741-flat/pleikkari-android-debug.apk has no lib/arm64-v8a/libvrapi.so
+::error::/tmp/ple741-flat/pleikkari-android-debug.apk manifest declares no android:name matching [^"]*\.stream\.StreamVrActivity
+::error::/tmp/ple741-flat/pleikkari-android-debug.apk manifest declares no android:name matching [^"]*\.stream\.GoVrLibraryEntry
+::error::/tmp/ple741-flat/pleikkari-android-debug.apk manifest declares no android:name matching com\.oculus\.intent\.category\.VR
+rc=1
+$ actionlint 1.7.12
+actionlint: clean
