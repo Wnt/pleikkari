@@ -9,10 +9,10 @@
 #           DualSense button through the debug pad broadcast and screencap again (STEP_WAIT s later).
 #           This is how the PS5 is parked on its stimulus toggle. Pad input reaches the console: use it
 #           only in PS5 Settings.
-#  rounds   stream, PADS as in look (if any), then ROUNDS rounds of PRESSES `input keyevent
-#           KEYCODE_BUTTON_A` (the app maps it to Cross), each under its own `atrace --async_start`
-#           capture; pulls the probe's presses.csv/frames.csv. A round starts only if it fits before
-#           DEADLINE. Keep PRESSES even so the toggle ends where it began.
+#  rounds   stream, PADS as in look (if any), then ROUNDS rounds of PRESSES Cross presses (PRESS, below),
+#           each under its own `atrace --async_start` capture; pulls the probe's presses.csv/frames.csv.
+#           A round starts only if it fits before DEADLINE. Keep PRESSES even so the toggle ends where
+#           it began.
 # Stimulus: Settings > Accessibility > Display and Sound > High Contrast, cursor on its toggle. Each
 # Cross flips the whole UI between its normal and high-contrast colours (GPU mean luma about 40 vs 21,
 # a fade of about 200 ms). Invert Colours, the ticket's first choice, only changes the console's HDMI
@@ -26,6 +26,8 @@
 # screen in its screencap. The stream ends with the cinema menu's Disconnect (PLE-739 broadcast:
 # back, then right), so the cinema stops and closes the probe's files before the force-stop; the
 # snapshot prefs go back and vr_full_pose goes to 0 at the end of every session.
+# Since PLE-722 the debug `key` broadcast drives the VR UI (right is D-pad down), so a stream ends
+# with a force-stop: presses.csv is flushed per row, frames.csv every 64 rows (under a second).
 set -uo pipefail
 ROOT=/home/wnt/gta6
 WT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -41,7 +43,12 @@ MODE=${3:?look, rounds or restore}
 BACKUP=${BACKUP:?BACKUP: a backup dir kept across the sessions of this ticket}
 ROUNDS=${ROUNDS:-3}
 PRESSES=${PRESSES:-32}
-PRESS_SLEEP=${PRESS_SLEEP:-0.6} # `input` itself takes about 0.4 s on the Go
+PRESS_SLEEP=${PRESS_SLEEP:-0.6} # plus the press command's own time: 1-2.5 s for `input`/`am` on the Go
+# PRESS=pad (default): the debug pad broadcast holds Cross PRESS_HOLD_MS, and the PS5 takes every press.
+# PRESS=key: `input keyevent KEYCODE_BUTTON_A`, the real KeyEvent path (presses.csv gets its event time),
+# but its down and up are about 1 ms apart and the PS5 acted on only 36 of 96 (2026-09-27, b1-rounds-132644).
+PRESS=${PRESS:-pad}
+PRESS_HOLD_MS=${PRESS_HOLD_MS:-100}
 ATRACE_CATS=${ATRACE_CATS:-gfx input view sched freq hal}
 ATRACE_KB=${ATRACE_KB:-16384}
 PADS=${PADS:-}
@@ -182,8 +189,13 @@ step_rounds() {
 		echo "== round $r $(a shell "date +'%m-%d %H:%M:%S.000'" | tr -d '\r')" >> "$OUT/markers.txt"
 		a shell "atrace --async_start -b $ATRACE_KB -a $PKG $ATRACE_CATS" 2>&1 | tr -d '\r' | tail -2 | sed "s/^/round $r atrace start: /" | tee -a "$LOG"
 		sleep 1
-		say "round $r: $PRESSES presses of KEYCODE_BUTTON_A, one each $PRESS_SLEEP s plus the input command's own time"
-		a shell "i=0; while [ \$i -lt $PRESSES ]; do input keyevent KEYCODE_BUTTON_A; sleep $PRESS_SLEEP; i=\$((i+1)); done"
+		if [ "$PRESS" = key ]; then
+			say "round $r: $PRESSES presses of KEYCODE_BUTTON_A, one each $PRESS_SLEEP s plus the input command's own time"
+			a shell "i=0; while [ \$i -lt $PRESSES ]; do input keyevent KEYCODE_BUTTON_A; sleep $PRESS_SLEEP; i=\$((i+1)); done"
+		else
+			say "round $r: $PRESSES Cross presses held $PRESS_HOLD_MS ms (debug pad broadcast), one each $PRESS_SLEEP s plus the am command's own time"
+			a shell "i=0; while [ \$i -lt $PRESSES ]; do am broadcast -a $DEBUG_INPUT --es pad cross --ei hold_ms $PRESS_HOLD_MS >/dev/null; sleep $PRESS_SLEEP; i=\$((i+1)); done"
+		fi
 		sleep 2
 		a exec-out "atrace --async_stop -z -b $ATRACE_KB -a $PKG $ATRACE_CATS" > "$OUT/round-$r.atrace" 2>/dev/null
 		say "round $r done: atrace $(stat -c %s "$OUT/round-$r.atrace") B"
@@ -195,11 +207,7 @@ step_rounds() {
 
 step_stop() {
 	local dir
-	# The cinema menu's Disconnect: the cinema thread stops and closes the probe's files.
-	a shell am broadcast -a $DEBUG_INPUT --es key back >/dev/null
-	sleep 1
-	a shell am broadcast -a $DEBUG_INPUT --es key right >/dev/null
-	sleep 4
+	sleep 2 # frames.csv's last flush
 	dump_log
 	a shell am force-stop $PKG
 	cleanup_props
