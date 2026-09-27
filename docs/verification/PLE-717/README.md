@@ -39,3 +39,17 @@ This is what refused PLE-690's second session, not another ticket's app. `DIRECT
 - Disconnect: Go remote Back, then a touchpad click on the right third, back to the chooser.
 - The no-console message: it needs an install with no linked PS5. Clearing app data is forbidden here.
 - The wake path: the PS5 has to be in rest mode by itself.
+
+## PLE-744: MODE=keys now uses the debug broadcast; MODE=noconsole
+
+`go-library-keys.sh` no longer injects `input gamepad keyevent` (the Go's `input` has no source argument).
+MODE=keys sends PLE-739's `DEBUG_GO_VR_INPUT` broadcast instead: `right` (the pad's first move focuses the
+last-played card), `centre` to Play, then after the stream `back`, `right` until GoVrUi logs
+`Focus button 'Disconnect'`, and `centre`, which must log `Disconnect: back to the Library chooser`
+(screencaps `chooser.png`, `menu-disconnect.png`, `after-disconnect.png`). The prefs now also set
+`stream_go_vr_ui=true`, so the Library launch shows VR Home (PLE-730). MODE=noconsole sets
+`debug.pleikkari.go_entry_no_console=1` (never connects, allowed under a PS5 hold) and records the
+no-console sheet. All three debug properties go back to 0 on every exit path.
+
+Not yet run on the Go: the first attempt (15:18 UTC 2026-09-27, `build/captures/ple744/keys/` in the
+PLE-744 worktree) stopped at the entry step's battery check, the Go at 1 %. APK and prefs were restored.

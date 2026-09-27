@@ -22,6 +22,13 @@
 # debug.pleikkari.go_entry_choose=1: the Library launch logs the console it would stream and opens
 # the in-VR chooser instead, and nobody clicks it, so nothing connects. Should any GoVrEntry or
 # StreamSession connect line appear anyway, the app is force-stopped at once.
+#
+# PLE-744: MODE=keys drives the VR UI with PLE-739's DEBUG_GO_VR_INPUT broadcast (the Go's
+# `input keyevent` has no source argument, so the gamepad keyevents never reached the chooser):
+# a pad walk over Home, `centre` to Play, then after the stream `back` opens the menu, `right`
+# (D-pad down) steps until GoVrUi logs "Focus button 'Disconnect'", and `centre` must log
+# "Disconnect: back to the Library chooser". MODE=noconsole (never connects) sets
+# debug.pleikkari.go_entry_no_console=1 and records the no-console sheet.
 set -uo pipefail
 ROOT=/home/wnt/gta6
 WT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -37,10 +44,11 @@ if [ -e "$HOLD" ]; then MODE=${MODE:-choose}; else MODE=${MODE:-stream}; fi
 case "$MODE" in
 	choose) SECS=${SECS:-30}; SHOT_FIRST=8; SHOT_EVERY=10 ;;
 	keys) SECS=${SECS:-60}; SHOT_FIRST=10; SHOT_EVERY=25 ;;
+	noconsole) SECS=${SECS:-20}; SHOT_FIRST=6; SHOT_EVERY=8 ;;
 	stream) SECS=${SECS:-60}; SHOT_FIRST=20; SHOT_EVERY=20 ;;
-	*) echo "MODE is choose, keys or stream" >&2; exit 2 ;;
+	*) echo "MODE is choose, keys, noconsole or stream" >&2; exit 2 ;;
 esac
-if [ "$MODE" != choose ] && [ -e "$HOLD" ]; then
+if [ "$MODE" != choose ] && [ "$MODE" != noconsole ] && [ -e "$HOLD" ]; then
 	echo "refused: $HOLD exists, never connect to the PS5 until the operator lifts it (MODE=choose proves the entry)" >&2
 	exit 8
 fi
@@ -88,13 +96,13 @@ step_entry() {
 import re, sys
 src, dst = sys.argv[1:]
 text = open(src).read()
-for key in ("stream_feedback_stats_log", "stream_go_vr_enabled"):
+for key in ("stream_feedback_stats_log", "stream_go_vr_enabled", "stream_go_vr_ui"):  # PLE-744: VR Home
     text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % key, "", text)
     text = text.replace("</map>", '    <boolean name="%s" value="true" />\n</map>' % key)
 open(dst, "w").write(text)
 EOF
 	write_prefs "$OUT/prefs-run.xml" || return 3
-	say "prefs: snapshot + stream_feedback_stats_log=true + stream_go_vr_enabled=true; last_console_mac: $(grep -c last_console_mac "$OUT/prefs-run.xml")"
+	say "prefs: snapshot + stream_feedback_stats_log, stream_go_vr_enabled, stream_go_vr_ui=true; last_console_mac: $(grep -c last_console_mac "$OUT/prefs-run.xml")"
 	a shell "run-as $PKG sh -c 'ls databases; echo'" | tr -d '\r' | tr '\n' ' ' | sed 's/^/databases: /' | tee -a "$LOG"; echo | tee -a "$LOG"
 	mark_since
 	echo "== entry $since" >> "$OUT/markers.txt"
@@ -113,8 +121,31 @@ EOF
 	a shell "cmd package query-activities -a android.intent.action.MAIN -c com.oculus.intent.category.VR $PKG" 2>&1 | tr -d '\r' | grep -E 'name=' | head -4 | sed 's/^/query VR: /' | tee -a "$LOG"
 }
 
+key() { a shell am broadcast -a $PKG.DEBUG_GO_VR_INPUT --es key "$1" >/dev/null; say "key $1 (DEBUG_GO_VR_INPUT)"; sleep 1.5; }
+unset_props() { local p; for p in vr_full_pose go_entry_choose go_entry_no_console; do a shell setprop debug.pleikkari.$p 0; done; }
+
 connected() { # a connect started (it must not in MODE=choose)
 	grep -E ' GoVrEntry: Connecting to | StreamSession: |Starting session request|: Wakeup sent| GoVrEntry: .*wake-up sent' "$OUT/logcat-raw.txt" | head -3
+}
+
+step_disconnect() { # PLE-744: back, walk to Disconnect, centre; expect the chooser again
+	local i
+	grep -q 'Cinema video:' "$OUT/logcat-raw.txt" || say "warning: no Cinema video line before Disconnect"
+	key back
+	dump_log
+	for i in 1 2 3 4 5 6; do
+		grep -qE " GoVrUi *: Focus button 'Disconnect'" "$OUT/logcat-raw.txt" && break
+		key right
+		dump_log
+	done
+	a exec-out screencap -p > "$OUT/menu-disconnect.png" 2>/dev/null; say "menu screencap: $(stat -c %s "$OUT/menu-disconnect.png") B"
+	grep -qE " GoVrUi *: Focus button 'Disconnect'" "$OUT/logcat-raw.txt" || { say "Disconnect never focused; stopping"; return 1; }
+	key centre
+	sleep 4
+	dump_log
+	a exec-out screencap -p > "$OUT/after-disconnect.png" 2>/dev/null
+	if grep -q 'Disconnect: back to the Library chooser' "$OUT/logcat-raw.txt"; then say "Disconnect: back to the chooser; resumed $(resumed)"
+	else say "Disconnect line missing"; fi
 }
 
 step_launch() {
@@ -123,7 +154,12 @@ step_launch() {
 	if [ "$MODE" != stream ]; then
 		a shell setprop debug.pleikkari.go_entry_choose 1
 		[ "$(a shell getprop debug.pleikkari.go_entry_choose | tr -d '\r')" = 1 ] || { say "abort: debug.pleikkari.go_entry_choose did not stick"; a shell setprop debug.pleikkari.vr_full_pose 0; return 7; }
-		say "MODE=choose: debug.pleikkari.go_entry_choose=1, the entry opens its chooser and never connects on its own"
+		say "MODE=$MODE: debug.pleikkari.go_entry_choose=1, the entry opens its chooser and never connects on its own"
+	fi
+	if [ "$MODE" = noconsole ]; then
+		a shell setprop debug.pleikkari.go_entry_no_console 1
+		[ "$(a shell getprop debug.pleikkari.go_entry_no_console | tr -d '\r')" = 1 ] || { say "abort: go_entry_no_console did not stick"; unset_props; return 7; }
+		say "MODE=noconsole: debug.pleikkari.go_entry_no_console=1, the flow sees no linked PS5"
 	fi
 	"$ROOT/scripts/dev/go-keepawake.sh" wake 2>&1 | tail -2 | tee -a "$LOG"
 	mark_since
@@ -133,7 +169,7 @@ step_launch() {
 	# it directly: it hands the start to vrshell's desktop (apk://com.oculus.vrshell.desktop with
 	# uri=vrdesktop://<pkg>/<activity>), which starts the entry itself as uid 1000 (PLE-690, 08:29 UTC).
 	# A bare `apk://<pkg>` deep link to vrshell launches nothing.
-	[ -n "$ENTRY" ] || { say "abort: MAIN/INFO resolves to nothing"; a shell setprop debug.pleikkari.vr_full_pose 0; a shell setprop debug.pleikkari.go_entry_choose 0; return 5; }
+	[ -n "$ENTRY" ] || { say "abort: MAIN/INFO resolves to nothing"; unset_props; return 5; }
 	say "launch: MAIN/INFO $ENTRY with NEW_TASK|NO_ANIMATION, the intent sendLaunchIntent() sends"
 	out=$("$ROOT/scripts/dev/go.sh" am-start -a android.intent.action.MAIN -c android.intent.category.INFO \
 		-n "$PKG/$ENTRY" -f 0x10010000 2>&1 | tr -d '\r')
@@ -145,7 +181,7 @@ step_launch() {
 		out=$(a shell am start -a android.intent.action.MAIN -c android.intent.category.INFO -n "$PKG/$ENTRY" -f 0x10010000 2>&1 | tr -d '\r')
 		echo "$out" | tee -a "$LOG" ;; esac
 	fi
-	case "$out" in *"kept for the user"*|*refus*) say "am start refused"; a shell setprop debug.pleikkari.vr_full_pose 0; a shell setprop debug.pleikkari.go_entry_choose 0; return 5 ;; esac
+	case "$out" in *"kept for the user"*|*refus*) say "am start refused"; unset_props; return 5 ;; esac
 	for i in $(seq 1 15); do
 		sleep 1
 		cur=$(resumed)
@@ -161,23 +197,27 @@ step_launch() {
 		say "launch path: started directly (no vrshell desktop hand-off in logcat)"
 	fi
 	a shell 'dumpsys activity activities' | tr -d '\r' > "$OUT/activities.txt"
-	case "$cur" in *"$PKG/"*) ;; *) dump_log; a shell am force-stop $PKG; a shell setprop debug.pleikkari.vr_full_pose 0; a shell setprop debug.pleikkari.go_entry_choose 0; return 6 ;; esac
-	# PLE-717 MODE=keys: drive the in-VR chooser with gamepad-source keys (the flow ignores
-	# keyboard-source ones), then A to connect; no input once the stream is up (AGENTS.md rule 12).
+	case "$cur" in *"$PKG/"*) ;; *) dump_log; a shell am force-stop $PKG; unset_props; return 6 ;; esac
+	# PLE-744 MODE=keys: drive Home with the debug broadcast (right is D-pad down, centre is A), park
+	# the focus back on the first card, then centre to Play; no input once the stream is up
+	# (AGENTS.md rule 12) until the Disconnect walk below.
 	t0=$(date +%s)
-	if [ "$MODE" = keys ]; then
-		for k in DPAD_RIGHT DPAD_LEFT DPAD_DOWN DPAD_UP; do
-			sleep 2
-			a shell input gamepad keyevent KEYCODE_$k; say "key $k (gamepad)"
-		done
+	if [ "$MODE" = keys ] || [ "$MODE" = noconsole ]; then
+		sleep 4
+		key right
 		a exec-out screencap -p > "$OUT/chooser.png" 2>/dev/null; say "chooser screencap: $(stat -c %s "$OUT/chooser.png") B"
 		dump_log
-		a shell input gamepad keyevent KEYCODE_BUTTON_A; say "key BUTTON_A (gamepad): choose"
+		grep -E ' GoVrUi *: (Home|Focus)' "$OUT/logcat-raw.txt" | tail -4 | tee -a "$LOG"
+	fi
+	if [ "$MODE" = keys ]; then
+			# The first pad move focuses the last-played card (PLE-730 shot-2), so centre plays it.
+		grep -qE " GoVrUi *: Focus card " "$OUT/logcat-raw.txt" || say "warning: no card focused; centre may activate another row"
+		key centre
 	fi
 	while [ $(( $(date +%s) - t0 )) -lt "$SECS" ]; do
 		sleep 5
 		dump_log
-		if [ "$MODE" = choose ]; then
+		if [ "$MODE" = choose ] || [ "$MODE" = noconsole ]; then
 			leak=$(connected)
 			if [ -n "$leak" ]; then
 				a shell am force-stop $PKG
@@ -193,9 +233,9 @@ step_launch() {
 	done
 	cur=$(resumed)
 	say "after ${SECS}s: ${cur:-none}"
+	[ "$MODE" = keys ] && step_disconnect
 	a shell am force-stop $PKG
-	a shell setprop debug.pleikkari.vr_full_pose 0
-	a shell setprop debug.pleikkari.go_entry_choose 0
+	unset_props
 	sleep 3
 	dump_log
 	for i in 1 2 3 4 5; do cur=$(resumed); case "$cur" in *vrshell*) break ;; esac; sleep 2; done
@@ -209,7 +249,7 @@ step_launch() {
 	grep -E 'sendLaunchIntent|LaunchOrRestore|isVrApp|START u0 .*pleikkari' "$OUT/logcat.txt" > "$OUT/vrshell-launch.txt"
 	grep -E ' VrApi ' "$OUT/logcat.txt" | grep 'FPS=' > "$OUT/vrapi-fps.txt"
 	grep -E 'FATAL EXCEPTION' -A12 "$OUT/logcat.txt" | head -60 > "$OUT/crashes.txt"
-	[ "$MODE" = choose ] && say "MODE=choose connect lines (must be none): $(connected | wc -l)"
+	[ "$MODE" != stream ] && [ "$MODE" != keys ] && say "MODE=$MODE connect lines (must be none): $(connected | wc -l)"
 	say "entry/cinema lines $(wc -l < "$OUT/entry-cinema.txt"), vrshell launch lines $(wc -l < "$OUT/vrshell-launch.txt"), Cinema video lines $(grep -c 'Cinema video:' "$OUT/entry-cinema.txt"), Feedback stats lines $(grep -c 'Feedback stats' "$OUT/logcat.txt"), fatal $(grep -c 'FATAL EXCEPTION' "$OUT/crashes.txt")"
 	write_prefs "$BACKUP/prefs.xml" && say "original prefs back"
 }
