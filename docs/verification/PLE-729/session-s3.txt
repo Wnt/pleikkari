@@ -1,0 +1,41 @@
+12:49:49 start; 492s before the deadline; serial 1KWPH802EW8203; mWakefulness=Awake
+12:49:49 start; 492s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:49:52 backup: prefs 981 B, db chiaki chiaki-shm chiaki-wal , appdata 474624 B, apk 256852eb452c125d;     versionCode=12 minSdk=24 targetSdk=35     lastUpdateTime=2026-09-27 15:49:06 
+12:49:52 done
+12:49:52 start; 489s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:49:54 installed APK eef01a8cce9c488495758e84da17c1a9 is not ours (b6676be7a8f221524767a6ae45fae06b, f05b5dec8616dd8f): install -r
+Success
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 15:50:02
+12:50:02 done
+12:50:05 === try old-refused: go_stream.sh start --path native --timeout 20; installed APK b6676be7a8f221524767a6ae45fae06b auto_connect_host=no
+12:50:08 start rc=1: go-stream: the installed fi.madekivi.pleikkari (base.apk md5 b6676be7a8f221524767a6ae45fae06b) has no auto_connect_host in its dex: it predates PLE-659 (fork/android-port 0b570f5e) and would stay on MainActivity. Back up the app data and install -r a current debug build first
+12:50:12 stop rc=0: go-stream: stopped; prefs were not changed 
+12:50:12 key lines: START 0, AutoConnect 0, cinema entered 0, Cinema video 0, Feedback stats 0, fatal 0
+12:50:12 Go back at vrshell: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:50:12 start; 469s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+Success
+12:50:23 original APK back
+12:50:24 prefs restored byte-identically
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 15:50:22
+total 192
+drwxrwx--x 2 u0_a63 u0_a63  4096 2026-09-26 23:55 .
+drwx------ 7 u0_a63 u0_a63  4096 2026-09-26 23:55 ..
+-rw-rw---- 1 u0_a63 u0_a63 28672 2026-09-26 23:55 chiaki
+-rw------- 1 u0_a63 u0_a63 32768 2026-09-27 15:49 chiaki-shm
+-rw-rw---- 1 u0_a63 u0_a63  4152 2026-09-26 23:55 chiaki-wal
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:50:24 done
+12:50:24 done

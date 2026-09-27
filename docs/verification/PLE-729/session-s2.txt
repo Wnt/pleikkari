@@ -1,0 +1,60 @@
+12:44:17 start; 329s before the deadline; serial 1KWPH802EW8203; mWakefulness=Awake
+12:44:17 start; 329s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:44:20 backup: prefs 981 B, db chiaki chiaki-shm chiaki-wal , appdata 724480 B, apk 256852eb452c125d;     versionCode=12 minSdk=24 targetSdk=35     lastUpdateTime=2026-09-27 15:44:13 
+12:44:20 done
+12:44:20 start; 326s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:44:22 installed APK eef01a8cce9c488495758e84da17c1a9 is not ours (44cfb890333de4efcb93f283cd47f4af, 57a4c7b4f424aca2): install -r
+Success
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 15:44:30
+12:44:30 done
+12:44:32 prefs written from docs/verification/PLE-729/prefs-fresh.xml
+12:44:34 === try mine-native-fresh: go_stream.sh start --path native --timeout 45; installed APK 44cfb890333de4efcb93f283cd47f4af auto_connect_host=yes
+12:44:47 start rc=0: go-stream: live: fi.madekivi.pleikkari/.stream.StreamVrActivity on display 0 (native), frames after 8 s
+12:45:03 screencap 1095125 B; resumed: mResumedActivity: ActivityRecord{7fb76bc u0 fi.madekivi.pleikkari/.stream.StreamVrActivity t378}
+12:45:19 stop rc=0: build/ple729/s2-20260927T124006Z/mine-native-fresh/state/prefs-before.xml: 1 file pushed, 0 skipped. 1.3 MB/s (192 bytes in 0.000s) go-stream: stopped; the original prefs are back go-stream: debug.pleikkari.vr_full_pose back to 0 
+12:45:19 key lines: START 2, AutoConnect 2, cinema entered 1, Cinema video 6, Feedback stats 30, fatal 0
+12:45:19 screen_check rc=0: shot.png: mean luma 13.3, max 235, 14.1 % of the frame lit: picture 
+12:45:19 Go back at vrshell: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:45:35 === library mine-library: MAIN/INFO .stream.GoVrLibraryEntry through go.sh am-start, 36s; installed APK 44cfb890333de4efcb93f283cd47f4af auto_connect_host=yes
+12:45:39 launch: Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.INFO] flg=0x10010000 cmp=fi.madekivi.pleikkari/.stream.GoVrLibraryEntry } Warning: Activity not started, its current task has been brought to the front 
+12:46:00 screencap 1093662 B; resumed: mResumedActivity: ActivityRecord{9af435e u0 fi.madekivi.pleikkari/.stream.GoVrLibraryEntry t379}
+12:46:20 key lines: Library VR launch 1, GoVrEntry 3, cinema entered 1, Cinema video 7, Feedback stats 0, fatal 0
+12:46:20 screen_check rc=0: shot.png: mean luma 13.2, max 221, 14.1 % of the frame lit: picture 
+12:46:20 Go back at vrshell: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:46:34 prefs written from docs/verification/PLE-729/prefs-fresh.xml
+12:46:38 === try mine-tv-fresh: go_stream.sh start --path tv --timeout 45; installed APK 44cfb890333de4efcb93f283cd47f4af auto_connect_host=yes
+12:46:51 start rc=0: go-stream: live: fi.madekivi.pleikkari/.stream.StreamActivity on display 210 (tv), frames after 9 s
+12:47:03 screencap 0 B; resumed: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+mResumedActivity: ActivityRecord{865b63 u0 fi.madekivi.pleikkari/.stream.StreamActivity t380}
+12:47:20 stop rc=0: build/ple729/s2-20260927T124006Z/mine-tv-fresh/state/prefs-before.xml: 1 file pushed, 0 skipped. 1.6 MB/s (192 bytes in 0.000s) go-stream: stopped; the original prefs are back 
+12:47:20 key lines: START 2, AutoConnect 2, cinema entered 0, Cinema video 0, Feedback stats 26, fatal 0
+12:47:20 Go back at vrshell: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+12:47:32 deferred ensure
+12:47:32 deferred try old-refused
+12:47:32 start; 134s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+Success
+12:47:43 original APK back
+12:47:44 prefs restored byte-identically
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 15:47:42
+total 192
+drwxrwx--x 2 u0_a63 u0_a63  4096 2026-09-26 23:55 .
+drwx------ 7 u0_a63 u0_a63  4096 2026-09-26 23:55 ..
+-rw-rw---- 1 u0_a63 u0_a63 28672 2026-09-26 23:55 chiaki
+-rw------- 1 u0_a63 u0_a63 32768 2026-09-27 15:46 chiaki-shm
+-rw-rw---- 1 u0_a63 u0_a63  4152 2026-09-26 23:55 chiaki-wal
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+12:47:44 done
+12:47:44 done
