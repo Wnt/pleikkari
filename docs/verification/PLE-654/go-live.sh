@@ -21,14 +21,17 @@
 # PLE-696: before each arm0 the Go must report mWakefulness=Awake. If it has fallen asleep (off
 # head, LED off) the arm and every later arm are skipped with "asleep", restore still runs, and
 # the script exits 10 so a caller can tell a sleeping Go from a finished session.
+# PLE-708: any arm0 step starts a PS5 stream, so the run exits 3 before touching adb while
+# scripts/dev/ps5-hold.sh holds the console (setup/ensure/restore alone stay ungated).
 set -uo pipefail
 ROOT=/home/wnt/gta6
-A=$ROOT/scripts/dev/device-bin/adb
+A=${PLEIKKARI_GO_ADB:-$ROOT/scripts/dev/device-bin/adb}
 G=192.168.1.202:5555
 PKG=fi.madekivi.pleikkari
 PREFS=shared_prefs/${PKG}_preferences.xml
 OUT=${1:?out dir}; shift
 SECS=${SECS:-60}
+case " $* " in *" arm0 "*) "$ROOT/scripts/dev/ps5-hold.sh" check || exit 3 ;; esac
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
 BACKUP=${BACKUP:-$OUT/backup}
