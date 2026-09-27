@@ -173,6 +173,8 @@
     <string name="preferences_video_timestamp_rate_hz_title">Frame-index timestamp rate</string>
     <string name="preferences_video_timestamp_rate_hz_summary">Timeline rate (Hz) used for frame-index video timestamps; 0 = stream fps (experiment; reconnect required)</string>
     <string name="preferences_video_timestamp_rate_hz_value">%d Hz (0 = stream fps)</string>
+    <string name="preferences_idr_on_fec_failure_enabled_title">Request keyframe after FEC failure</string>
+    <string name="preferences_idr_on_fec_failure_enabled_summary">Ask the console for a fresh IDR frame when a frame cannot be FEC-recovered, dropping frames until it arrives (re-connect required)</string>
     <string name="preferences_takion_video_packet_reordering_disabled_title">Immediate video packet delivery</string>
     <string name="preferences_takion_video_packet_reordering_disabled_summary">Bypass the 16 ms network reorder queue and let frame FEC handle missing packets (re-connect required)</string>
     <string name="preferences_controller_input_coalescing_enabled_title">Vsync-paced controller input</string>
@@ -326,6 +328,7 @@
     <string name="preferences_decoder_realtime_priority_key">stream_decoder_realtime_priority</string>
     <string name="preferences_decoder_qcom_vt_low_latency_key">stream_decoder_qcom_vt_low_latency</string>
     <string name="preferences_video_timestamp_rate_hz_key">stream_video_timestamp_rate_hz</string>
+    <string name="preferences_idr_on_fec_failure_enabled_key">stream_idr_on_fec_failure_enabled</string>
     <string name="preferences_takion_video_packet_reordering_disabled_key">stream_takion_video_packet_reordering_disabled</string>
     <string name="preferences_controller_input_coalescing_enabled_key">stream_controller_input_coalescing</string>
     <string name="preferences_gamepad_unbuffered_dispatch_enabled_key">stream_gamepad_unbuffered</string>

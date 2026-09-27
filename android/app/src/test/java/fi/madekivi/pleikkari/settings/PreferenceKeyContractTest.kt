@@ -58,6 +58,7 @@ class PreferenceKeyContractTest
 			"@string/preferences_fps_key",
 			"@string/preferences_gamepad_trigger_fallback_enabled_key",
 			"@string/preferences_gamepad_unbuffered_dispatch_enabled_key",
+			"@string/preferences_idr_on_fec_failure_enabled_key",
 			"@string/preferences_import_settings_key",
 			"@string/preferences_log_verbose_key",
 			"@string/preferences_motion_enabled_key",

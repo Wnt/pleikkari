@@ -98,6 +98,7 @@ data class ConnectInfo(
 	val packetLossMax: Double,
 	val adaptiveLossReport: Boolean = false,
 	val takionVideoPacketReorderingDisabled: Boolean,
+	val idrOnFecFailureEnabled: Boolean = false,
 	val feedbackStateMinIntervalMs: Int = 0,
 	val feedbackStatsLogIntervalMs: Int = 0,
 	val audioBufferBursts: Int = 0,

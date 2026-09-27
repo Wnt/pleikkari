@@ -331,6 +331,13 @@
             app:icon="@drawable/ic_bitrate" />
 
         <SwitchPreference
+            app:key="@string/preferences_idr_on_fec_failure_enabled_key"
+            app:title="@string/preferences_idr_on_fec_failure_enabled_title"
+            app:summary="@string/preferences_idr_on_fec_failure_enabled_summary"
+            app:defaultValue="false"
+            app:icon="@drawable/ic_bitrate" />
+
+        <SwitchPreference
             app:key="@string/preferences_controller_input_coalescing_enabled_key"
             app:title="@string/preferences_controller_input_coalescing_enabled_title"
             app:summary="@string/preferences_controller_input_coalescing_enabled_summary"

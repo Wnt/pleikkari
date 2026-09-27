@@ -621,6 +621,8 @@ static void session_create(JNIEnv *env, jobject result, jobject connect_info_obj
 			E->GetFieldID(env, connect_info_class, "takionVideoPacketReorderingDisabled", "Z"));
 	jint feedback_state_min_interval_ms = E->GetIntField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "feedbackStateMinIntervalMs", "I"));
 	jint feedback_stats_log_interval_ms = E->GetIntField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "feedbackStatsLogIntervalMs", "I"));
+	jboolean idr_on_fec_failure = E->GetBooleanField(env, connect_info_obj,
+			E->GetFieldID(env, connect_info_class, "idrOnFecFailureEnabled", "Z"));
 	jboolean stream_diagnostics_enabled = E->GetBooleanField(env, connect_info_obj,
 			E->GetFieldID(env, connect_info_class, "streamDiagnosticsEnabled", "Z"));
 	jobject presenter_config_obj = E->GetObjectField(env, connect_info_obj,
@@ -676,6 +678,9 @@ static void session_create(JNIEnv *env, jobject result, jobject connect_info_obj
 			feedback_stats_log_interval_ms > 0 ? "enabled" : "disabled",
 			stream_stats_enabled ? "shared 1 Hz stats event" : "no stats event or periodic JNI traffic");
 	connect_info.disable_video_packet_reordering = disable_video_packet_reordering;
+	connect_info.enable_idr_on_fec_failure = idr_on_fec_failure;
+	if(idr_on_fec_failure)
+		CHIAKI_LOGI(log, "IDR request after FEC failure enabled");
 	if(remote_ctrl_fd >= 0)
 	{
 		if(!psn_account_id_array || E->GetArrayLength(env, psn_account_id_array) != CHIAKI_PSN_ACCOUNT_ID_SIZE

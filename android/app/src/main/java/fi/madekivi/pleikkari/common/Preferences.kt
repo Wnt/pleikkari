@@ -287,6 +287,11 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(takionVideoPacketReorderingDisabledKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(takionVideoPacketReorderingDisabledKey, value).apply() }
 
+	val idrOnFecFailureEnabledKey get() = resources.getString(R.string.preferences_idr_on_fec_failure_enabled_key)
+	var idrOnFecFailureEnabled
+		get() = sharedPreferences.getBoolean(idrOnFecFailureEnabledKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(idrOnFecFailureEnabledKey, value).apply() }
+
 	val decoderLateFrameRecoveryEnabledKey get() = resources.getString(R.string.preferences_decoder_late_frame_recovery_enabled_key)
 	var decoderLateFrameRecoveryEnabled
 		get() = sharedPreferences.getBoolean(decoderLateFrameRecoveryEnabledKey, false)
@@ -795,6 +800,7 @@ class Preferences(context: Context)
 		packetLossMax = packetLossMax,
 		adaptiveLossReport = adaptiveLossReport,
 		takionVideoPacketReorderingDisabled = takionVideoPacketReorderingDisabled,
+		idrOnFecFailureEnabled = idrOnFecFailureEnabled,
 		feedbackStateMinIntervalMs = if(feedbackReducedIntervalEnabled) 4 else 0,
 		feedbackStatsLogIntervalMs = feedbackStatsLogIntervalMs,
 		audioBufferBursts = audioBufferBursts,
