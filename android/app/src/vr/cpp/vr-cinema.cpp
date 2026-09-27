@@ -319,6 +319,42 @@ struct Cinema {
         return glGetError() == GL_NO_ERROR;
     }
 
+    // PLE-755: the first frame of a session pays the driver's first-use work (program binaries,
+    // texture and swap-chain image allocation, tile setup) and takes 25-34 ms; the late submit
+    // followed by a quick one is what puts VrApi's scheduler a refresh ahead (PLE-715). Draw
+    // every swap-chain image of both eyes once with both screen programs, and wait for the GPU,
+    // before the first submit. Nothing drawn here is submitted: the first frame clears it.
+    void warmUp() {
+        const int64_t start = monotonicNs();
+        const auto identity = ovrMatrix4f_CreateIdentity();
+        glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
+        glBindVertexArray(vao);
+        glActiveTexture(GL_TEXTURE0);
+        for(auto &eye : eyes) {
+            for(GLuint fbo : eye.fbos) {
+                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                glViewport(0, 0, width, height);
+                glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+                for(GLuint p : {videoProgram, messageProgram}) {
+                    const bool isVideo = p == videoProgram;
+                    glUseProgram(p);
+                    glBindTexture(isVideo ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, isVideo ? video : message);
+                    glUniform1i(glGetUniformLocation(p, "picture"), 0);
+                    matrixUniform(glGetUniformLocation(p, "textureTransform"), identity);
+                    matrixUniform(glGetUniformLocation(p, "mvp"), identity);
+                    glDrawArrays(GL_TRIANGLE_STRIP, 0, (Segments + 1) * 2);
+                }
+                glClear(GL_COLOR_BUFFER_BIT);
+            }
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(0);
+        glUseProgram(0);
+        glFinish();
+        for(GLenum error = glGetError(); error != GL_NO_ERROR; error = glGetError()) LOGE("GL error 0x%x in the warm-up draw", error);
+        LOGI("Warm-up draw: %zu + %zu eye images, %.2f ms", eyes[0].fbos.size(), eyes[1].fbos.size(), (monotonicNs() - start) / 1e6);
+    }
+
     // PLE-603: apply the environment setting. PLAIN drops the renderer so nothing of it
     // runs per frame; anything else builds or reconfigures it on this GL thread. A room
     // that fails to build logs and falls back to the plain screen rather than failing VR.
@@ -645,6 +681,7 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jl
     cinema(h)->setPacing(mode == PLEIKKARI_VR_PACING_LATE ? PLEIKKARI_VR_PACING_LATE : PLEIKKARI_VR_PACING_VRAPI, log, chars, refreshHz);
     if(chars) env->ReleaseStringUTFChars(spec, chars);
 }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(warmUp)(JNIEnv *, jobject, jlong h) { cinema(h)->warmUp(); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { pleikkari_vr_screen_placement_request(&cinema(h)->placement); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(setFullPoseRecentre)(JNIEnv *, jobject, jlong h, jboolean enabled) {
     cinema(h)->fullPoseRecentre = enabled;

@@ -322,6 +322,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				summary = getString(R.string.go_vr_late_start_summary)
 				isChecked = preferences.goVrLateStart
 			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrWarmUpKey
+				title = getString(R.string.go_vr_warm_up_title)
+				summary = getString(R.string.go_vr_warm_up_summary)
+				isChecked = preferences.goVrWarmUp
+			})
 		}
 
 		preferenceScreen.findPreference<Preference>(preferences.decoderQcomVtLowLatencyKey)?.isVisible =
