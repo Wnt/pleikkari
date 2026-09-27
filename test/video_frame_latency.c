@@ -35,8 +35,8 @@ static MunitResult test_stages_of_one_frame(const MunitParameter params[], void 
 	(void)user;
 	AndroidChiakiVideoFrameLatency *latency = new_latency(true);
 	// arrival 1000, decoded 1009, latched 1015, submitted 1018, predicted photon 1048 (ms)
-	android_chiaki_video_frame_latency_record_decoded(latency, 17000, MS(1000), MS(1009));
-	android_chiaki_video_frame_latency_record_latched(latency, 17000, MS(1015), MS(1018), MS(1048));
+	android_chiaki_video_frame_latency_record_decoded(latency, 17000, -1, MS(1000), 0, MS(1009));
+	android_chiaki_video_frame_latency_record_latched(latency, 17000, MS(1015), MS(1018), MS(1048), -1);
 
 	AndroidChiakiVideoFrameLatencyWindow window;
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(2000), &window));
@@ -71,13 +71,13 @@ static MunitResult test_replaced_before_latch(const MunitParameter params[], voi
 	(void)params;
 	(void)user;
 	AndroidChiakiVideoFrameLatency *latency = new_latency(true);
-	android_chiaki_video_frame_latency_record_decoded(latency, 1000, MS(1000), MS(1008));
-	android_chiaki_video_frame_latency_record_decoded(latency, 2000, MS(1016), MS(1024));
-	android_chiaki_video_frame_latency_record_decoded(latency, 3000, MS(1033), MS(1041));
+	android_chiaki_video_frame_latency_record_decoded(latency, 1000, -1, MS(1000), 0, MS(1008));
+	android_chiaki_video_frame_latency_record_decoded(latency, 2000, -1, MS(1016), 0, MS(1024));
+	android_chiaki_video_frame_latency_record_decoded(latency, 3000, -1, MS(1033), 0, MS(1041));
 	// The third frame is latched first: the two ahead of it were never shown.
-	android_chiaki_video_frame_latency_record_latched(latency, 3000, MS(1043), MS(1045), MS(1075));
+	android_chiaki_video_frame_latency_record_latched(latency, 3000, MS(1043), MS(1045), MS(1075), -1);
 	// A late latch of an already passed-over frame no longer matches.
-	android_chiaki_video_frame_latency_record_latched(latency, 1000, MS(1057), MS(1059), MS(1089));
+	android_chiaki_video_frame_latency_record_latched(latency, 1000, MS(1057), MS(1059), MS(1089), -1);
 
 	AndroidChiakiVideoFrameLatencyWindow window;
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(2000), &window));
@@ -104,11 +104,11 @@ static MunitResult test_hidden_and_unknown_arrival(const MunitParameter params[]
 	(void)user;
 	AndroidChiakiVideoFrameLatency *latency = new_latency(true);
 	// Latched while the menu was up: counted as latched, not shown, no figures.
-	android_chiaki_video_frame_latency_record_decoded(latency, 1000, MS(1000), MS(1008));
-	android_chiaki_video_frame_latency_record_latched(latency, 1000, MS(1010), 0, 0);
+	android_chiaki_video_frame_latency_record_decoded(latency, 1000, -1, MS(1000), 0, MS(1008));
+	android_chiaki_video_frame_latency_record_latched(latency, 1000, MS(1010), 0, 0, -1);
 	// No input metadata for this one: no arrival-based figures.
-	android_chiaki_video_frame_latency_record_decoded(latency, 2000, 0, MS(1024));
-	android_chiaki_video_frame_latency_record_latched(latency, 2000, MS(1027), MS(1030), MS(1060));
+	android_chiaki_video_frame_latency_record_decoded(latency, 2000, -1, 0, 0, MS(1024));
+	android_chiaki_video_frame_latency_record_latched(latency, 2000, MS(1027), MS(1030), MS(1060), -1);
 
 	AndroidChiakiVideoFrameLatencyWindow window;
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(2000), &window));
@@ -128,15 +128,15 @@ static MunitResult test_disabled_and_reenabled(const MunitParameter params[], vo
 	(void)user;
 	AndroidChiakiVideoFrameLatency *latency = new_latency(false);
 	AndroidChiakiVideoFrameLatencyWindow window;
-	android_chiaki_video_frame_latency_record_decoded(latency, 1000, MS(1000), MS(1008));
-	android_chiaki_video_frame_latency_record_latched(latency, 1000, MS(1010), MS(1012), MS(1040));
+	android_chiaki_video_frame_latency_record_decoded(latency, 1000, -1, MS(1000), 0, MS(1008));
+	android_chiaki_video_frame_latency_record_latched(latency, 1000, MS(1010), MS(1012), MS(1040), -1);
 	munit_assert_false(android_chiaki_video_frame_latency_take_window(latency, MS(2000), &window));
 
 	android_chiaki_video_frame_latency_set_enabled(latency, true, MS(3000));
-	android_chiaki_video_frame_latency_record_decoded(latency, 2000, MS(3000), MS(3008));
+	android_chiaki_video_frame_latency_record_decoded(latency, 2000, -1, MS(3000), 0, MS(3008));
 	// A new cinema starts over: its first latch cannot match the previous one's pending frames.
 	android_chiaki_video_frame_latency_set_enabled(latency, true, MS(4000));
-	android_chiaki_video_frame_latency_record_latched(latency, 2000, MS(4010), MS(4012), MS(4040));
+	android_chiaki_video_frame_latency_record_latched(latency, 2000, MS(4010), MS(4012), MS(4040), -1);
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(5000), &window));
 	munit_assert_int64(window.window_ns, ==, MS(1000));
 	munit_assert_uint32(window.decoded, ==, 0);
@@ -154,10 +154,10 @@ static MunitResult test_pending_overflow_counts_replaced(const MunitParameter pa
 	(void)user;
 	AndroidChiakiVideoFrameLatency *latency = new_latency(true);
 	for(int i = 0; i < ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING + 3; i++)
-		android_chiaki_video_frame_latency_record_decoded(latency, 1000 * (i + 1), MS(1000 + i), MS(1008 + i));
+		android_chiaki_video_frame_latency_record_decoded(latency, 1000 * (i + 1), -1, MS(1000 + i), 0, MS(1008 + i));
 	// The newest frame is still pending and matches; everything else was never shown.
 	android_chiaki_video_frame_latency_record_latched(latency, 1000 * (ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING + 3),
-			MS(1100), MS(1102), MS(1130));
+			MS(1100), MS(1102), MS(1130), -1);
 	AndroidChiakiVideoFrameLatencyWindow window;
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(2000), &window));
 	munit_assert_uint32(window.decoded, ==, ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING + 3);
@@ -177,8 +177,8 @@ static MunitResult test_percentiles_nearest_rank(const MunitParameter params[], 
 	for(int i = 0; i < 100; i++)
 	{
 		int64_t ts = 1000 * (i + 1);
-		android_chiaki_video_frame_latency_record_decoded(latency, ts, MS(1000), MS(1000));
-		android_chiaki_video_frame_latency_record_latched(latency, ts, MS(1100 - i), MS(1101 - i), MS(1131 - i));
+		android_chiaki_video_frame_latency_record_decoded(latency, ts, -1, MS(1000), 0, MS(1000));
+		android_chiaki_video_frame_latency_record_latched(latency, ts, MS(1100 - i), MS(1101 - i), MS(1131 - i), -1);
 	}
 	AndroidChiakiVideoFrameLatencyWindow window;
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(2000), &window));
@@ -192,9 +192,9 @@ static MunitResult test_percentiles_nearest_rank(const MunitParameter params[], 
 	for(int i = 0; i < ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_SAMPLES + 44; i++)
 	{
 		int64_t ts = 1000000 + i;
-		android_chiaki_video_frame_latency_record_decoded(latency, ts, MS(3000), MS(3000));
+		android_chiaki_video_frame_latency_record_decoded(latency, ts, -1, MS(3000), 0, MS(3000));
 		android_chiaki_video_frame_latency_record_latched(latency, ts, MS(3000) + (i == 280 ? MS(70) : MS(5)),
-				MS(3080), MS(3110));
+				MS(3080), MS(3110), -1);
 	}
 	munit_assert_true(android_chiaki_video_frame_latency_take_window(latency, MS(4000), &window));
 	d2l = figure(&window, ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_DECODED_LATCHED);

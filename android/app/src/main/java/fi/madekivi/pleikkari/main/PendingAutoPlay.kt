@@ -7,6 +7,8 @@ import fi.madekivi.pleikkari.common.DisplayHost
  * Home's one pending "stream from this console as soon as it is listed": the console a PIN
  * registration just linked, or PLE-659's debug-only `auto_connect_host` extra. It fires once, on
  * the first host list with a registered console at that address, and then nothing is pending.
+ * PLE-670: the extra may instead name a PSN-listed console (its name or duid), for Go and S22 runs
+ * that are not on the console's LAN; [takePsn] matches those.
  */
 internal class PendingAutoPlay
 {
@@ -28,6 +30,18 @@ internal class PendingAutoPlay
 		val address = address ?: return null
 		val host = hosts.firstOrNull { it.host == address && it.registeredHost != null } ?: return null
 		val play = Play(host, justLinked)
+		request(null)
+		return play
+	}
+
+	/** The registered PSN-listed console named or with the duid at the pending address, if any; it is no longer pending then. */
+	fun takePsn(consoles: List<PsnConsole>): PsnPlayRequest?
+	{
+		val key = address ?: return null
+		val console = consoles.firstOrNull {
+			it.registeredHost != null && (it.device.name.equals(key, ignoreCase = true) || it.device.duid.equals(key, ignoreCase = true))
+		} ?: return null
+		val play = PsnPlayRequest(console, justLinked)
 		request(null)
 		return play
 	}

@@ -278,6 +278,28 @@ cinema logs the line itself every second, because there is no session. With no d
 latch is `unmatched`, so the preview gives only latched→submitted and submitted→predicted photon.
 With `stream_go_vr_match_60hz` on, the preview runs the panel at 60 Hz, as a 60 fps stream would.
 
+PLE-746 extends that join into an input-to-photon probe. It runs with `stream_go_vr_latency_probe`
+on, off by default and measurement only; it also needs the stats log. Each cinema writes a new
+directory, `/sdcard/Android/data/fi.madekivi.pleikkari/files/latency-probe/<UTC stamp>/`:
+* `frames.csv`: one row per frame the join settles (latched, replaced or unmatched). A row holds
+  the PS5 frame index, the times completed, queued to the decoder, decoded, latched, submitted and
+  predicted photon, and the latched picture's **mean luma**. The luma is a 1x1 GPU pass of 16x9
+  taps after the eye passes, read back a frame or more later through a fenced PBO ring, so the
+  loop never waits.
+* `presses.csv`: one row per Cross press. It holds the KeyEvent time, the app's receipt, the
+  controller state handed to chiaki, and when the feedback history packet that carried it left.
+
+While the probe runs, `PLE746 …` atrace markers mark every video packet, frame, decoder
+queue/dequeue/release, latch, submit, controller state and packet sent. They come from chiaki's
+`chiaki_trace_set_event_cb` hook and chiaki-jni. Record them with
+`atrace -a fi.madekivi.pleikkari …`. The `pad` extra of the debug `DEBUG_GO_VR_INPUT` broadcast
+(`--es pad <cross|circle|up|down|…> --ei hold_ms N`) presses a DualSense button on the streamed
+console. The D-pad included, which `input keyevent` cannot send. The press **reaches the PS5**.
+`docs/verification/PLE-746/go-probe.sh` runs the rounds under the Go lease. The workspace's
+`scripts/dev/go-latency/input_to_photon.py` analyses them, and its baseline is
+`docs/latency/go-input-to-photon/baseline-2026-09-27/`. Use High Contrast as the stimulus, not
+Invert Colours: the PS5 inverts only its HDMI output, never the Remote Play video.
+
 **Frame pacing (PLE-715).** VrApi's `Early=N`/`Prd=46ms` regime is the frame scheduler running
 one refresh ahead. On the Go, VrApi gives each submit a vsync slot, `clamp(previous + 1, now, now + 2)`,
 and releases the loop once per refresh, so a lead once gained is kept. A late frame is let through

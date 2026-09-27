@@ -33,6 +33,7 @@ set(HEADER_FILES
 		include/chiaki/discoveryservice.h
 		include/chiaki/feedback.h
 		include/chiaki/feedbacksender.h
+		include/chiaki/trace.h
 		include/chiaki/controller.h
 		include/chiaki/takionsendbuffer.h
 		include/chiaki/time.h
@@ -51,6 +52,7 @@ set(SOURCE_FILES
 		src/sock.c
 		src/session.c
 		src/thread.c
+		src/trace.c
 		src/base64.c
 		src/http.c
 		src/log.c

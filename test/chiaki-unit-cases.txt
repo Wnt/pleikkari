@@ -94,6 +94,10 @@
 /chiaki/video_frame_latency/pending_overflow_counts_replaced
 /chiaki/video_frame_latency/percentiles_nearest_rank
 /chiaki/video_frame_latency/format_line
+/chiaki/latency_probe/press_from_key_event_to_packet
+/chiaki/latency_probe/press_without_key_event_and_unsent
+/chiaki/latency_probe/frame_rows_from_the_join
+/chiaki/latency_probe/not_started
 /chiaki/video_decoder_operating_rate/precedence
 /chiaki/video_decoder_codec_header/start_codes
 /chiaki/video_decoder_codec_header/h264_types

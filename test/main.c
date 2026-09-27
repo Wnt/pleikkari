@@ -23,6 +23,7 @@ extern MunitTest tests_aia[];
 extern MunitTest tests_bitstream[];
 extern MunitTest tests_video_presenter[];
 extern MunitTest tests_video_frame_latency[];
+extern MunitTest tests_latency_probe[];
 extern MunitTest tests_video_decoder_operating_rate[];
 extern MunitTest tests_video_decoder_codec_header[];
 extern MunitTest tests_vr_screen_placement[];
@@ -157,6 +158,13 @@ static MunitSuite suites[] = {
 	{
 		"/video_frame_latency",
 		tests_video_frame_latency,
+		NULL,
+		1,
+		MUNIT_SUITE_OPTION_NONE
+	},
+	{
+		"/latency_probe",
+		tests_latency_probe,
 		NULL,
 		1,
 		MUNIT_SUITE_OPTION_NONE

@@ -338,6 +338,13 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrWarmUpKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrWarmUpKey, value).apply() }
 
+	// PLE-746: the Go cinema's input-to-photon probe (per-frame GPU luma, presses.csv/frames.csv, atrace
+	// markers). Measurement only; its frame join also needs stream_feedback_stats_log.
+	val goVrLatencyProbeKey get() = "stream_go_vr_latency_probe"
+	var goVrLatencyProbe
+		get() = sharedPreferences.getBoolean(goVrLatencyProbeKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrLatencyProbeKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)

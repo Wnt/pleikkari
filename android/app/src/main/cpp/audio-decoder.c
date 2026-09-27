@@ -8,12 +8,24 @@
 #include <media/NdkMediaFormat.h>
 
 #include <string.h>
+#include <time.h>
 
 #define INPUT_BUFFER_TIMEOUT_MS 10
+// Minimum gap between in-session codec re-creations after an output-thread
+// error, so a codec that fails straight away cannot thrash (PLE-683).
+#define CODEC_RECREATE_INTERVAL_MS 1000
 
 static void *android_chiaki_audio_decoder_output_thread_func(void *user);
 static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void *user);
 static void android_chiaki_audio_decoder_frame(uint8_t *buf, size_t buf_size, void *user);
+static void android_chiaki_audio_decoder_create_codec(AndroidChiakiAudioDecoder *decoder);
+
+static uint64_t now_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
 
 ChiakiErrorCode android_chiaki_audio_decoder_init(AndroidChiakiAudioDecoder *decoder, ChiakiLog *log)
 {
@@ -23,6 +35,7 @@ ChiakiErrorCode android_chiaki_audio_decoder_init(AndroidChiakiAudioDecoder *dec
 	decoder->timestamp_cur = 0;
 	decoder->codec_failed = false;
 	decoder->codec_failed_logged = false;
+	decoder->codec_recreated_ms = 0;
 
 	decoder->cb_user = NULL;
 	decoder->settings_cb = NULL;
@@ -116,6 +129,14 @@ static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void 
 		android_chiaki_audio_decoder_shutdown_codec(decoder);
 	}
 
+	android_chiaki_audio_decoder_create_codec(decoder);
+	chiaki_mutex_unlock(&decoder->codec_mutex);
+}
+
+// Called with codec_mutex held (recursive) and decoder->codec == NULL.
+static void android_chiaki_audio_decoder_create_codec(AndroidChiakiAudioDecoder *decoder)
+{
+	ChiakiAudioHeader *header = &decoder->audio_header;
 	decoder->codec_failed = false;
 	decoder->codec_failed_logged = false;
 
@@ -124,7 +145,7 @@ static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void 
 	if(!decoder->codec)
 	{
 		CHIAKI_LOGE(decoder->log, "Failed to create AMediaCodec for mime type %s", mime);
-		goto beach;
+		return;
 	}
 
 	AMediaFormat *format = AMediaFormat_new();
@@ -144,6 +165,7 @@ static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void 
 		CHIAKI_LOGE(decoder->log, "Failed to create output thread for AMediaCodec");
 		AMediaCodec_delete(decoder->codec);
 		decoder->codec = NULL;
+		return;
 	}
 
 	uint8_t opus_id_head[0x13];
@@ -176,9 +198,6 @@ static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void 
 
 	if(decoder->settings_cb)
 		decoder->settings_cb(header->channels, header->rate, decoder->cb_user);
-
-beach:
-	chiaki_mutex_unlock(&decoder->codec_mutex);
 }
 
 static void android_chiaki_audio_decoder_frame(uint8_t *buf, size_t buf_size, void *user)
@@ -192,6 +211,23 @@ static void android_chiaki_audio_decoder_frame(uint8_t *buf, size_t buf_size, vo
 		goto beach;
 	}
 
+	if(__atomic_load_n(&decoder->codec_failed, __ATOMIC_ACQUIRE))
+	{
+		// The output thread has exited on a codec error: re-create the codec
+		// from the stored header so audio recovers within the session instead
+		// of staying silent until the console sends a new header (PLE-683).
+		uint64_t now = now_ms();
+		if(decoder->codec_recreated_ms == 0 || now - decoder->codec_recreated_ms >= CODEC_RECREATE_INTERVAL_MS)
+		{
+			decoder->codec_recreated_ms = now;
+			CHIAKI_LOGW(decoder->log, "Re-creating Audio Decoder after an output error");
+			android_chiaki_audio_decoder_shutdown_codec(decoder);
+			android_chiaki_audio_decoder_create_codec(decoder);
+			if(!decoder->codec)
+				goto beach;
+		}
+	}
+
 	while(buf_size > 0)
 	{
 		ssize_t codec_buf_index = AMediaCodec_dequeueInputBuffer(decoder->codec, INPUT_BUFFER_TIMEOUT_MS * 1000);
@@ -201,7 +237,7 @@ static void android_chiaki_audio_decoder_frame(uint8_t *buf, size_t buf_size, vo
 			{
 				if(!decoder->codec_failed_logged)
 				{
-					CHIAKI_LOGE(decoder->log, "Audio decoder is in an error state, dropping audio until the next header");
+					CHIAKI_LOGE(decoder->log, "Audio decoder is in an error state, dropping audio until it is re-created");
 					decoder->codec_failed_logged = true;
 				}
 			}

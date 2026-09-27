@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include <chiaki/videoreceiver.h>
+#include <chiaki/trace.h>
 #include <chiaki/time.h>
 #include "../include/chiaki/session.h"
 
@@ -183,6 +184,7 @@ CHIAKI_EXPORT void chiaki_video_receiver_av_packet(ChiakiVideoReceiver *video_re
 	// old frame?
 	ChiakiSeqNum16 frame_index = packet->frame_index;
 	ChiakiErrorCode err = CHIAKI_ERR_SUCCESS;
+	chiaki_trace_event(CHIAKI_TRACE_EVENT_VIDEO_PACKET, frame_index, packet->unit_index);
 	if(video_receiver->frame_index_cur >= 0
 		&& chiaki_seq_num_16_lt(frame_index, (ChiakiSeqNum16)video_receiver->frame_index_cur))
 	{
@@ -331,6 +333,7 @@ static ChiakiErrorCode chiaki_video_receiver_flush_frame(ChiakiVideoReceiver *vi
 	}
 
 	uint64_t frame_ready_time_us = chiaki_time_now_monotonic_us();
+	chiaki_trace_event(CHIAKI_TRACE_EVENT_VIDEO_FRAME_READY, (uint64_t)video_receiver->frame_index_cur, frame_ready_time_us);
 	bool succ = flush_result != CHIAKI_FRAME_PROCESSOR_FLUSH_RESULT_FEC_FAILED;
 	bool recovered = false;
 
