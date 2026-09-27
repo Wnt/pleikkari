@@ -1,0 +1,926 @@
+=== gate.sh ===
+repo:       /home/wnt/gta6/wt/ple-741
+host build: /home/wnt/gta6/wt/ple-741/build/host
+
+--- workspace: registration export Qt round-trip ---
+----------------------------------------------------------------------
+Ran 12 tests in 0.047s
+
+OK
+PASS  workspace registration export Qt round-trip  (0s)
+
+--- workspace: layout bounds and contrast ---
+----------------------------------------------------------------------
+Ran 14 tests in 0.145s
+
+OK
+layout-quality: checked 10 enabled screen(s); 0 known failure(s) disabled
+layout-quality: PASS
+layout-quality: checked 10 enabled screen(s); 0 known failure(s) disabled
+layout-quality: PASS
+PASS  workspace layout bounds and contrast  (0s)
+
+--- user-visible flag check ---
+Ran 23 tests in 0.209s
+
+OK
+flag-gate: PASS (60 flag(s), 60 allowlisted, 0 unlisted, 0 stale)
+PASS  user-visible flag check  (2s)
+
+--- android/psn-mock unittest suite ---
+..............
+----------------------------------------------------------------------
+Ran 14 tests in 6.718s
+
+OK
+PASS  android psn-mock unittest suite  (7s)
+
+--- host: configure ---
+-- The C compiler identification is GNU 13.3.0
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+-- Checking for one of the modules 'speexdsp'
+-- Checking for module 'speexdsp'
+--   Package 'speexdsp', required by 'virtual:world', not found
+-- Speex DSP not found echo cancelling and noise suppression disabled
+CMake Warning (dev) at CMakeLists.txt:117 (find_package):
+  Policy CMP0148 is not set: The FindPythonInterp and FindPythonLibs modules
+  are removed.  Run "cmake --help-policy CMP0148" for policy details.  Use
+  the cmake_policy command to set the policy and suppress this warning.
+
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found PythonInterp: /usr/bin/python3 (found suitable version "3.12.3", minimum required is "3") 
+-- Could NOT find nanopb (missing: nanopb_DIR)
+-- Found Python: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+-- Python install dir: /usr/local/lib/python3.12/dist-packages
+-- Checking for module 'libidn2'
+--   Package 'libidn2', required by 'virtual:world', not found
+-- Using CMake version 3.28.3
+-- curl version=[8.11.0-DEV]
+-- CMake platform flags: UNIX GCC
+-- Performing Test OPT_Wdouble_promotion
+-- Performing Test OPT_Wdouble_promotion - Success
+-- Performing Test OPT_Wenum_conversion
+-- Performing Test OPT_Wenum_conversion - Success
+-- Performing Test OPT_Wpragmas
+-- Performing Test OPT_Wpragmas - Success
+-- Performing Test OPT_Wunused_const_variable
+-- Performing Test OPT_Wunused_const_variable - Success
+-- Picky compiler options: -Werror-implicit-function-declaration -W -Wall -pedantic -Wbad-function-cast -Wconversion -Winline -Wmissing-declarations -Wmissing-prototypes -Wnested-externs -Wno-long-long -Wno-multichar -Wpointer-arith -Wshadow -Wsign-compare -Wundef -Wunused -Wwrite-strings -Waddress -Wattributes -Wcast-align -Wdeclaration-after-statement -Wdiv-by-zero -Wempty-body -Wendif-labels -Wfloat-equal -Wformat-security -Wignored-qualifiers -Wmissing-field-initializers -Wmissing-noreturn -Wno-format-nonliteral -Wno-system-headers -Wold-style-definition -Wredundant-decls -Wsign-conversion -Wno-error=sign-conversion -Wstrict-prototypes -Wtype-limits -Wunreachable-code -Wunused-parameter -Wvla -Wclobbered -Wmissing-parameter-type -Wold-style-declaration -Wstrict-aliasing=3 -Wtrampolines -Wformat=2 -Warray-bounds=2 -ftree-vrp -Wduplicated-cond -Wnull-dereference -fdelete-null-pointer-checks -Wshift-negative-value -Wshift-overflow=2 -Walloc-zero -Wduplicated-branches -Wformat-truncation=2 -Wimplicit-fallthrough -Wrestrict -Warith-conversion -Wdouble-promotion -Wenum-conversion -Wpragmas -Wunused-const-variable
+-- Performing Test HAVE_SOCKADDR_IN6_SIN6_ADDR
+-- Performing Test HAVE_SOCKADDR_IN6_SIN6_ADDR - Success
+-- Performing Test HAVE_SOCKADDR_IN6_SIN6_SCOPE_ID
+-- Performing Test HAVE_SOCKADDR_IN6_SIN6_SCOPE_ID - Success
+-- Found Perl: /usr/bin/perl (found version "5.38.2") 
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Looking for connect in socket
+-- Looking for connect in socket - not found
+-- Looking for gethostname
+-- Looking for gethostname - found
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.13")  
+-- Looking for OPENSSL_IS_BORINGSSL
+-- Looking for OPENSSL_IS_BORINGSSL - not found
+-- Looking for OPENSSL_IS_AWSLC
+-- Looking for OPENSSL_IS_AWSLC - not found
+-- Found ZLIB: /usr/lib/x86_64-linux-gnu/libz.so (found version "1.3")  
+-- Looking for SSL_set0_wbio
+-- Looking for SSL_set0_wbio - found
+-- Looking for SSL_CTX_set_srp_username
+-- Looking for SSL_CTX_set_srp_username - found
+-- Checking for module 'libnghttp2'
+--   Package 'libnghttp2', required by 'virtual:world', not found
+-- Could NOT find NGHTTP2 (missing: NGHTTP2_INCLUDE_DIR NGHTTP2_LIBRARY) 
+-- Checking for module 'libidn2'
+--   Package 'libidn2', required by 'virtual:world', not found
+-- Could NOT find Libidn2 (missing: LIBIDN2_INCLUDE_DIR LIBIDN2_LIBRARY) 
+-- Checking for module 'libpsl'
+--   Package 'libpsl', required by 'virtual:world', not found
+-- Could NOT find Libpsl (missing: LIBPSL_INCLUDE_DIR LIBPSL_LIBRARY) 
+CMake Warning at third-party/curl/CMakeLists.txt:1135 (message):
+  libpsl is enabled, but not found.
+
+
+-- Checking for module 'libssh2'
+--   Package 'libssh2', required by 'virtual:world', not found
+-- Could NOT find Libssh2 (missing: LIBSSH2_INCLUDE_DIR LIBSSH2_LIBRARY) 
+-- Performing Test USE_UNIX_SOCKETS
+-- Performing Test USE_UNIX_SOCKETS - Success
+-- Found CA bundle: /etc/ssl/certs/ca-certificates.crt
+-- Found CA path: /etc/ssl/certs
+-- Looking for sys/eventfd.h
+-- Looking for sys/eventfd.h - found
+-- Looking for sys/filio.h
+-- Looking for sys/filio.h - not found
+-- Looking for sys/wait.h
+-- Looking for sys/wait.h - found
+-- Looking for sys/ioctl.h
+-- Looking for sys/ioctl.h - found
+-- Looking for sys/param.h
+-- Looking for sys/param.h - found
+-- Looking for sys/poll.h
+-- Looking for sys/poll.h - found
+-- Looking for sys/resource.h
+-- Looking for sys/resource.h - found
+-- Looking for include file sys/select.h
+-- Looking for include file sys/select.h - found
+-- Looking for include files sys/select.h, sys/socket.h
+-- Looking for include files sys/select.h, sys/socket.h - found
+-- Looking for sys/sockio.h
+-- Looking for sys/sockio.h - not found
+-- Looking for sys/stat.h
+-- Looking for sys/stat.h - found
+-- Looking for 3 include files sys/select.h, ..., sys/time.h
+-- Looking for 3 include files sys/select.h, ..., sys/time.h - found
+-- Looking for 4 include files sys/select.h, ..., sys/types.h
+-- Looking for 4 include files sys/select.h, ..., sys/types.h - found
+-- Looking for sys/un.h
+-- Looking for sys/un.h - found
+-- Looking for sys/utime.h
+-- Looking for sys/utime.h - not found
+-- Looking for sys/xattr.h
+-- Looking for sys/xattr.h - found
+-- Looking for 5 include files sys/select.h, ..., arpa/inet.h
+-- Looking for 5 include files sys/select.h, ..., arpa/inet.h - found
+-- Looking for dirent.h
+-- Looking for dirent.h - found
+-- Looking for fcntl.h
+-- Looking for fcntl.h - found
+-- Looking for 6 include files sys/select.h, ..., ifaddrs.h
+-- Looking for 6 include files sys/select.h, ..., ifaddrs.h - found
+-- Looking for io.h
+-- Looking for io.h - not found
+-- Looking for 7 include files sys/select.h, ..., libgen.h
+-- Looking for 7 include files sys/select.h, ..., libgen.h - found
+-- Looking for linux/tcp.h
+-- Looking for linux/tcp.h - found
+-- Looking for locale.h
+-- Looking for locale.h - found
+-- Looking for net/if.h
+-- Looking for net/if.h - found
+-- Looking for 8 include files sys/select.h, ..., netdb.h
+-- Looking for 8 include files sys/select.h, ..., netdb.h - found
+-- Looking for 9 include files sys/select.h, ..., netinet/in.h
+-- Looking for 9 include files sys/select.h, ..., netinet/in.h - found
+-- Looking for netinet/in6.h
+-- Looking for netinet/in6.h - not found
+-- Looking for 10 include files sys/select.h, ..., netinet/tcp.h
+-- Looking for 10 include files sys/select.h, ..., netinet/tcp.h - found
+-- Looking for 11 include files sys/select.h, ..., netinet/udp.h
+-- Looking for 11 include files sys/select.h, ..., netinet/udp.h - found
+-- Looking for poll.h
+-- Looking for poll.h - found
+-- Looking for pwd.h
+-- Looking for pwd.h - found
+-- Looking for stdatomic.h
+-- Looking for stdatomic.h - found
+-- Looking for stdbool.h
+-- Looking for stdbool.h - found
+-- Looking for strings.h
+-- Looking for strings.h - found
+-- Looking for stropts.h
+-- Looking for stropts.h - not found
+-- Looking for termio.h
+-- Looking for termio.h - found
+-- Looking for termios.h
+-- Looking for termios.h - found
+-- Looking for 12 include files sys/select.h, ..., unistd.h
+-- Looking for 12 include files sys/select.h, ..., unistd.h - found
+-- Looking for utime.h
+-- Looking for utime.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Check size of size_t
+-- Check size of size_t - done
+-- Check size of ssize_t
+-- Check size of ssize_t - done
+-- Check size of long long
+-- Check size of long long - done
+-- Check size of long
+-- Check size of long - done
+-- Check size of int
+-- Check size of int - done
+-- Check size of __int64
+-- Check size of __int64 - failed
+-- Check size of time_t
+-- Check size of time_t - done
+-- Check size of suseconds_t
+-- Check size of suseconds_t - done
+-- Looking for fnmatch
+-- Looking for fnmatch - found
+-- Looking for basename
+-- Looking for basename - found
+-- Looking for opendir
+-- Looking for opendir - found
+-- Looking for poll
+-- Looking for poll - found
+-- Looking for socket
+-- Looking for socket - found
+-- Looking for sched_yield
+-- Looking for sched_yield - found
+-- Looking for socketpair
+-- Looking for socketpair - found
+-- Looking for recv
+-- Looking for recv - found
+-- Looking for send
+-- Looking for send - found
+-- Looking for sendmsg
+-- Looking for sendmsg - found
+-- Looking for sendmmsg
+-- Looking for sendmmsg - found
+-- Looking for select
+-- Looking for select - found
+-- Looking for strdup
+-- Looking for strdup - found
+-- Looking for strtok_r
+-- Looking for strtok_r - found
+-- Looking for strcasecmp
+-- Looking for strcasecmp - found
+-- Looking for stricmp
+-- Looking for stricmp - not found
+-- Looking for strcmpi
+-- Looking for strcmpi - not found
+-- Looking for memrchr
+-- Looking for memrchr - found
+-- Looking for alarm
+-- Looking for alarm - found
+-- Looking for fcntl
+-- Looking for fcntl - found
+-- Looking for getppid
+-- Looking for getppid - found
+-- Looking for utimes
+-- Looking for utimes - found
+-- Looking for gettimeofday
+-- Looking for gettimeofday - found
+-- Looking for closesocket
+-- Looking for closesocket - not found
+-- Looking for sigsetjmp
+-- Looking for sigsetjmp - found
+-- Looking for getpass_r
+-- Looking for getpass_r - not found
+-- Looking for getpwuid
+-- Looking for getpwuid - found
+-- Looking for getpwuid_r
+-- Looking for getpwuid_r - found
+-- Looking for geteuid
+-- Looking for geteuid - found
+-- Looking for utime
+-- Looking for utime - found
+-- Looking for gmtime_r
+-- Looking for gmtime_r - found
+-- Looking for gethostbyname_r
+-- Looking for gethostbyname_r - found
+-- Looking for signal
+-- Looking for signal - found
+-- Looking for strtoll
+-- Looking for strtoll - found
+-- Looking for strerror_r
+-- Looking for strerror_r - found
+-- Looking for sigaction
+-- Looking for sigaction - found
+-- Looking for siginterrupt
+-- Looking for siginterrupt - found
+-- Looking for getaddrinfo
+-- Looking for getaddrinfo - found
+-- Looking for getifaddrs
+-- Looking for getifaddrs - found
+-- Looking for freeaddrinfo
+-- Looking for freeaddrinfo - found
+-- Looking for pipe
+-- Looking for pipe - found
+-- Looking for eventfd
+-- Looking for eventfd - found
+-- Looking for ftruncate
+-- Looking for ftruncate - found
+-- Looking for _fseeki64
+-- Looking for _fseeki64 - not found
+-- Looking for getpeername
+-- Looking for getpeername - found
+-- Looking for getsockname
+-- Looking for getsockname - found
+-- Looking for if_nametoindex
+-- Looking for if_nametoindex - found
+-- Looking for getrlimit
+-- Looking for getrlimit - found
+-- Looking for setlocale
+-- Looking for setlocale - found
+-- Looking for setmode
+-- Looking for setmode - not found
+-- Looking for setrlimit
+-- Looking for setrlimit - found
+-- Looking for snprintf
+-- Looking for snprintf - found
+-- Looking for inet_ntop
+-- Looking for inet_ntop - found
+-- Looking for inet_pton
+-- Looking for inet_pton - found
+-- Looking for fsetxattr
+-- Looking for fsetxattr - found
+-- Performing Test HAVE_FSETXATTR_5
+-- Performing Test HAVE_FSETXATTR_5 - Success
+-- Performing Test HAVE_FSETXATTR_6
+-- Performing Test HAVE_FSETXATTR_6 - Failed
+-- Check size of sa_family_t
+-- Check size of sa_family_t - done
+-- Performing Test HAVE_FCNTL_O_NONBLOCK
+-- Performing Test HAVE_FCNTL_O_NONBLOCK - Success
+-- Performing Test HAVE_IOCTLSOCKET
+-- Performing Test HAVE_IOCTLSOCKET - Failed
+-- Performing Test HAVE_IOCTLSOCKET_CAMEL
+-- Performing Test HAVE_IOCTLSOCKET_CAMEL - Failed
+-- Performing Test HAVE_IOCTLSOCKET_CAMEL_FIONBIO
+-- Performing Test HAVE_IOCTLSOCKET_CAMEL_FIONBIO - Failed
+-- Performing Test HAVE_IOCTLSOCKET_FIONBIO
+-- Performing Test HAVE_IOCTLSOCKET_FIONBIO - Failed
+-- Performing Test HAVE_IOCTL_FIONBIO
+-- Performing Test HAVE_IOCTL_FIONBIO - Success
+-- Performing Test HAVE_IOCTL_SIOCGIFADDR
+-- Performing Test HAVE_IOCTL_SIOCGIFADDR - Success
+-- Performing Test HAVE_SETSOCKOPT_SO_NONBLOCK
+-- Performing Test HAVE_SETSOCKOPT_SO_NONBLOCK - Failed
+-- Performing Test HAVE_O_NONBLOCK
+-- Performing Test HAVE_O_NONBLOCK - Failed
+-- Performing Test HAVE_GETHOSTBYNAME_R_3
+-- Performing Test HAVE_GETHOSTBYNAME_R_3 - Failed
+-- Performing Test HAVE_GETHOSTBYNAME_R_5
+-- Performing Test HAVE_GETHOSTBYNAME_R_5 - Failed
+-- Performing Test HAVE_GETHOSTBYNAME_R_6
+-- Performing Test HAVE_GETHOSTBYNAME_R_6 - Success
+-- Performing Test HAVE_GETHOSTBYNAME_R_3_REENTRANT
+-- Performing Test HAVE_GETHOSTBYNAME_R_3_REENTRANT - Failed
+-- Performing Test HAVE_GETHOSTBYNAME_R_5_REENTRANT
+-- Performing Test HAVE_GETHOSTBYNAME_R_5_REENTRANT - Failed
+-- Performing Test HAVE_GETHOSTBYNAME_R_6_REENTRANT
+-- Performing Test HAVE_GETHOSTBYNAME_R_6_REENTRANT - Success
+-- Performing Test HAVE_IN_ADDR_T
+-- Performing Test HAVE_IN_ADDR_T - Success
+-- Performing Test HAVE_BOOL_T
+-- Performing Test HAVE_BOOL_T - Success
+-- Performing Test STDC_HEADERS
+-- Performing Test STDC_HEADERS - Success
+-- Performing Test HAVE_FILE_OFFSET_BITS
+-- Performing Test HAVE_FILE_OFFSET_BITS - Success
+-- Performing Test HAVE_ATOMIC
+-- Performing Test HAVE_ATOMIC - Success
+-- Check size of off_t
+-- Check size of off_t - done
+-- Looking for fseeko
+-- Looking for fseeko - found
+-- Check size of curl_off_t
+-- Check size of curl_off_t - done
+-- Check size of curl_socket_t
+-- Check size of curl_socket_t - done
+-- Performing Test HAVE_WRITABLE_ARGV
+-- Performing Test HAVE_WRITABLE_ARGV - Success
+-- Performing Test HAVE_GLIBC_STRERROR_R
+-- Performing Test HAVE_GLIBC_STRERROR_R - Success
+-- Performing Test HAVE_POSIX_STRERROR_R
+-- Performing Test HAVE_POSIX_STRERROR_R - Failed
+-- Performing Test HAVE_CLOCK_GETTIME_MONOTONIC
+-- Performing Test HAVE_CLOCK_GETTIME_MONOTONIC - Success
+-- Check size of struct sockaddr_storage
+-- Check size of struct sockaddr_storage - done
+-- Performing Test HAVE_MSG_NOSIGNAL
+-- Performing Test HAVE_MSG_NOSIGNAL - Success
+-- Performing Test HAVE_STRUCT_TIMEVAL
+-- Performing Test HAVE_STRUCT_TIMEVAL - Success
+-- Performing Test HAVE_H_ERRNO
+-- Performing Test HAVE_H_ERRNO - Success
+-- Performing Test HAVE_CLOCK_GETTIME_MONOTONIC_RAW
+-- Performing Test HAVE_CLOCK_GETTIME_MONOTONIC_RAW - Success
+-- Protocols: http https ws wss
+-- Features: alt-svc AsynchDNS HSTS HTTPS-proxy IPv6 Largefile libz NTLM SSL threadsafe TLS-SRP UnixSockets
+-- Enabled SSL backends: OpenSSL v3+
+-- Steam shortcut disabled
+-- FFMPEG Decoder disabled
+-- Could NOT find ILClient (missing: ILClient_libbcm_host_LIBRARY ILClient_libvcilcs_LIBRARY ILClient_libvchiq_arm_LIBRARY ILClient_libvcos_LIBRARY ILClient_INCLUDE_DIR ILClient_SOURCE_DIR) 
+-- Pi Decoder disabled
+-- Found Opus: /usr/include  
+-- Checking for one of the modules 'json-c'
+-- Checking for one of the modules 'miniupnpc'
+-- Steamdeck native gyro and hatpics disabled
+-- Checking for module 'libudev'
+--   Found libudev, version 255
+-- Checking for module 'libevdev'
+--   Found libevdev, version 1.13.1
+CMake Deprecation Warning at setsu/CMakeLists.txt:2 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+-- Found Udev: udev (found version "255") 
+-- Found Evdev: evdev (found version "1.13.1") 
+-- Setsu enabled
+-- Configuring done (22.9s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/wnt/gta6/wt/ple-741/build/host
+PASS  host configure  (23s)
+--- host: build ---
+ninja: Entering directory `/home/wnt/gta6/wt/ple-741/build/host'
+[1/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_wgen.c.o
+[2/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf.c.o
+[3/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_w4.c.o
+[4/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_w8.c.o
+[5/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_w16.c.o
+[6/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_w32.c.o
+[7/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_w128.c.o
+[8/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_w64.c.o
+[9/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_rand.c.o
+[10/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_general.c.o
+[11/288] Building C object third-party/CMakeFiles/gf_complete.dir/gf-complete/src/gf_cpu.c.o
+[12/288] Building C object third-party/CMakeFiles/jerasure.dir/jerasure/src/galois.c.o
+[13/288] Building C object third-party/CMakeFiles/jerasure.dir/jerasure/src/reed_sol.c.o
+[14/288] Building C object third-party/CMakeFiles/jerasure.dir/jerasure/src/jerasure.c.o
+[15/288] Building C object third-party/CMakeFiles/jerasure.dir/jerasure/src/cauchy.c.o
+[16/288] Building C object third-party/nanopb/CMakeFiles/protobuf-nanopb-static.dir/pb_common.c.o
+[17/288] Building C object third-party/nanopb/CMakeFiles/protobuf-nanopb-static.dir/pb_encode.c.o
+[18/288] Building C object third-party/CMakeFiles/jerasure.dir/jerasure/src/liberation.c.o
+[19/288] Building C object third-party/nanopb/CMakeFiles/protobuf-nanopb-static.dir/pb_decode.c.o
+[20/288] Generating mk-ca-bundle.1
+[21/288] Generating curl-config.1
+[22/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/altsvc.c.o
+[23/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/amigaos.c.o
+[24/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/asyn-ares.c.o
+[25/288] Linking C static library third-party/libgf_complete.a
+[26/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/asyn-thread.c.o
+[27/288] Linking C static library third-party/nanopb/libprotobuf-nanopb.a
+[28/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/base64.c.o
+[29/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/bufq.c.o
+[30/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/bufref.c.o
+[31/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/c-hyper.c.o
+[32/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cf-h1-proxy.c.o
+[33/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cf-h2-proxy.c.o
+[34/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cf-haproxy.c.o
+[35/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cf-https-connect.c.o
+[36/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cf-socket.c.o
+[37/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cfilters.c.o
+[38/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/conncache.c.o
+[39/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/content_encoding.c.o
+[40/288] Linking C static library third-party/libjerasure.a
+[41/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/connect.c.o
+[42/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_addrinfo.c.o
+[43/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_des.c.o
+[44/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cookie.c.o
+[45/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_fnmatch.c.o
+[46/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_endian.c.o
+[47/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_get_line.c.o
+[48/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_gethostname.c.o
+[49/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_gssapi.c.o
+[50/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_memrchr.c.o
+[51/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_multibyte.c.o
+[52/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_ntlm_core.c.o
+[53/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_range.c.o
+[54/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_rtmp.c.o
+[55/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_sasl.c.o
+[56/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_sha512_256.c.o
+[57/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_sspi.c.o
+[58/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_threads.c.o
+[59/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/curl_trc.c.o
+[60/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/cw-out.c.o
+[61/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/dict.c.o
+[62/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/doh.c.o
+[63/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/dynbuf.c.o
+[64/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/dynhds.c.o
+[65/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/easy.c.o
+[66/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/easygetopt.c.o
+[67/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/easyoptions.c.o
+[68/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/file.c.o
+[69/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/escape.c.o
+[70/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/fileinfo.c.o
+[71/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/fopen.c.o
+[72/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/formdata.c.o
+[73/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/ftp.c.o
+[74/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/ftplistparser.c.o
+[75/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/getenv.c.o
+[76/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/getinfo.c.o
+[77/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/gopher.c.o
+[78/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hash.c.o
+[79/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/headers.c.o
+[80/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hmac.c.o
+[81/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hostasyn.c.o
+[82/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hostip.c.o
+[83/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hostip4.c.o
+[84/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hostip6.c.o
+[85/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hostsyn.c.o
+[86/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/hsts.c.o
+[87/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http1.c.o
+[88/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http.c.o
+[89/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http2.c.o
+[90/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http_aws_sigv4.c.o
+[91/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http_chunks.c.o
+[92/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http_digest.c.o
+[93/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http_negotiate.c.o
+[94/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http_ntlm.c.o
+[95/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/http_proxy.c.o
+[96/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/idn.c.o
+[97/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/if2ip.c.o
+[98/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/inet_ntop.c.o
+[99/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/imap.c.o
+[100/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/inet_pton.c.o
+[101/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/krb5.c.o
+[102/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/ldap.c.o
+[103/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/llist.c.o
+[104/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/macos.c.o
+[105/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/md4.c.o
+[106/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/md5.c.o
+[107/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/memdebug.c.o
+[108/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/mime.c.o
+[109/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/mprintf.c.o
+[110/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/mqtt.c.o
+[111/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/netrc.c.o
+[112/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/multi.c.o
+[113/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/nonblock.c.o
+[114/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/noproxy.c.o
+[115/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/openldap.c.o
+[116/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/parsedate.c.o
+[117/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/pingpong.c.o
+[118/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/pop3.c.o
+[119/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/progress.c.o
+[120/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/psl.c.o
+[121/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/rand.c.o
+[122/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/rename.c.o
+[123/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/request.c.o
+[124/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/rtsp.c.o
+[125/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/select.c.o
+[126/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/sendf.c.o
+[127/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/sha256.c.o
+[128/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/setopt.c.o
+[129/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/slist.c.o
+[130/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/share.c.o
+[131/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/smb.c.o
+[132/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/smtp.c.o
+[133/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/socketpair.c.o
+[134/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/socks.c.o
+[135/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/socks_gssapi.c.o
+[136/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/socks_sspi.c.o
+[137/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/speedcheck.c.o
+[138/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/splay.c.o
+[139/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/strcase.c.o
+[140/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/strdup.c.o
+[141/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/strtok.c.o
+[142/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/strerror.c.o
+[143/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/strtoofft.c.o
+[144/288] Generating CURLINFO_ACTIVESOCKET.3, CURLINFO_APPCONNECT_TIME.3, CURLINFO_APPCONNECT_TIME_T.3, CURLINFO_CAINFO.3, CURLINFO_CAPATH.3, CURLINFO_CERTINFO.3, CURLINFO_CONDITION_UNMET.3, CURLINFO_CONNECT_TIME.3, CURLINFO_CONN_ID.3, CURLINFO_CONNECT_TIME_T.3, CURLINFO_CONTENT_LENGTH_DOWNLOAD.3, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T.3, CURLINFO_CONTENT_LENGTH_UPLOAD.3, CURLINFO_CONTENT_LENGTH_UPLOAD_T.3, CURLINFO_CONTENT_TYPE.3, CURLINFO_COOKIELIST.3, CURLINFO_EARLYDATA_SENT_T.3, CURLINFO_EFFECTIVE_METHOD.3, CURLINFO_EFFECTIVE_URL.3, CURLINFO_FILETIME.3, CURLINFO_FILETIME_T.3, CURLINFO_FTP_ENTRY_PATH.3, CURLINFO_HEADER_SIZE.3, CURLINFO_HTTP_CONNECTCODE.3, CURLINFO_HTTP_VERSION.3, CURLINFO_HTTPAUTH_AVAIL.3, CURLINFO_LASTSOCKET.3, CURLINFO_LOCAL_IP.3, CURLINFO_LOCAL_PORT.3, CURLINFO_NAMELOOKUP_TIME.3, CURLINFO_NAMELOOKUP_TIME_T.3, CURLINFO_NUM_CONNECTS.3, CURLINFO_OS_ERRNO.3, CURLINFO_PRETRANSFER_TIME.3, CURLINFO_PRETRANSFER_TIME_T.3, CURLINFO_POSTTRANSFER_TIME_T.3, CURLINFO_PRIMARY_IP.3, CURLINFO_PRIMARY_PORT.3, CURLINFO_PRIVATE.3, CURLINFO_PROTOCOL.3, CURLINFO_PROXY_ERROR.3, CURLINFO_PROXY_SSL_VERIFYRESULT.3, CURLINFO_PROXYAUTH_AVAIL.3, CURLINFO_QUEUE_TIME_T.3, CURLINFO_REDIRECT_COUNT.3, CURLINFO_REDIRECT_TIME.3, CURLINFO_REDIRECT_TIME_T.3, CURLINFO_REDIRECT_URL.3, CURLINFO_REFERER.3, CURLINFO_REQUEST_SIZE.3, CURLINFO_RESPONSE_CODE.3, CURLINFO_RETRY_AFTER.3, CURLINFO_RTSP_CLIENT_CSEQ.3, CURLINFO_RTSP_CSEQ_RECV.3, CURLINFO_RTSP_SERVER_CSEQ.3, CURLINFO_RTSP_SESSION_ID.3, CURLINFO_SCHEME.3, CURLINFO_SIZE_DOWNLOAD.3, CURLINFO_SIZE_DOWNLOAD_T.3, CURLINFO_SIZE_UPLOAD.3, CURLINFO_SIZE_UPLOAD_T.3, CURLINFO_SPEED_DOWNLOAD.3, CURLINFO_SPEED_DOWNLOAD_T.3, CURLINFO_SPEED_UPLOAD.3, CURLINFO_SPEED_UPLOAD_T.3, CURLINFO_SSL_ENGINES.3, CURLINFO_SSL_VERIFYRESULT.3, CURLINFO_STARTTRANSFER_TIME.3, CURLINFO_STARTTRANSFER_TIME_T.3, CURLINFO_TLS_SESSION.3, CURLINFO_TLS_SSL_PTR.3, CURLINFO_TOTAL_TIME.3, CURLINFO_TOTAL_TIME_T.3, CURLINFO_USED_PROXY.3, CURLINFO_XFER_ID.3, CURLMOPT_CHUNK_LENGTH_PENALTY_SIZE.3, CURLMOPT_CONTENT_LENGTH_PENALTY_SIZE.3, CURLMOPT_MAX_CONCURRENT_STREAMS.3, CURLMOPT_MAX_HOST_CONNECTIONS.3, CURLMOPT_MAX_PIPELINE_LENGTH.3, CURLMOPT_MAX_TOTAL_CONNECTIONS.3, CURLMOPT_MAXCONNECTS.3, CURLMOPT_PIPELINING.3, CURLMOPT_PIPELINING_SERVER_BL.3, CURLMOPT_PIPELINING_SITE_BL.3, CURLMOPT_PUSHDATA.3, CURLMOPT_PUSHFUNCTION.3, CURLMOPT_SOCKETDATA.3, CURLMOPT_SOCKETFUNCTION.3, CURLMOPT_TIMERDATA.3, CURLMOPT_TIMERFUNCTION.3, CURLOPT_ABSTRACT_UNIX_SOCKET.3, CURLOPT_ACCEPT_ENCODING.3, CURLOPT_ACCEPTTIMEOUT_MS.3, CURLOPT_ADDRESS_SCOPE.3, CURLOPT_ALTSVC.3, CURLOPT_ALTSVC_CTRL.3, CURLOPT_APPEND.3, CURLOPT_AUTOREFERER.3, CURLOPT_AWS_SIGV4.3, CURLOPT_BUFFERSIZE.3, CURLOPT_CAINFO.3, CURLOPT_CAINFO_BLOB.3, CURLOPT_CAPATH.3, CURLOPT_CA_CACHE_TIMEOUT.3, CURLOPT_CERTINFO.3, CURLOPT_CHUNK_BGN_FUNCTION.3, CURLOPT_CHUNK_DATA.3, CURLOPT_CHUNK_END_FUNCTION.3, CURLOPT_CLOSESOCKETDATA.3, CURLOPT_CLOSESOCKETFUNCTION.3, CURLOPT_CONNECT_ONLY.3, CURLOPT_CONNECT_TO.3, CURLOPT_CONNECTTIMEOUT.3, CURLOPT_CONNECTTIMEOUT_MS.3, CURLOPT_CONV_FROM_NETWORK_FUNCTION.3, CURLOPT_CONV_FROM_UTF8_FUNCTION.3, CURLOPT_CONV_TO_NETWORK_FUNCTION.3, CURLOPT_COOKIE.3, CURLOPT_COOKIEFILE.3, CURLOPT_COOKIEJAR.3, CURLOPT_COOKIELIST.3, CURLOPT_COOKIESESSION.3, CURLOPT_COPYPOSTFIELDS.3, CURLOPT_CRLF.3, CURLOPT_CRLFILE.3, CURLOPT_CURLU.3, CURLOPT_CUSTOMREQUEST.3, CURLOPT_DEBUGDATA.3, CURLOPT_DEBUGFUNCTION.3, CURLOPT_DEFAULT_PROTOCOL.3, CURLOPT_DIRLISTONLY.3, CURLOPT_DISALLOW_USERNAME_IN_URL.3, CURLOPT_DNS_CACHE_TIMEOUT.3, CURLOPT_DNS_INTERFACE.3, CURLOPT_DNS_LOCAL_IP4.3, CURLOPT_DNS_LOCAL_IP6.3, CURLOPT_DNS_SERVERS.3, CURLOPT_DNS_SHUFFLE_ADDRESSES.3, CURLOPT_DNS_USE_GLOBAL_CACHE.3, CURLOPT_DOH_SSL_VERIFYHOST.3, CURLOPT_DOH_SSL_VERIFYPEER.3, CURLOPT_DOH_SSL_VERIFYSTATUS.3, CURLOPT_DOH_URL.3, CURLOPT_ECH.3, CURLOPT_EGDSOCKET.3, CURLOPT_ERRORBUFFER.3, CURLOPT_EXPECT_100_TIMEOUT_MS.3, CURLOPT_FAILONERROR.3, CURLOPT_FILETIME.3, CURLOPT_FNMATCH_DATA.3, CURLOPT_FNMATCH_FUNCTION.3, CURLOPT_FOLLOWLOCATION.3, CURLOPT_FORBID_REUSE.3, CURLOPT_FRESH_CONNECT.3, CURLOPT_FTP_ACCOUNT.3, CURLOPT_FTP_ALTERNATIVE_TO_USER.3, CURLOPT_FTP_CREATE_MISSING_DIRS.3, CURLOPT_FTP_FILEMETHOD.3, CURLOPT_FTP_SKIP_PASV_IP.3, CURLOPT_FTP_SSL_CCC.3, CURLOPT_FTP_USE_EPRT.3, CURLOPT_FTP_USE_EPSV.3, CURLOPT_FTP_USE_PRET.3, CURLOPT_FTPPORT.3, CURLOPT_FTPSSLAUTH.3, CURLOPT_GSSAPI_DELEGATION.3, CURLOPT_HAPPY_EYEBALLS_TIMEOUT_MS.3, CURLOPT_HAPROXYPROTOCOL.3, CURLOPT_HAPROXY_CLIENT_IP.3, CURLOPT_HEADER.3, CURLOPT_HEADERDATA.3, CURLOPT_HEADERFUNCTION.3, CURLOPT_HEADEROPT.3, CURLOPT_HSTS.3, CURLOPT_HSTS_CTRL.3, CURLOPT_HSTSREADDATA.3, CURLOPT_HSTSREADFUNCTION.3, CURLOPT_HSTSWRITEDATA.3, CURLOPT_HSTSWRITEFUNCTION.3, CURLOPT_HTTP09_ALLOWED.3, CURLOPT_HTTP200ALIASES.3, CURLOPT_HTTP_CONTENT_DECODING.3, CURLOPT_HTTP_TRANSFER_DECODING.3, CURLOPT_HTTP_VERSION.3, CURLOPT_HTTPAUTH.3, CURLOPT_HTTPGET.3, CURLOPT_HTTPHEADER.3, CURLOPT_HTTPPOST.3, CURLOPT_HTTPPROXYTUNNEL.3, CURLOPT_IGNORE_CONTENT_LENGTH.3, CURLOPT_INFILESIZE.3, CURLOPT_INFILESIZE_LARGE.3, CURLOPT_INTERFACE.3, CURLOPT_INTERLEAVEDATA.3, CURLOPT_INTERLEAVEFUNCTION.3, CURLOPT_IOCTLDATA.3, CURLOPT_IOCTLFUNCTION.3, CURLOPT_IPRESOLVE.3, CURLOPT_ISSUERCERT.3, CURLOPT_ISSUERCERT_BLOB.3, CURLOPT_KEEP_SENDING_ON_ERROR.3, CURLOPT_KEYPASSWD.3, CURLOPT_KRBLEVEL.3, CURLOPT_LOCALPORT.3, CURLOPT_LOCALPORTRANGE.3, CURLOPT_LOGIN_OPTIONS.3, CURLOPT_LOW_SPEED_LIMIT.3, CURLOPT_LOW_SPEED_TIME.3, CURLOPT_MAIL_AUTH.3, CURLOPT_MAIL_FROM.3, CURLOPT_MAIL_RCPT.3, CURLOPT_MAIL_RCPT_ALLOWFAILS.3, CURLOPT_MAX_RECV_SPEED_LARGE.3, CURLOPT_MAX_SEND_SPEED_LARGE.3, CURLOPT_MAXAGE_CONN.3, CURLOPT_MAXCONNECTS.3, CURLOPT_MAXFILESIZE.3, CURLOPT_MAXFILESIZE_LARGE.3, CURLOPT_MAXLIFETIME_CONN.3, CURLOPT_MAXREDIRS.3, CURLOPT_MIME_OPTIONS.3, CURLOPT_MIMEPOST.3, CURLOPT_NETRC.3, CURLOPT_NETRC_FILE.3, CURLOPT_NEW_DIRECTORY_PERMS.3, CURLOPT_NEW_FILE_PERMS.3, CURLOPT_NOBODY.3, CURLOPT_NOPROGRESS.3, CURLOPT_NOPROXY.3, CURLOPT_NOSIGNAL.3, CURLOPT_OPENSOCKETDATA.3, CURLOPT_OPENSOCKETFUNCTION.3, CURLOPT_PASSWORD.3, CURLOPT_PATH_AS_IS.3, CURLOPT_PINNEDPUBLICKEY.3, CURLOPT_PIPEWAIT.3, CURLOPT_PORT.3, CURLOPT_POST.3, CURLOPT_POSTFIELDS.3, CURLOPT_POSTFIELDSIZE.3, CURLOPT_POSTFIELDSIZE_LARGE.3, CURLOPT_POSTQUOTE.3, CURLOPT_POSTREDIR.3, CURLOPT_PRE_PROXY.3, CURLOPT_PREQUOTE.3, CURLOPT_PREREQDATA.3, CURLOPT_PREREQFUNCTION.3, CURLOPT_PRIVATE.3, CURLOPT_PROGRESSDATA.3, CURLOPT_PROGRESSFUNCTION.3, CURLOPT_PROTOCOLS.3, CURLOPT_PROTOCOLS_STR.3, CURLOPT_PROXY.3, CURLOPT_PROXY_CAINFO.3, CURLOPT_PROXY_CAINFO_BLOB.3, CURLOPT_PROXY_CAPATH.3, CURLOPT_PROXY_CRLFILE.3, CURLOPT_PROXY_ISSUERCERT.3, CURLOPT_PROXY_ISSUERCERT_BLOB.3, CURLOPT_PROXY_KEYPASSWD.3, CURLOPT_PROXY_PINNEDPUBLICKEY.3, CURLOPT_PROXY_SERVICE_NAME.3, CURLOPT_PROXY_SSL_CIPHER_LIST.3, CURLOPT_PROXY_SSL_OPTIONS.3, CURLOPT_PROXY_SSL_VERIFYHOST.3, CURLOPT_PROXY_SSL_VERIFYPEER.3, CURLOPT_PROXY_SSLCERT.3, CURLOPT_PROXY_SSLCERT_BLOB.3, CURLOPT_PROXY_SSLCERTTYPE.3, CURLOPT_PROXY_SSLKEY.3, CURLOPT_PROXY_SSLKEY_BLOB.3, CURLOPT_PROXY_SSLKEYTYPE.3, CURLOPT_PROXY_SSLVERSION.3, CURLOPT_PROXY_TLS13_CIPHERS.3, CURLOPT_PROXY_TLSAUTH_PASSWORD.3, CURLOPT_PROXY_TLSAUTH_TYPE.3, CURLOPT_PROXY_TLSAUTH_USERNAME.3, CURLOPT_PROXY_TRANSFER_MODE.3, CURLOPT_PROXYAUTH.3, CURLOPT_PROXYHEADER.3, CURLOPT_PROXYPASSWORD.3, CURLOPT_PROXYPORT.3, CURLOPT_PROXYTYPE.3, CURLOPT_PROXYUSERNAME.3, CURLOPT_PROXYUSERPWD.3, CURLOPT_PUT.3, CURLOPT_QUICK_EXIT.3, CURLOPT_QUOTE.3, CURLOPT_RANDOM_FILE.3, CURLOPT_RANGE.3, CURLOPT_READDATA.3, CURLOPT_READFUNCTION.3, CURLOPT_REDIR_PROTOCOLS.3, CURLOPT_REDIR_PROTOCOLS_STR.3, CURLOPT_REFERER.3, CURLOPT_REQUEST_TARGET.3, CURLOPT_RESOLVE.3, CURLOPT_RESOLVER_START_DATA.3, CURLOPT_RESOLVER_START_FUNCTION.3, CURLOPT_RESUME_FROM.3, CURLOPT_RESUME_FROM_LARGE.3, CURLOPT_RTSP_CLIENT_CSEQ.3, CURLOPT_RTSP_REQUEST.3, CURLOPT_RTSP_SERVER_CSEQ.3, CURLOPT_RTSP_SESSION_ID.3, CURLOPT_RTSP_STREAM_URI.3, CURLOPT_RTSP_TRANSPORT.3, CURLOPT_SASL_AUTHZID.3, CURLOPT_SASL_IR.3, CURLOPT_SEEKDATA.3, CURLOPT_SEEKFUNCTION.3, CURLOPT_SERVER_RESPONSE_TIMEOUT.3, CURLOPT_SERVER_RESPONSE_TIMEOUT_MS.3, CURLOPT_SERVICE_NAME.3, CURLOPT_SHARE.3, CURLOPT_SOCKOPTDATA.3, CURLOPT_SOCKOPTFUNCTION.3, CURLOPT_SOCKS5_AUTH.3, CURLOPT_SOCKS5_GSSAPI_NEC.3, CURLOPT_SOCKS5_GSSAPI_SERVICE.3, CURLOPT_SSH_AUTH_TYPES.3, CURLOPT_SSH_COMPRESSION.3, CURLOPT_SSH_HOSTKEYDATA.3, CURLOPT_SSH_HOSTKEYFUNCTION.3, CURLOPT_SSH_HOST_PUBLIC_KEY_MD5.3, CURLOPT_SSH_HOST_PUBLIC_KEY_SHA256.3, CURLOPT_SSH_KEYDATA.3, CURLOPT_SSH_KEYFUNCTION.3, CURLOPT_SSH_KNOWNHOSTS.3, CURLOPT_SSH_PRIVATE_KEYFILE.3, CURLOPT_SSH_PUBLIC_KEYFILE.3, CURLOPT_SSL_CIPHER_LIST.3, CURLOPT_SSL_CTX_DATA.3, CURLOPT_SSL_CTX_FUNCTION.3, CURLOPT_SSL_EC_CURVES.3, CURLOPT_SSL_ENABLE_ALPN.3, CURLOPT_SSL_ENABLE_NPN.3, CURLOPT_SSL_FALSESTART.3, CURLOPT_SSL_OPTIONS.3, CURLOPT_SSL_SESSIONID_CACHE.3, CURLOPT_SSL_VERIFYHOST.3, CURLOPT_SSL_VERIFYPEER.3, CURLOPT_SSL_VERIFYSTATUS.3, CURLOPT_SSLCERT.3, CURLOPT_SSLCERT_BLOB.3, CURLOPT_SSLCERTTYPE.3, CURLOPT_SSLENGINE.3, CURLOPT_SSLENGINE_DEFAULT.3, CURLOPT_SSLKEY.3, CURLOPT_SSLKEY_BLOB.3, CURLOPT_SSLKEYTYPE.3, CURLOPT_SSLVERSION.3, CURLOPT_STDERR.3, CURLOPT_STREAM_DEPENDS.3, CURLOPT_STREAM_DEPENDS_E.3, CURLOPT_STREAM_WEIGHT.3, CURLOPT_SUPPRESS_CONNECT_HEADERS.3, CURLOPT_TCP_FASTOPEN.3, CURLOPT_TCP_KEEPALIVE.3, CURLOPT_TCP_KEEPIDLE.3, CURLOPT_TCP_KEEPINTVL.3, CURLOPT_TCP_KEEPCNT.3, CURLOPT_TCP_NODELAY.3, CURLOPT_TELNETOPTIONS.3, CURLOPT_TFTP_BLKSIZE.3, CURLOPT_TFTP_NO_OPTIONS.3, CURLOPT_TIMECONDITION.3, CURLOPT_TIMEOUT.3, CURLOPT_TIMEOUT_MS.3, CURLOPT_TIMEVALUE.3, CURLOPT_TIMEVALUE_LARGE.3, CURLOPT_TLS13_CIPHERS.3, CURLOPT_TLSAUTH_PASSWORD.3, CURLOPT_TLSAUTH_TYPE.3, CURLOPT_TLSAUTH_USERNAME.3, CURLOPT_TRAILERDATA.3, CURLOPT_TRAILERFUNCTION.3, CURLOPT_TRANSFER_ENCODING.3, CURLOPT_TRANSFERTEXT.3, CURLOPT_UNIX_SOCKET_PATH.3, CURLOPT_UNRESTRICTED_AUTH.3, CURLOPT_UPKEEP_INTERVAL_MS.3, CURLOPT_UPLOAD.3, CURLOPT_UPLOAD_BUFFERSIZE.3, CURLOPT_URL.3, CURLOPT_USE_SSL.3, CURLOPT_USERAGENT.3, CURLOPT_USERNAME.3, CURLOPT_USERPWD.3, CURLOPT_VERBOSE.3, CURLOPT_WILDCARDMATCH.3, CURLOPT_WRITEDATA.3, CURLOPT_WRITEFUNCTION.3, CURLOPT_WS_OPTIONS.3, CURLOPT_XFERINFODATA.3, CURLOPT_XFERINFOFUNCTION.3, CURLOPT_XOAUTH2_BEARER.3, CURLSHOPT_LOCKFUNC.3, CURLSHOPT_SHARE.3, CURLSHOPT_UNLOCKFUNC.3, CURLSHOPT_UNSHARE.3, CURLSHOPT_USERDATA.3
+[145/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/system_win32.c.o
+[146/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/telnet.c.o
+[147/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/tftp.c.o
+[148/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/timediff.c.o
+[149/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/transfer.c.o
+[150/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/timeval.c.o
+[151/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/url.c.o
+[152/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/urlapi.c.o
+[153/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/version.c.o
+[154/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/version_win32.c.o
+[155/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/warnless.c.o
+[156/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/ws.c.o
+[157/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/cleartext.c.o
+[158/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/cram.c.o
+[159/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/digest_sspi.c.o
+[160/288] Generating libcurl-symbols.md
+[161/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/digest.c.o
+[162/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/gsasl.c.o
+[163/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/krb5_gssapi.c.o
+[164/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/krb5_sspi.c.o
+[165/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/ntlm.c.o
+[166/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/ntlm_sspi.c.o
+[167/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/oauth2.c.o
+[168/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/spnego_gssapi.c.o
+[169/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/spnego_sspi.c.o
+[170/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vauth/vauth.c.o
+[171/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/bearssl.c.o
+[172/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/cipher_suite.c.o
+[173/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/gtls.c.o
+[174/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/hostcheck.c.o
+[175/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/keylog.c.o
+[176/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/mbedtls.c.o
+[177/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/mbedtls_threadlock.c.o
+[178/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/openssl.c.o
+[179/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/rustls.c.o
+[180/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/schannel.c.o
+[181/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/sectransp.c.o
+[182/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/schannel_verify.c.o
+[183/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/vtls.c.o
+[184/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/x509asn1.c.o
+[185/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vtls/wolfssl.c.o
+[186/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vquic/curl_msh3.c.o
+[187/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vquic/curl_osslq.c.o
+[188/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vquic/curl_ngtcp2.c.o
+[189/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vquic/curl_quiche.c.o
+[190/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vquic/vquic.c.o
+[191/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vquic/vquic-tls.c.o
+[192/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vssh/libssh.c.o
+[193/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vssh/libssh2.c.o
+[194/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vssh/curl_path.c.o
+[195/288] Building C object third-party/curl/lib/CMakeFiles/libcurl_static.dir/vssh/wolfssh.c.o
+[196/288] Building C object setsu/CMakeFiles/setsu.dir/src/setsu.c.o
+[197/288] Generating takion.pb
+[198/288] Linking C static library setsu/libsetsu.a
+[199/288] Building C object test/CMakeFiles/munit.dir/munit/munit.c.o
+[200/288] Linking C static library test/libmunit.a
+[201/288] Linking C static library third-party/curl/lib/libcurl.a
+[202/288] Generating curl_easy_cleanup.3, curl_easy_duphandle.3, curl_easy_escape.3, curl_easy_getinfo.3, curl_easy_header.3, curl_easy_init.3, curl_easy_nextheader.3, curl_easy_option_by_id.3, curl_easy_option_by_name.3, curl_easy_option_next.3, curl_easy_pause.3, curl_easy_perform.3, curl_easy_recv.3, curl_easy_reset.3, curl_easy_send.3, curl_easy_setopt.3, curl_easy_strerror.3, curl_easy_unescape.3, curl_easy_upkeep.3, curl_escape.3, curl_formadd.3, curl_formfree.3, curl_formget.3, curl_free.3, curl_getdate.3, curl_getenv.3, curl_global_cleanup.3, curl_global_init.3, curl_global_init_mem.3, curl_global_trace.3, curl_global_sslset.3, curl_mime_addpart.3, curl_mime_data.3, curl_mime_data_cb.3, curl_mime_encoder.3, curl_mime_filedata.3, curl_mime_filename.3, curl_mime_free.3, curl_mime_headers.3, curl_mime_init.3, curl_mime_name.3, curl_mime_subparts.3, curl_mime_type.3, curl_mprintf.3, curl_multi_add_handle.3, curl_multi_assign.3, curl_multi_cleanup.3, curl_multi_fdset.3, curl_multi_get_handles.3, curl_multi_info_read.3, curl_multi_init.3, curl_multi_perform.3, curl_multi_poll.3, curl_multi_remove_handle.3, curl_multi_setopt.3, curl_multi_socket.3, curl_multi_socket_action.3, curl_multi_socket_all.3, curl_multi_strerror.3, curl_multi_timeout.3, curl_multi_wakeup.3, curl_multi_wait.3, curl_multi_waitfds.3, curl_pushheader_bynum.3, curl_pushheader_byname.3, curl_share_cleanup.3, curl_share_init.3, curl_share_setopt.3, curl_share_strerror.3, curl_slist_append.3, curl_slist_free_all.3, curl_strequal.3, curl_strnequal.3, curl_unescape.3, curl_url.3, curl_url_cleanup.3, curl_url_dup.3, curl_url_get.3, curl_url_set.3, curl_url_strerror.3, curl_version.3, curl_version_info.3, curl_ws_meta.3, curl_ws_recv.3, curl_ws_send.3, libcurl-easy.3, libcurl-env.3, libcurl-env-dbg.3, libcurl-errors.3, libcurl-multi.3, libcurl-security.3, libcurl-share.3, libcurl-symbols.3, libcurl-thread.3, libcurl-tutorial.3, libcurl-url.3, libcurl-ws.3, libcurl.3
+[203/288] Generating takion.pb.c, takion.pb.h
+Writing to takion.pb.h and takion.pb.c
+[204/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/thread.c.o
+[205/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/common.c.o
+[206/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/sock.c.o
+[207/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/session.c.o
+../../lib/src/session.c: In function ‘chiaki_session_fini’:
+../../lib/src/session.c:329:21: warning: unused variable ‘err’ [-Wunused-variable]
+  329 |     ChiakiErrorCode err = chiaki_mutex_lock(&session->state_mutex);
+      |                     ^~~
+../../lib/src/session.c: In function ‘chiaki_session_stop’:
+../../lib/src/session.c:366:25: warning: unused variable ‘err’ [-Wunused-variable]
+  366 |         ChiakiErrorCode err = chiaki_mutex_lock(&session->state_mutex);
+      |                         ^~~
+../../lib/src/session.c: In function ‘chiaki_session_set_login_pin’:
+../../lib/src/session.c:408:25: warning: unused variable ‘err’ [-Wunused-variable]
+  408 |         ChiakiErrorCode err = chiaki_mutex_lock(&session->state_mutex);
+      |                         ^~~
+../../lib/src/session.c: In function ‘chiaki_session_set_stream_connection_switch_received’:
+../../lib/src/session.c:422:25: warning: unused variable ‘err’ [-Wunused-variable]
+  422 |         ChiakiErrorCode err = chiaki_mutex_lock(&session->state_mutex);
+      |                         ^~~
+../../lib/src/session.c: In function ‘session_thread_request_session’:
+../../lib/src/session.c:1211:33: warning: unused variable ‘mutex_err’ [-Wunused-variable]
+ 1211 |                 ChiakiErrorCode mutex_err = chiaki_mutex_lock(&session->state_mutex);
+      |                                 ^~~~~~~~~
+../../lib/src/session.c:1238:25: warning: unused variable ‘mutex_err’ [-Wunused-variable]
+ 1238 |         ChiakiErrorCode mutex_err = chiaki_mutex_lock(&session->state_mutex);
+      |                         ^~~~~~~~~
+[208/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/base64.c.o
+[209/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/log.c.o
+[210/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/http.c.o
+[211/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/ctrl.c.o
+../../lib/src/ctrl.c: In function ‘chiaki_ctrl_stop’:
+../../lib/src/ctrl.c:183:25: warning: unused variable ‘err’ [-Wunused-variable]
+  183 |         ChiakiErrorCode err = chiaki_mutex_lock(&ctrl->notif_mutex);
+      |                         ^~~
+../../lib/src/ctrl.c: In function ‘chiaki_ctrl_send_message’:
+../../lib/src/ctrl.c:233:25: warning: unused variable ‘err’ [-Wunused-variable]
+  233 |         ChiakiErrorCode err = chiaki_mutex_lock(&ctrl->notif_mutex);
+      |                         ^~~
+../../lib/src/ctrl.c: In function ‘chiaki_ctrl_set_login_pin’:
+../../lib/src/ctrl.c:255:25: warning: unused variable ‘err’ [-Wunused-variable]
+  255 |         ChiakiErrorCode err = chiaki_mutex_lock(&ctrl->notif_mutex);
+      |                         ^~~
+../../lib/src/ctrl.c: In function ‘ctrl_failed’:
+../../lib/src/ctrl.c:311:25: warning: unused variable ‘mutex_err’ [-Wunused-variable]
+  311 |         ChiakiErrorCode mutex_err = chiaki_mutex_lock(&ctrl->session->state_mutex);
+      |                         ^~~~~~~~~
+../../lib/src/ctrl.c: In function ‘ctrl_message_received_login_pin_req’:
+../../lib/src/ctrl.c:971:25: warning: unused variable ‘err’ [-Wunused-variable]
+  971 |         ChiakiErrorCode err = chiaki_mutex_lock(&ctrl->session->state_mutex);
+      |                         ^~~
+../../lib/src/ctrl.c: In function ‘ctrl_message_received_login’:
+../../lib/src/ctrl.c:1035:49: warning: unused variable ‘err’ [-Wunused-variable]
+ 1035 |                                 ChiakiErrorCode err = chiaki_mutex_lock(&ctrl->session->state_mutex);
+      |                                                 ^~~
+[212/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/rpcrypt.c.o
+../../lib/src/rpcrypt.c: In function ‘chiaki_rpcrypt_bright_ambassador’:
+../../lib/src/rpcrypt.c:1553:41: warning: unused variable ‘err’ [-Wunused-variable]
+ 1553 |                         ChiakiErrorCode err = bright_ambassador(target, bright, ambassador, nonce, morning);
+      |                                         ^~~
+[213/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/takion.c.o
+[214/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/senkusha.c.o
+../../lib/src/senkusha.c: In function ‘senkusha_takion_av’:
+../../lib/src/senkusha.c:780:25: warning: unused variable ‘err’ [-Wunused-variable]
+  780 |         ChiakiErrorCode err = chiaki_mutex_lock(&senkusha->state_mutex);
+      |                         ^~~
+[215/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/streamconnection.c.o
+../../lib/src/streamconnection.c: In function ‘chiaki_stream_connection_run’:
+../../lib/src/streamconnection.c:339:17: warning: ‘__builtin_strncpy’ output may be truncated copying 255 bytes from a string of length 255 [-Wstringop-truncation]
+  339 |                 strncpy(event.connected.peer_host, session->connect_info.hostname, sizeof(event.connected.peer_host) - 1);
+      |                 ^
+[216/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/ecdh.c.o
+../../lib/src/ecdh.c: In function ‘chiaki_ecdh_init’:
+../../lib/src/ecdh.c:61:9: warning: ‘EC_KEY_new’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+   61 |         CHECK(ecdh->key_local = EC_KEY_new());
+      |         ^~~~~
+In file included from ../../lib/src/ecdh.c:12:
+/usr/include/openssl/ec.h:968:31: note: declared here
+  968 | OSSL_DEPRECATEDIN_3_0 EC_KEY *EC_KEY_new(void);
+      |                               ^~~~~~~~~~
+../../lib/src/ecdh.c:62:9: warning: ‘EC_KEY_set_group’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+   62 |         CHECK(EC_KEY_set_group(ecdh->key_local, ecdh->group));
+      |         ^~~~~
+/usr/include/openssl/ec.h:1042:27: note: declared here
+ 1042 | OSSL_DEPRECATEDIN_3_0 int EC_KEY_set_group(EC_KEY *key, const EC_GROUP *group);
+      |                           ^~~~~~~~~~~~~~~~
+../../lib/src/ecdh.c:63:9: warning: ‘EC_KEY_generate_key’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+   63 |         CHECK(EC_KEY_generate_key(ecdh->key_local));
+      |         ^~~~~
+/usr/include/openssl/ec.h:1101:27: note: declared here
+ 1101 | OSSL_DEPRECATEDIN_3_0 int EC_KEY_generate_key(EC_KEY *key);
+      |                           ^~~~~~~~~~~~~~~~~~~
+../../lib/src/ecdh.c: In function ‘chiaki_ecdh_fini’:
+../../lib/src/ecdh.c:77:9: warning: ‘EC_KEY_free’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+   77 |         EC_KEY_free(ecdh->key_local);
+      |         ^~~~~~~~~~~
+/usr/include/openssl/ec.h:1003:28: note: declared here
+ 1003 | OSSL_DEPRECATEDIN_3_0 void EC_KEY_free(EC_KEY *key);
+      |                            ^~~~~~~~~~~
+../../lib/src/ecdh.c: In function ‘chiaki_ecdh_set_local_key’:
+../../lib/src/ecdh.c:126:9: warning: ‘EC_KEY_set_private_key’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+  126 |         if(!EC_KEY_set_private_key(ecdh->key_local, private_key_bn))
+      |         ^~
+/usr/include/openssl/ec.h:1056:27: note: declared here
+ 1056 | OSSL_DEPRECATEDIN_3_0 int EC_KEY_set_private_key(EC_KEY *key, const BIGNUM *prv);
+      |                           ^~~~~~~~~~~~~~~~~~~~~~
+../../lib/src/ecdh.c:132:9: warning: ‘EC_KEY_set_public_key’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+  132 |         if(!EC_KEY_set_public_key(ecdh->key_local, public_key_point))
+      |         ^~
+/usr/include/openssl/ec.h:1070:27: note: declared here
+ 1070 | OSSL_DEPRECATEDIN_3_0 int EC_KEY_set_public_key(EC_KEY *key, const EC_POINT *pub);
+      |                           ^~~~~~~~~~~~~~~~~~~~~
+../../lib/src/ecdh.c: In function ‘chiaki_ecdh_get_local_pub_key’:
+../../lib/src/ecdh.c:177:9: warning: ‘EC_KEY_get0_public_key’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+  177 |         const EC_POINT *point = EC_KEY_get0_public_key(ecdh->key_local);
+      |         ^~~~~
+/usr/include/openssl/ec.h:1062:39: note: declared here
+ 1062 | OSSL_DEPRECATEDIN_3_0 const EC_POINT *EC_KEY_get0_public_key(const EC_KEY *key);
+      |                                       ^~~~~~~~~~~~~~~~~~~~~~
+../../lib/src/ecdh.c: In function ‘chiaki_ecdh_derive_secret’:
+../../lib/src/ecdh.c:231:9: warning: ‘ECDH_compute_key’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+  231 |         int r = ECDH_compute_key(secret_out, CHIAKI_ECDH_SECRET_SIZE, remote_public_key, ecdh->key_local, NULL);
+      |         ^~~
+/usr/include/openssl/ec.h:1296:27: note: declared here
+ 1296 | OSSL_DEPRECATEDIN_3_0 int ECDH_compute_key(void *out, size_t outlen,
+      |                           ^~~~~~~~~~~~~~~~
+[217/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/launchspec.c.o
+[218/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/random.c.o
+[219/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/audio.c.o
+[220/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/gkcrypt.c.o
+[221/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/audioreceiver.c.o
+[222/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/audiosender.c.o
+[223/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/videoreceiver.c.o
+[224/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/frameprocessor.c.o
+[225/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/packetstats.c.o
+[226/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/networkstats.c.o
+[227/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/linkwatchdog.c.o
+[228/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/discovery.c.o
+[229/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/congestioncontrol.c.o
+[230/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/stoppipe.c.o
+../../lib/src/stoppipe.c: In function ‘chiaki_stop_pipe_stop’:
+../../lib/src/stoppipe.c:83:9: warning: ignoring return value of ‘write’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   83 |         write(stop_pipe->fds[1], "\x00", 1);
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[231/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/reorderqueue.c.o
+[232/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/feedback.c.o
+[233/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/discoveryservice.c.o
+../../lib/src/discoveryservice.c: In function ‘discovery_service_host_received’:
+../../lib/src/discoveryservice.c:309:25: warning: unused variable ‘err’ [-Wunused-variable]
+  309 |         ChiakiErrorCode err = chiaki_mutex_lock(&service->state_mutex);
+      |                         ^~~
+[234/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/feedbacksender.c.o
+[235/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/controller.c.o
+[236/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/takionsendbuffer.c.o
+../../lib/src/takionsendbuffer.c: In function ‘chiaki_takion_send_buffer_fini’:
+../../lib/src/takionsendbuffer.c:74:25: warning: variable ‘err’ set but not used [-Wunused-but-set-variable]
+   74 |         ChiakiErrorCode err = chiaki_mutex_lock(&send_buffer->mutex);
+      |                         ^~~
+[237/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/time.c.o
+[238/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/fec.c.o
+[239/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/regist.c.o
+[240/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/opusdecoder.c.o
+[241/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/orientation.c.o
+[242/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/opusencoder.c.o
+[243/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/bitstream.c.o
+[244/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/remote/rudp.c.o
+[245/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/aia.c.o
+[246/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/remote/rudpsendbuffer.c.o
+../../lib/src/remote/rudpsendbuffer.c: In function ‘chiaki_rudp_send_buffer_fini’:
+../../lib/src/remote/rudpsendbuffer.c:81:25: warning: variable ‘err’ set but not used [-Wunused-but-set-variable]
+   81 |         ChiakiErrorCode err = chiaki_cond_signal(&send_buffer->cond);
+      |                         ^~~
+[247/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/remote/holepunch.c.o
+../../lib/src/remote/holepunch.c: In function ‘chiaki_holepunch_session_init’:
+../../lib/src/remote/holepunch.c:797:21: warning: variable ‘err’ set but not used [-Wunused-but-set-variable]
+  797 |     ChiakiErrorCode err;
+      |                     ^~~
+../../lib/src/remote/holepunch.c: In function ‘websocket_thread_func’:
+../../lib/src/remote/holepunch.c:2558:29: warning: unused variable ‘mutex_err’ [-Wunused-variable]
+ 2558 |             ChiakiErrorCode mutex_err = chiaki_mutex_lock(&session->notif_mutex);
+      |                             ^~~~~~~~~
+../../lib/src/remote/holepunch.c: In function ‘session_message_parse’:
+../../lib/src/remote/holepunch.c:5692:13: warning: ‘__builtin_strncpy’ specified bound 46 equals destination size [-Wstringop-truncation]
+ 5692 |             strncpy(candidate.addr, addr_str, sizeof(candidate.addr));
+      |             ^
+../../lib/src/remote/holepunch.c:5701:13: warning: ‘__builtin_strncpy’ specified bound 46 equals destination size [-Wstringop-truncation]
+ 5701 |             strncpy(candidate.addr_mapped, mapped_addr_str, sizeof(candidate.addr_mapped));
+      |             ^
+../../lib/src/remote/holepunch.c: In function ‘chiaki_holepunch_list_devices’:
+../../lib/src/remote/holepunch.c:657:9: warning: ‘__builtin_strncpy’ specified bound 32 equals destination size [-Wstringop-truncation]
+  657 |         strncpy(device.device_name, json_object_get_string(device_name), sizeof(device.device_name));
+      |         ^
+[248/288] Building C object lib/CMakeFiles/chiaki-lib.dir/src/aia_openssl.c.o
+[249/288] Building C object lib/CMakeFiles/holepunch-test.dir/src/remote/holepunch-test.c.o
+[250/288] Building C object lib/CMakeFiles/chiaki-lib.dir/protobuf/takion.pb.c.o
+[251/288] Building C object test/CMakeFiles/chiaki-unit.dir/main.c.o
+[252/288] Building C object test/CMakeFiles/chiaki-unit.dir/http.c.o
+[253/288] Building C object test/CMakeFiles/chiaki-unit.dir/rpcrypt.c.o
+[254/288] Building C object test/CMakeFiles/chiaki-unit.dir/gkcrypt.c.o
+[255/288] Building C object test/CMakeFiles/chiaki-unit.dir/takion.c.o
+[256/288] Building C object test/CMakeFiles/chiaki-unit.dir/senkusha.c.o
+[257/288] Building C object test/CMakeFiles/chiaki-unit.dir/fake_console.c.o
+[258/288] Building C object test/CMakeFiles/chiaki-unit.dir/linkwatchdog.c.o
+[259/288] Building C object test/CMakeFiles/chiaki-unit.dir/frameloss.c.o
+[260/288] Building C object test/CMakeFiles/chiaki-unit.dir/videoreceiver.c.o
+[261/288] Building C object test/CMakeFiles/chiaki-unit.dir/seqnum.c.o
+[262/288] Building C object test/CMakeFiles/chiaki-unit.dir/keystate.c.o
+[263/288] Building C object test/CMakeFiles/chiaki-unit.dir/reorderqueue.c.o
+[264/288] Building C object test/CMakeFiles/chiaki-unit.dir/test_log.c.o
+[265/288] Building C object test/CMakeFiles/chiaki-unit.dir/fec.c.o
+[266/288] Building C object test/CMakeFiles/chiaki-unit.dir/bitstream.c.o
+[267/288] Building C object test/CMakeFiles/chiaki-unit.dir/video_presenter.c.o
+[268/288] Building C object test/CMakeFiles/chiaki-unit.dir/video_frame_latency.c.o
+[269/288] Building C object test/CMakeFiles/chiaki-unit.dir/video_decoder_operating_rate.c.o
+[270/288] Building C object test/CMakeFiles/chiaki-unit.dir/video_decoder_codec_header.c.o
+[271/288] Building C object test/CMakeFiles/chiaki-unit.dir/vr_screen_placement.c.o
+[272/288] Building C object test/CMakeFiles/chiaki-unit.dir/networkstats.c.o
+[273/288] Building C object test/CMakeFiles/chiaki-unit.dir/session_mtu_fallback.c.o
+[274/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-decoder-operating-rate.c.o
+[275/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-decoder-codec-header.c.o
+[276/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-presenter-age.c.o
+[277/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-presenter-recovery.c.o
+[278/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-presenter-cadence.c.o
+[279/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-presenter-histogram.c.o
+[280/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-presenter-dejitter.c.o
+[281/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-presenter-timing.c.o
+[282/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/vr-screen-placement.c.o
+[283/288] Building C object test/CMakeFiles/chiaki-unit.dir/__/android/app/src/main/cpp/video-frame-latency.c.o
+[284/288] Building C object test/CMakeFiles/chiaki-unit.dir/regist.c.o
+[285/288] Building C object test/CMakeFiles/chiaki-unit.dir/aia.c.o
+[286/288] Linking C static library lib/libchiaki.a
+[287/288] Linking C executable lib/holepunch-test
+[288/288] Linking C executable test/chiaki-unit
+PASS  host build  (2s)
+--- host: ctest ---
+Internal ctest changing into directory: /home/wnt/gta6/wt/ple-741/build/host
+Test project /home/wnt/gta6/wt/ple-741/build/host
+    Start 1: unit
+1/1 Test #1: unit .............................   Passed    5.02 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   5.03 sec
+PASS  host ctest  (5s)
+--- host: chiaki-unit case count ---
+PASS  host chiaki-unit case count  (0s)
+
+--- android: assembleDebug (abi: arm64-v8a, openssl: shared, jobs: 4) ---
+Determined Chiaki Version: 1.10.0
+Go VrApi: SDK enabled (arm64 only)
+Signing not enabled
+WARNING: A Java agent has been loaded dynamically (/tmp/javaagent-loader-1.3.78.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+PASS  android assembleDebug  (28s)
+--- android: testDebugUnitTest ---
+  log: /home/wnt/gta6/wt/ple-741/android/build/gate-testDebugUnitTest.log
+Determined Chiaki Version: 1.10.0
+Go VrApi: SDK enabled (arm64 only)
+Signing not enabled
+WARNING: A Java agent has been loaded dynamically (/tmp/javaagent-loader-1.3.78.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+PASS  android testDebugUnitTest  (55s)
+
+=== summary ===
+  PASS  workspace registration export Qt round-trip  (0s)
+  PASS  workspace layout bounds and contrast  (0s)
+  PASS  user-visible flag check  (2s)
+  PASS  android psn-mock unittest suite  (7s)
+  PASS  host configure  (23s)
+  PASS  host build  (2s)
+  PASS  host ctest  (5s)
+  PASS  host chiaki-unit case count  (0s)
+  PASS  android assembleDebug  (28s)
+  PASS  android testDebugUnitTest  (55s)
+  APK: /home/wnt/gta6/wt/ple-741/android/app/build/outputs/apk/debug/app-debug.apk (15MB, 15174047 bytes)
+  ccache: 791/791 hits (100%), 0 miss(es) this run
+  total: 122s
+GATE: PASS
+
+real	2m2.043s
+user	0m50.912s
+sys	0m15.233s

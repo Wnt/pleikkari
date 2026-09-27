@@ -1,0 +1,13 @@
+$ fetch-ovr-sdk.py (deploy key, 2026-09-27T10:49:48Z)
+fetched 7ffff9dfd8d441ffb853ac8488442841cab8b8f0db75bfc535fbff16709cc6fe (134794 bytes) from Wnt/pleikkari-android: 12 files, SHA256SUMS OK
+Oculus Mobile SDK 1.35.0: the VrApi subset the Pleikkari fork's Go VR build needs (PLE-741).
+rc=0
+$ deploy key: git-lfs-authenticate upload
+{"auth_status":"bad_permissions","body":"The key you are authenticating with has been marked as read only."}
+$ deploy key: git-receive-pack
+ERROR: The key you are authenticating with has been marked as read only.
+$ gh repo deploy-key list -R Wnt/pleikkari-android
+164587595	Wnt/pleikkari CI: OVR SDK fetch (PLE-741, read-only)	read-only	ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPN4bbg8vXuPxXEpiNz8S4Wr7cfaWbuLd50Z71I9lMcu	2026-09-27T10:36:55Z
+$ gh secret list -R Wnt/pleikkari
+ANDROID_DEBUG_KEYSTORE_B64	2026-09-16T04:53:42Z
+OVR_SDK_DEPLOY_KEY	2026-09-27T10:37:38Z
