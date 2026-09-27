@@ -12,16 +12,20 @@
 #include <VrApi_Input.h>
 #include "vr-environment.h" // PLE-603: the room around the screen (plain GLES, no VrApi)
 #include "vr-screen-placement.h"
+#include "vr-frame-pacing.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <cerrno>
 #include <memory>
 #include <time.h>
 #include <vector>
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "GoCinema", __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "GoCinema", __VA_ARGS__)
+// PLE-715: the debug experiments' per-frame pacing trace, apart from the cinema's own lines.
+#define LOGP(...) __android_log_print(ANDROID_LOG_INFO, "GoPacing", __VA_ARGS__)
 #define JNI_METHOD(name) Java_fi_madekivi_pleikkari_stream_VrCinemaNative_##name
 
 namespace {
@@ -138,8 +142,22 @@ struct Cinema {
     // PLE-698: the last vrapi_SubmitFrame2 call (CLOCK_MONOTONIC ns) and its predicted display time.
     int64_t submitNs = 0;
     int64_t predictedDisplayNs = 0;
+    // PLE-715: when each frame starts (after the loop's own sleep, if any) and what VrApi's
+    // scheduler did with it; the per-second "Frame pacing" line with the stats log on.
+    PleikkariVrPacing pacing;
+    // The mode asked for; the late start is for the plain cinema only (see applyPacingMode).
+    PleikkariVrPacingMode pacingRequested = PLEIKKARI_VR_PACING_VRAPI;
+    bool pacingLog = false;
+    int64_t frameStartNs = 0;
+    int64_t frameSleptNs = 0;
+    int64_t pacingWindowStartNs = 0;
 
-    Cinema() { pleikkari_vr_screen_placement_init(&placement); }
+    Cinema() {
+        pleikkari_vr_screen_placement_init(&placement);
+        PleikkariVrPacingConfig config;
+        pleikkari_vr_pacing_config_default(&config, 72.0f);
+        pleikkari_vr_pacing_init(&pacing, &config);
+    }
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
@@ -208,6 +226,7 @@ struct Cinema {
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
+        setPacing(PLEIKKARI_VR_PACING_VRAPI, false, nullptr, refreshHz);
         applyClockLevels();
         {
             // PLE-698: per-frame latency mixes both clocks; log how far apart they are (expected ~0).
@@ -297,6 +316,7 @@ struct Cinema {
     void setEnvironment(const PleikkariVrEnvironmentConfig &requested) {
         setEnvironmentRenderer(requested);
         applyClockLevels();
+        applyPacingMode();
     }
 
     void setEnvironmentRenderer(const PleikkariVrEnvironmentConfig &requested) {
@@ -314,6 +334,76 @@ struct Cinema {
         LOGI("Environment %s: screen %.2f m away, %.2f m wide, curve radius %.2f m, %.2f m above eyes, glow %.2f, room light %.2f",
             pleikkari_vr_environment_name(config.environment), config.screen_distance_m, config.screen_width_m,
             config.screen_curve_radius_m, config.screen_height_offset_m, config.glow, config.room_light);
+    }
+
+    // PLE-715: mode and the stats log from the settings; spec is a debug build's experiments.
+    void setPacing(PleikkariVrPacingMode mode, bool log, const char *spec, float refreshHz) {
+        PleikkariVrPacingConfig config;
+        pleikkari_vr_pacing_config_default(&config, refreshHz);
+        config.mode = mode;
+        const int read = pleikkari_vr_pacing_config_parse(&config, spec);
+        pleikkari_vr_pacing_init(&pacing, &config);
+        pacingRequested = config.mode;
+        pacingLog = log || config.trace;
+        pacingWindowStartNs = 0;
+        if(read || mode != PLEIKKARI_VR_PACING_VRAPI)
+            LOGI("Frame pacing: %s, budget %.1f ms, period %.3f ms%s%s", pleikkari_vr_pacing_mode_name(config.mode),
+                config.budget_ns / 1e6, config.period_ns / 1e6, read ? "; debug experiments: " : "", read ? spec : "");
+        applyPacingMode();
+    }
+
+    // PLE-715: a room's eye frame takes about 8 ms of GPU (VrApi App=, PLE-623), which the late
+    // start's budget does not leave, and the rooms were never measured with it: they keep VrApi's
+    // release, today's loop.
+    void applyPacingMode() {
+        const PleikkariVrPacingMode mode = pacingRequested == PLEIKKARI_VR_PACING_LATE && environment
+            ? PLEIKKARI_VR_PACING_VRAPI : pacingRequested;
+        if(pacing.config.mode == mode) return;
+        pacing.config.mode = mode;
+        LOGI("Frame pacing: %s%s", pleikkari_vr_pacing_mode_name(mode),
+            mode != pacingRequested ? " (late start is for the plain cinema; a room is drawn)" : "");
+    }
+
+    // PLE-715: at the top of the loop, before input and the video latch.
+    void pace() {
+        const int64_t now = monotonicNs();
+        const int64_t wake = pleikkari_vr_pacing_wake_ns(&pacing, now);
+        if(wake > now) {
+            timespec until{static_cast<time_t>(wake / 1000000000LL), static_cast<long>(wake % 1000000000LL)};
+            while(clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, nullptr) == EINTR) {}
+        }
+        frameStartNs = monotonicNs();
+        frameSleptNs = frameStartNs - now;
+    }
+
+    void recordPacing(int64_t returnedNs) {
+        const int64_t start = frameStartNs ? frameStartNs : submitNs;
+        pleikkari_vr_pacing_frame(&pacing, start, frameSleptNs, submitNs, returnedNs, predictedDisplayNs);
+        if(pacing.config.trace)
+            LOGP("F %llu s=%lld z=%lld u=%lld r=%lld p=%lld", static_cast<unsigned long long>(pacing.frames),
+                static_cast<long long>(start / 1000), static_cast<long long>(frameSleptNs / 1000),
+                static_cast<long long>((submitNs - start) / 1000), static_cast<long long>((returnedNs - submitNs) / 1000),
+                static_cast<long long>((predictedDisplayNs - returnedNs) / 1000));
+        frameStartNs = 0;
+        frameSleptNs = 0;
+        if(!pacingLog) return;
+        if(!pacingWindowStartNs) pacingWindowStartNs = returnedNs;
+        if(returnedNs - pacingWindowStartNs < 1000000000LL) return;
+        PleikkariVrPacingWindow w{};
+        pleikkari_vr_pacing_take_window(&pacing, &w);
+        const double n = w.frames ? w.frames : 1;
+        LOGI("Frame pacing (%s): %u frames, %u throttled, %u late | slept mean/max %.2f/%.2f ms | start to submit mean/max %.2f/%.2f ms"
+            " | submit wait min/max %.2f/%.2f ms | submit to predicted min/mean/max %.2f/%.2f/%.2f ms"
+            " | return to predicted min/max %.2f/%.2f ms | start to predicted mean %.2f ms | leads 0/1/2+ %u/%u/%u, %u drained, period %.3f ms"
+            " | VrApi early %d stale %d per s",
+            pleikkari_vr_pacing_mode_name(pacing.config.mode), w.frames, w.throttled, w.late,
+            w.slept_sum_ns / n / 1e6, w.slept_max_ns / 1e6, w.work_sum_ns / n / 1e6, w.work_max_ns / 1e6,
+            w.wait_min_ns / 1e6, w.wait_max_ns / 1e6, w.ahead_min_ns / 1e6, w.ahead_sum_ns / n / 1e6, w.ahead_max_ns / 1e6,
+            w.lead_min_ns / 1e6, w.lead_max_ns / 1e6, w.start_to_photon_sum_ns / n / 1e6,
+            w.leads[0], w.leads[1], w.leads[2], w.drains, w.period_ns / 1e6,
+            vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_EARLY_FRAMES_PER_SECOND),
+            vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_STALE_FRAMES_PER_SECOND));
+        pacingWindowStartNs = returnedNs;
     }
 
     static void textureParams(GLenum target) {
@@ -464,6 +554,7 @@ struct Cinema {
         submitNs = monotonicNs();
         predictedDisplayNs = std::llround(time * 1e9);
         const int result = vrapi_SubmitFrame2(vr, &frame);
+        recordPacing(monotonicNs());
         for(auto &eye : eyes) eye.index = (eye.index + 1) % eye.fbos.size();
         return result;
     }
@@ -479,6 +570,14 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobj
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->video; }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(messageTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->message; }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) { return cinema(h)->input(); }
+// PLE-715: the top of every render loop iteration; sleeps when the pacing mode asks.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(pace)(JNIEnv *, jobject, jlong h) { cinema(h)->pace(); }
+// PLE-715: mode 0 is VrApi's own release (the default), 1 the late start; spec a debug build's experiments.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jboolean log, jstring spec, jfloat refreshHz) {
+    const char *chars = spec ? env->GetStringUTFChars(spec, nullptr) : nullptr;
+    cinema(h)->setPacing(mode == PLEIKKARI_VR_PACING_LATE ? PLEIKKARI_VR_PACING_LATE : PLEIKKARI_VR_PACING_VRAPI, log, chars, refreshHz);
+    if(chars) env->ReleaseStringUTFChars(spec, chars);
+}
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { pleikkari_vr_screen_placement_request(&cinema(h)->placement); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(setFullPoseRecentre)(JNIEnv *, jobject, jlong h, jboolean enabled) {
     cinema(h)->fullPoseRecentre = enabled;

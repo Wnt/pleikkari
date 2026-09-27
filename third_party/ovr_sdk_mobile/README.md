@@ -210,6 +210,23 @@ cinema logs the line itself every second, because there is no session. With no d
 latch is `unmatched`, so the preview gives only latched→submitted and submitted→predicted photon.
 With `stream_go_vr_match_60hz` on, the preview runs the panel at 60 Hz, as a 60 fps stream would.
 
+**Frame pacing (PLE-715).** VrApi's `Early=N`/`Prd=46ms` regime is the frame scheduler running
+one refresh ahead. On the Go, VrApi gives each submit a vsync slot, `clamp(previous + 1, now, now + 2)`,
+and releases the loop once per refresh, so a lead once gained is kept. A late frame is let through
+at once, and so is the next one in the same refresh, which adds the refresh. That happens in the
+first frames of most sessions (5 of 7 default 72 Hz previews, the live 72 Hz stream) and after
+stalls. **Cinema frames start late** (`stream_go_vr_late_start`, off by default, plain cinema only)
+starts each frame 7.5 ms before VrApi's release instead of right after the last one. It holds a frame
+after a late one out of that refresh, and skips one release when half a second of frames all run a
+refresh early. With the stats log on, `GoCinema: Frame pacing (...)` gives, each second, the
+throttled/late submits, the loop's sleep, the frames at lead 0/1/2+, the releases drained and the
+measured refresh period (13.924 ms at "72 Hz"). A debug build also takes
+`adb shell setprop debug.pleikkari.vr_pacing <items>`, read at cinema start: `trace` (one
+`GoPacing` line per frame), `late`, `budget=US`, `hold`, `drain=N`, `sleep=US`,
+`sweep=STEP_US/FRAMES/MAX_US`, `stall=FRAME:US;...` (`vr-frame-pacing.h`).
+`docs/verification/PLE-715.md` has the Go measurements, and `docs/verification/PLE-715/` the
+session script and trace summariser.
+
 ## Required device validation
 
 Built with SDK 1.35.0 (PLE-617, PLE-623). A live PS5 stream plays through the cinema on

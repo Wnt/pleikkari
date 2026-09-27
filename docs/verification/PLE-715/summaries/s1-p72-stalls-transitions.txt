@@ -1,0 +1,80 @@
+-- frame 501: lead 1 -> -1
+      497 slept   0.00 work   3.23 wait  10.46 P-ret  33.02 lead 1
+      498 slept   0.00 work   2.51 wait  11.01 P-ret  33.17 lead 1
+      499 slept   0.00 work   3.43 wait  10.10 P-ret  33.18 lead 1
+      500 slept   0.00 work   2.61 wait  11.10 P-ret  33.20 lead 1
+      501 slept  15.17 work   2.71 wait   2.06 P-ret  26.84 lead -1
+      502 slept   0.00 work   2.09 wait   5.00 P-ret  33.05 lead 1
+      503 slept   0.00 work   1.88 wait  11.63 P-ret  33.19 lead 1
+-- frame 502: lead -1 -> 1
+      498 slept   0.00 work   2.51 wait  11.01 P-ret  33.17 lead 1
+      499 slept   0.00 work   3.43 wait  10.10 P-ret  33.18 lead 1
+      500 slept   0.00 work   2.61 wait  11.10 P-ret  33.20 lead 1
+      501 slept  15.17 work   2.71 wait   2.06 P-ret  26.84 lead -1
+      502 slept   0.00 work   2.09 wait   5.00 P-ret  33.05 lead 1
+      503 slept   0.00 work   1.88 wait  11.63 P-ret  33.19 lead 1
+      504 slept   0.00 work   2.80 wait  10.72 P-ret  33.16 lead 1
+-- frame 901: lead 1 -> -1
+      897 slept   0.00 work   2.28 wait  11.30 P-ret  33.18 lead 1
+      898 slept   0.00 work   3.84 wait   9.77 P-ret  33.18 lead 1
+      899 slept   0.00 work   2.31 wait  11.53 P-ret  33.06 lead 1
+      900 slept   0.00 work   3.52 wait  10.02 P-ret  33.15 lead 1
+      901 slept  30.13 work   2.17 wait   2.65 P-ret  11.86 lead -1
+      902 slept   0.00 work   1.93 wait   4.26 P-ret  33.18 lead 1
+      903 slept   0.00 work   2.86 wait  10.31 P-ret  33.12 lead 1
+-- frame 902: lead -1 -> 1
+      898 slept   0.00 work   3.84 wait   9.77 P-ret  33.18 lead 1
+      899 slept   0.00 work   2.31 wait  11.53 P-ret  33.06 lead 1
+      900 slept   0.00 work   3.52 wait  10.02 P-ret  33.15 lead 1
+      901 slept  30.13 work   2.17 wait   2.65 P-ret  11.86 lead -1
+      902 slept   0.00 work   1.93 wait   4.26 P-ret  33.18 lead 1
+      903 slept   0.00 work   2.86 wait  10.31 P-ret  33.12 lead 1
+      904 slept   0.00 work   3.21 wait  10.48 P-ret  33.08 lead 1
+-- frame 1301: lead 1 -> -1
+     1297 slept   0.00 work   2.21 wait  11.11 P-ret  33.25 lead 1
+     1298 slept   0.00 work   3.20 wait  10.39 P-ret  33.23 lead 1
+     1299 slept   0.00 work   2.38 wait  11.29 P-ret  33.17 lead 1
+     1300 slept   0.00 work   2.64 wait  10.90 P-ret  33.19 lead 1
+     1301 slept  45.13 work   2.55 wait   1.89 P-ret   6.53 lead -1
+     1302 slept   0.00 work   2.26 wait   3.54 P-ret  33.04 lead 1
+     1303 slept   0.00 work   2.78 wait  10.85 P-ret  33.14 lead 1
+-- frame 1302: lead -1 -> 1
+     1298 slept   0.00 work   3.20 wait  10.39 P-ret  33.23 lead 1
+     1299 slept   0.00 work   2.38 wait  11.29 P-ret  33.17 lead 1
+     1300 slept   0.00 work   2.64 wait  10.90 P-ret  33.19 lead 1
+     1301 slept  45.13 work   2.55 wait   1.89 P-ret   6.53 lead -1
+     1302 slept   0.00 work   2.26 wait   3.54 P-ret  33.04 lead 1
+     1303 slept   0.00 work   2.78 wait  10.85 P-ret  33.14 lead 1
+     1304 slept   0.00 work   3.17 wait  10.40 P-ret  33.16 lead 1
+-- frame 1701: lead 1 -> -1
+     1697 slept   0.00 work   2.65 wait  11.06 P-ret  33.18 lead 1
+     1698 slept   0.00 work   2.86 wait  10.77 P-ret  33.17 lead 1
+     1699 slept   0.00 work   2.62 wait  11.05 P-ret  33.21 lead 1
+     1700 slept   0.00 work   2.81 wait  10.85 P-ret  33.13 lead 1
+     1701 slept  60.14 work   2.31 wait   1.98 P-ret   6.63 lead -1
+     1702 slept   0.00 work   2.61 wait   2.08 P-ret  33.12 lead -1
+     1703 slept   0.00 work   2.96 wait  10.38 P-ret  33.19 lead 1
+-- frame 1703: lead -1 -> 1
+     1699 slept   0.00 work   2.62 wait  11.05 P-ret  33.21 lead 1
+     1700 slept   0.00 work   2.81 wait  10.85 P-ret  33.13 lead 1
+     1701 slept  60.14 work   2.31 wait   1.98 P-ret   6.63 lead -1
+     1702 slept   0.00 work   2.61 wait   2.08 P-ret  33.12 lead -1
+     1703 slept   0.00 work   2.96 wait  10.38 P-ret  33.19 lead 1
+     1704 slept   0.04 work   3.24 wait   9.87 P-ret  33.15 lead 1
+     1705 slept   0.00 work   2.41 wait  11.21 P-ret  33.21 lead 1
+-- frame 2101: lead 1 -> -1
+     2097 slept   0.00 work   2.92 wait  10.88 P-ret  32.99 lead 1
+     2098 slept   0.00 work   3.05 wait  10.40 P-ret  33.17 lead 1
+     2099 slept   0.00 work   2.78 wait  11.07 P-ret  32.98 lead 1
+     2100 slept   0.00 work   2.61 wait  10.80 P-ret  33.16 lead 1
+     2101 slept  14.17 work   2.56 wait   1.92 P-ret  28.15 lead -1
+     2102 slept   0.00 work   1.90 wait   6.45 P-ret  33.16 lead 1
+     2103 slept   0.00 work   2.47 wait  11.22 P-ret  33.18 lead 1
+-- frame 2102: lead -1 -> 1
+     2098 slept   0.00 work   3.05 wait  10.40 P-ret  33.17 lead 1
+     2099 slept   0.00 work   2.78 wait  11.07 P-ret  32.98 lead 1
+     2100 slept   0.00 work   2.61 wait  10.80 P-ret  33.16 lead 1
+     2101 slept  14.17 work   2.56 wait   1.92 P-ret  28.15 lead -1
+     2102 slept   0.00 work   1.90 wait   6.45 P-ret  33.16 lead 1
+     2103 slept   0.00 work   2.47 wait  11.22 P-ret  33.18 lead 1
+     2104 slept   0.00 work   3.71 wait  10.22 P-ret  32.94 lead 1

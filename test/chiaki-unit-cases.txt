@@ -105,3 +105,9 @@
 /chiaki/vr_screen_placement/table_then_worn
 /chiaki/vr_screen_placement/steep_request
 /chiaki/vr_screen_placement/full_pose_never_provisional
+/chiaki/vr_frame_pacing/config
+/chiaki/vr_frame_pacing/vrapi_never_sleeps
+/chiaki/vr_frame_pacing/late_start
+/chiaki/vr_frame_pacing/hold_and_period
+/chiaki/vr_frame_pacing/drain
+/chiaki/vr_frame_pacing/experiments

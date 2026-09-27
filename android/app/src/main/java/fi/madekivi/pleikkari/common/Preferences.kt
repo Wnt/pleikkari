@@ -299,6 +299,12 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrFrameListenerThreadKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrFrameListenerThreadKey, value).apply() }
 
+	// PLE-715: A/B the cinema starting each frame just before VrApi's release instead of right after the last.
+	val goVrLateStartKey get() = "stream_go_vr_late_start"
+	var goVrLateStart
+		get() = sharedPreferences.getBoolean(goVrLateStartKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrLateStartKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)

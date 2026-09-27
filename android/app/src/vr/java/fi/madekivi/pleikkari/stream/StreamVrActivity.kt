@@ -339,6 +339,12 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     VrCinemaNative.setEnvironment(native, it.environment, it.screenDistanceM, it.screenWidthM,
                         it.screenCurveRadiusM, it.screenHeightOffsetM, it.glow, it.roomLight)
                 }
+                // PLE-715: when each frame starts relative to VrApi's release. The late start is an A/B
+                // setting; a debug build also takes `adb shell setprop debug.pleikkari.vr_pacing <experiments>`
+                // (vr-frame-pacing.h). The per-second "Frame pacing" line comes with the stats log.
+                val pacingSpec = if(BuildConfig.DEBUG) debugProperty(PACING_PROPERTY) else ""
+                VrCinemaNative.setPacing(native, if(Preferences(this@StreamVrActivity).goVrLateStart) 1 else 0,
+                    frameLatency, pacingSpec, refreshHz)
                 val frameReady = AtomicBoolean(false)
                 // PLE-673: count every signal, so the window log separates frames the decoder
                 // delivered from frames the render loop latched.
@@ -377,6 +383,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val submitTiming = LongArray(2)
                 var latencyWindowStartNs = windowStartNs
                 while(running.get()) {
+                    VrCinemaNative.pace(native)
                     val input = VrCinemaNative.input(native) or debugInput.getAndSet(0)
                     if(input and MENU != 0) menu = !menu
                     if(input and CLICK != 0) {
@@ -539,6 +546,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
+        /** PLE-715: debug builds only; frame pacing experiments, see vr-frame-pacing.h. */
+        private const val PACING_PROPERTY = "debug.pleikkari.vr_pacing"
         /** PLE-690: debug builds only; a Library launch opens its chooser instead of connecting. */
         private const val CHOOSE_PROPERTY = "debug.pleikkari.go_entry_choose"
         /** PLE-739: debug builds only; a Library launch sees no linked console. */
@@ -570,6 +579,10 @@ internal object VrCinemaNative {
     external fun videoTexture(handle: Long): Int
     external fun messageTexture(handle: Long): Int
     external fun input(handle: Long): Int
+    /** PLE-715: the top of every loop iteration, before input and the latch; sleeps when pacing asks. */
+    external fun pace(handle: Long)
+    /** PLE-715: mode 0 VrApi's release (default), 1 the late start; log the per-second pacing line. */
+    external fun setPacing(handle: Long, mode: Int, log: Boolean, spec: String, refreshHz: Float)
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
     external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
