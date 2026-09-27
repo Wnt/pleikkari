@@ -15,10 +15,12 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * PLE-802: an activity's key and joystick input, read on a thread of its own instead of the main looper.
@@ -37,11 +39,12 @@ import java.util.concurrent.TimeoutException
  * answer is this window's answer, so the system's fallback keys (a pad's B as Back, volume) behave
  * as they did.
  *
- * One ordering caveat, at [start] only: an event the activity window took just before this window
- * had the focus can still be waiting on the main looper when a newer one arrives here. Keys cannot
- * cross over, because the input dispatcher cancels a key held down in the window that loses focus.
- * A joystick move can: if one crosses over, the stick shows the older position until the pad's next
- * joystick event.
+ * One ordering caveat, at [start] only. Events the activity window took just before this window had
+ * the focus can still be waiting on the main looper when newer ones arrive here, including the
+ * cancel the input dispatcher sends for a key held down across the handover. One of those can land
+ * after a newer event handled here: the console then holds the older state (a stick position, or a
+ * re-pressed button released) until the pad's next event of that kind. Once this window has the
+ * focus, events arrive in order on one thread.
  */
 class InputThreadWindow(private val activity: Activity, private val router: Router)
 {
@@ -82,7 +85,16 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 		return true
 	}
 
-	/** Main thread. It never waits for the input thread, which may be waiting for the main thread in [handBack]. */
+	/**
+	 * Main thread: runs [action] on the input thread, after the event it is handling, if any. False,
+	 * with nothing run, when the window is stopped.
+	 */
+	fun post(action: () -> Unit): Boolean = handler?.post(action) ?: false
+
+	/**
+	 * Main thread. It never waits for the input thread, which may be waiting for the main thread in
+	 * [handBack]; an event already on the input thread still reaches the stream after this returns.
+	 */
 	fun stop()
 	{
 		val thread = thread ?: return
@@ -137,24 +149,33 @@ class InputThreadWindow(private val activity: Activity, private val router: Rout
 	}
 
 	/**
-	 * Input thread: [unhandled] on the main thread, returning its answer. After [HAND_BACK_TIMEOUT_MS]
-	 * without one, the event counts as not handled: this window's own fallback handling (volume,
-	 * media keys) then still acts on it.
+	 * Input thread: [unhandled] on the main thread, returning its answer. If the main thread has not
+	 * started it within [HAND_BACK_TIMEOUT_MS], it never will, and the event counts as not handled:
+	 * this window's own fallback handling (volume, media keys) still acts on it. Once started, its
+	 * answer is waited for, so an event is never handled both there and here.
 	 */
 	private fun handBack(unhandled: () -> Boolean): Boolean
 	{
-		val task = FutureTask(unhandled)
+		val claimed = AtomicBoolean(false)
+		val task = FutureTask(Callable { claimed.compareAndSet(false, true) && unhandled() })
 		if(!main.post(task))
 			return false
 		return try
 		{
-			task.get(HAND_BACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-		}
-		catch(e: TimeoutException)
-		{
-			task.cancel(false)
-			Log.w(TAG, "Main thread did not take a handed-back event within $HAND_BACK_TIMEOUT_MS ms")
-			false
+			try
+			{
+				task.get(HAND_BACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+			}
+			catch(e: TimeoutException)
+			{
+				if(claimed.compareAndSet(false, true))
+				{
+					Log.w(TAG, "Main thread did not take a handed-back event within $HAND_BACK_TIMEOUT_MS ms")
+					false
+				}
+				else
+					task.get()
+			}
 		}
 		catch(e: ExecutionException)
 		{

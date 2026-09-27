@@ -471,7 +471,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** PLE-722: while the VR menu is open the pad drives it, so the console sees it at rest. */
     private fun menuChanged(open: Boolean) {
-        if(open) model?.input?.releasePad()
+        if(!open) return
+        val input = model?.input ?: return
+        // PLE-802: with the pad on its own thread, release it there, after the pad event that thread may
+        // be handling: one that saw the menu still closed would otherwise land after this release.
+        if(inputWindow?.post { input.releasePad() } != true) input.releasePad()
     }
 
     /** PLE-722: the VR menu's view of the stored Go settings; its setters run on the GoVrUi thread. */
@@ -548,7 +552,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private fun stopCinema() {
-        // PLE-802: the pad goes back to the main looper before its session stops.
+        // PLE-802: the pad goes back to the main looper. An event already on the input thread can
+        // still set a state while the session stops; Session makes that safe.
         inputWindow?.stop()
         inputWindow = null
         val thread = cinema ?: return
