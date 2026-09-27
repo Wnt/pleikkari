@@ -360,6 +360,28 @@ warnings, and against 1.50.0's headers too (PLE-623).
   `Environment frame:` does see the dome (void 2.37 -> 1.18 ms without it) but, as
   above, under-reports the frame. Logs, `run.sh` and `sum.py` under `build/ple-666/` of
   the workspace.
+- Void sky variants at a pinned GPU clock (PLE-697): the same runs with
+  `stream_go_vr_room_high_gpu` on, so `vrapi_SetClockLevels(2, 4)` holds the GPU at
+  510 MHz for the whole run (every steady-state VrApi line reads `GPU=2/4,…/510MHz`).
+  On the Go (1KWPH802EW8203, tip 87fce8a7, 4x MSAA, 72 Hz, synthetic preview,
+  2026-09-27), two interleaved rounds of 36 s runs per variant; median `App=` after 3
+  warm-up seconds, per round:
+
+  | Void, variant | `App=` @510 MHz, round 1 / 2 | vs dome | Stale/s mean, max | `Environment frame: gpu` |
+  | --- | ---: | ---: | ---: | ---: |
+  | dome, shipped (0) | 6.32 / 6.32 ms | - | 0.5, 4 | 1.96 ms |
+  | fullscreen triangle (3) | 6.35 / 6.36 ms | +0.04 ms | 1.1, 4 | 1.88 ms |
+  | no dome (4) | 5.10 / 5.09 ms | -1.22 ms | 0.2, 3 | 0.85 ms |
+  | constant-colour dome (5) | 5.80 / 5.81 ms | -0.51 ms | 0.8, 3 | 1.57 ms |
+  | vertex-gradient dome (7) | 6.20 / 6.18 ms | -0.13 ms | 1.0, 4 | 1.78 ms |
+
+  Settled: the void's sky costs 1.2 ms of `App=` at 510 MHz (about a fifth of the
+  frame), not 0.1 ms. It is per-pixel cost, not geometry: one fullscreen triangle costs
+  the same as the dome, the constant-colour shader recovers 0.5 ms of it, and PLE-665's
+  per-vertex gradient only 0.13 ms. At 315 MHz the 1.2 ms would scale to roughly 2 ms,
+  in line with PLE-666's confounded reading. Unlike the terrace (whose geometry covers
+  most of the sky), the void shows the sky on nearly every pixel, so a cheaper sky pays
+  off only there. Logs, `run.sh` and `sum.py` under `build/ple-697/` of the workspace.
 - Device, live PS5 stream (PLE-654, `docs/verification/PLE-654.md`): the cinema room
   with a live 1080p60 picture measured VrApi `App=` 8.02 ms (median) and 3.0 stale
   frames/s (max 26), as in PLE-623's preview. `Environment frame: gpu` still read 2.40
@@ -376,8 +398,9 @@ warnings, and against 1.50.0's headers too (PLE-623).
   cheaper sky shader (the gradient per vertex) is the next step, not a cheaper mesh
   (this supersedes PLE-630's reading that the shader is not the lever).
   Inside the VrApi cinema the terrace's sky variants, no dome included, are within
-  about 0.1 ms of `App=` at a fixed clock; the void is unsettled by the runtime's clock
-  choice (PLE-666, §8).
+  about 0.1 ms of `App=` at a fixed clock; the void's sky costs 1.2 ms at a pinned
+  510 MHz, of which the fullscreen triangle saves nothing and a constant colour 0.5 ms
+  (PLE-697, §8).
   Inside the VrApi activity every room, the cinema included, costs 7.5 to 8.6 ms of
   GPU per frame and drops 2.5 to 5 frames a second at `vrapi_SetClockLevels(2, 2)`
   (§8, PLE-623, and on a live stream PLE-654); 4x MSAA is 4 to 5.5 ms of that (§8,
