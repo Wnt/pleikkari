@@ -24,6 +24,7 @@ typedef struct android_chiaki_audio_decoder_t
 	ChiakiThread output_thread;
 	bool codec_failed; // set by the output thread, read under codec_mutex
 	bool codec_failed_logged;
+	uint64_t codec_recreated_ms; // monotonic ms of the last in-session re-creation, 0 = never
 
 	AndroidChiakiAudioDecoderSettingsCallback settings_cb;
 	AndroidChiakiAudioDecoderFrameCallback frame_cb;
