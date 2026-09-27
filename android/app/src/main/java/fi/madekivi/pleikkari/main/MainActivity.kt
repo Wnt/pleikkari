@@ -258,21 +258,43 @@ class MainActivity : AppCompatActivity()
 	private fun setupQualityPresetChooser()
 	{
 		val preferences = Preferences(this)
-		val checkedButton = when(preferences.streamQualityPreset)
+		binding.qualityPresetBalancedButton.setOnClickListener {
+			preferences.applyStreamQualityPreset(Preferences.StreamQualityPreset.BALANCED)
+			updateQualityPresetChooser()
+		}
+		binding.qualityPresetLowLatencyButton.setOnClickListener {
+			preferences.applyStreamQualityPreset(Preferences.StreamQualityPreset.LOW_LATENCY)
+			updateQualityPresetChooser()
+		}
+		binding.qualityPresetDataSaverButton.setOnClickListener {
+			preferences.applyStreamQualityPreset(Preferences.StreamQualityPreset.DATA_SAVER)
+			updateQualityPresetChooser()
+		}
+		updateQualityPresetChooser()
+	}
+
+	/** PLE-835: check the preset matching the current values, or none with a "Custom" title. */
+	private fun updateQualityPresetChooser()
+	{
+		val group = binding.qualityPresetToggleGroup
+		val checkedButton = when(Preferences(this).matchingStreamQualityPreset)
 		{
 			Preferences.StreamQualityPreset.BALANCED -> R.id.qualityPresetBalancedButton
 			Preferences.StreamQualityPreset.LOW_LATENCY -> R.id.qualityPresetLowLatencyButton
 			Preferences.StreamQualityPreset.DATA_SAVER -> R.id.qualityPresetDataSaverButton
+			null -> null
 		}
-		binding.qualityPresetToggleGroup.check(checkedButton)
-		binding.qualityPresetBalancedButton.setOnClickListener {
-			preferences.applyStreamQualityPreset(Preferences.StreamQualityPreset.BALANCED)
+		if(checkedButton == null)
+		{
+			group.isSelectionRequired = false
+			group.clearChecked()
+			binding.qualityTitleTextView.setText(R.string.stream_quality_title_custom)
 		}
-		binding.qualityPresetLowLatencyButton.setOnClickListener {
-			preferences.applyStreamQualityPreset(Preferences.StreamQualityPreset.LOW_LATENCY)
-		}
-		binding.qualityPresetDataSaverButton.setOnClickListener {
-			preferences.applyStreamQualityPreset(Preferences.StreamQualityPreset.DATA_SAVER)
+		else
+		{
+			group.check(checkedButton)
+			group.isSelectionRequired = true
+			binding.qualityTitleTextView.setText(R.string.stream_quality_title)
 		}
 	}
 
@@ -407,6 +429,7 @@ class MainActivity : AppCompatActivity()
 	override fun onStart()
 	{
 		super.onStart()
+		updateQualityPresetChooser()
 		if(previewState == null)
 			viewModel.setPsnEnabled(preferences.psnRemotePlayEnabled, psnListAllowed)
 		viewModel.discoveryManager.resume()
