@@ -19,6 +19,7 @@ void pleikkari_vr_pacing_config_default(PleikkariVrPacingConfig *config, float r
 	config->mode = PLEIKKARI_VR_PACING_VRAPI;
 	config->period_ns = refresh_hz > 0.0f ? (int64_t)(1e9 / refresh_hz + 0.5) : 1000000000LL / 72;
 	config->budget_ns = PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS;
+	config->drain_refreshes = 1;
 }
 
 static int64_t parse_us(const char *text, const char **end)
@@ -54,6 +55,8 @@ int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char
 			config->trace = true;
 		else if(strcmp(item, "hold") == 0)
 			config->hold = true;
+		else if(strncmp(item, "drain=", 6) == 0)
+			config->drain_refreshes = (uint32_t)strtoul(value, NULL, 10);
 		else if(strcmp(item, "late") == 0)
 			config->mode = PLEIKKARI_VR_PACING_LATE;
 		else if(strncmp(item, "sleep=", 6) == 0)
@@ -108,6 +111,7 @@ void pleikkari_vr_pacing_init(PleikkariVrPacing *pacing, const PleikkariVrPacing
 	memset(pacing, 0, sizeof(*pacing));
 	pacing->config = *config;
 	pacing->period_ns = config->period_ns;
+	pacing->lead = -1;
 	window_reset(&pacing->window);
 }
 
@@ -115,8 +119,11 @@ int64_t pleikkari_vr_pacing_next_release_ns(const PleikkariVrPacing *pacing, int
 {
 	if(!pacing->release_ns || pacing->period_ns <= 0)
 		return 0;
+	// The first grid point after now; the anchor may lie ahead of now.
 	const int64_t since = now_ns - pacing->release_ns;
-	const int64_t periods = since < 0 ? 0 : since / pacing->period_ns + 1;
+	int64_t periods = since / pacing->period_ns;
+	if(since - periods * pacing->period_ns >= 0)
+		periods++;
 	return pacing->release_ns + periods * pacing->period_ns;
 }
 
@@ -130,10 +137,23 @@ int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns)
 	// reach, else it waits for the budget before the release after it.
 	const bool late_frame = pacing->return_ns > 0 && !pacing->throttled;
 	int64_t release = pleikkari_vr_pacing_next_release_ns(pacing, now_ns);
+	pacing->draining = false;
 	if(release && (config->mode == PLEIKKARI_VR_PACING_LATE || (config->hold && late_frame)))
 	{
 		if(release - now_ns < PLEIKKARI_VR_PACING_MIN_START_NS)
 			release += pacing->period_ns;
+		// Out of a lead of 1 or more: this frame skips releases, so it is shown late once (VrApi
+		// counts a stale frame) and the next one, held too, takes a slot at lead 0.
+		if(config->mode == PLEIKKARI_VR_PACING_LATE && config->drain_refreshes
+				&& pacing->lead_frames >= PLEIKKARI_VR_PACING_DRAIN_FRAMES
+				&& (!pacing->drain_ns || now_ns - pacing->drain_ns >= PLEIKKARI_VR_PACING_DRAIN_INTERVAL_NS))
+		{
+			release += (int64_t)config->drain_refreshes * pacing->period_ns;
+			pacing->drain_ns = now_ns;
+			pacing->lead_frames = 0;
+			pacing->draining = true;
+			pacing->window.drains++;
+		}
 		const int64_t start = release - config->budget_ns;
 		if(start > now_ns)
 			wake = start;
@@ -193,13 +213,17 @@ void pleikkari_vr_pacing_frame(PleikkariVrPacing *pacing, int64_t start_ns, int6
 	if(pacing->predicted_ns && step > nominal - nominal / 10 && step < nominal + nominal / 10)
 		pacing->period_ns += (step - pacing->period_ns) / 32;
 	pacing->predicted_ns = predicted_ns;
-	if(throttled)
+	// The frame's lead: its predicted display against the release it was submitted for, on the
+	// grid of the frames before it. A throttled submit returns at that release.
+	const int64_t aimed = throttled ? returned_ns : pleikkari_vr_pacing_next_release_ns(pacing, submit_ns);
+	if(aimed)
 	{
-		pacing->release_ns = returned_ns;
-		const double refreshes = (double)lead / (double)pacing->period_ns - PLEIKKARI_VR_PACING_LEAD0_REFRESHES;
-		const int rounded = refreshes < 0.5 ? 0 : refreshes < 1.5 ? 1 : 2;
-		window->leads[rounded]++;
+		const double refreshes = (double)(predicted_ns - aimed) / (double)pacing->period_ns - PLEIKKARI_VR_PACING_LEAD0_REFRESHES;
+		pacing->lead = refreshes < 0.5 ? 0 : refreshes < 1.5 ? 1 : 2;
+		window->leads[pacing->lead]++;
+		pacing->lead_frames = pacing->lead >= 1 ? pacing->lead_frames + 1 : 0;
 	}
+	pacing->release_ns = predicted_ns - (int64_t)(PLEIKKARI_VR_PACING_LEAD0_REFRESHES * (double)pacing->period_ns + 0.5);
 	window->period_ns = pacing->period_ns;
 	pacing->return_ns = returned_ns;
 	pacing->throttled = throttled;

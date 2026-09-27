@@ -377,13 +377,13 @@ struct Cinema {
         const double n = w.frames ? w.frames : 1;
         LOGI("Frame pacing (%s): %u frames, %u throttled, %u late | slept mean/max %.2f/%.2f ms | start to submit mean/max %.2f/%.2f ms"
             " | submit wait min/max %.2f/%.2f ms | submit to predicted min/mean/max %.2f/%.2f/%.2f ms"
-            " | return to predicted min/max %.2f/%.2f ms | start to predicted mean %.2f ms | leads 0/1/2+ %u/%u/%u, period %.3f ms"
+            " | return to predicted min/max %.2f/%.2f ms | start to predicted mean %.2f ms | leads 0/1/2+ %u/%u/%u, %u drained, period %.3f ms"
             " | VrApi early %d stale %d per s",
             pleikkari_vr_pacing_mode_name(pacing.config.mode), w.frames, w.throttled, w.late,
             w.slept_sum_ns / n / 1e6, w.slept_max_ns / 1e6, w.work_sum_ns / n / 1e6, w.work_max_ns / 1e6,
             w.wait_min_ns / 1e6, w.wait_max_ns / 1e6, w.ahead_min_ns / 1e6, w.ahead_sum_ns / n / 1e6, w.ahead_max_ns / 1e6,
             w.lead_min_ns / 1e6, w.lead_max_ns / 1e6, w.start_to_photon_sum_ns / n / 1e6,
-            w.leads[0], w.leads[1], w.leads[2], w.period_ns / 1e6,
+            w.leads[0], w.leads[1], w.leads[2], w.drains, w.period_ns / 1e6,
             vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_EARLY_FRAMES_PER_SECOND),
             vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_STALE_FRAMES_PER_SECOND));
         pacingWindowStartNs = returnedNs;

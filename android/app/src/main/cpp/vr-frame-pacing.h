@@ -13,10 +13,12 @@
 //
 // The loop latches the video frame right after the previous submit returns, so every frame waits
 // most of a refresh inside the next submit. PLEIKKARI_VR_PACING_LATE moves that wait before the
-// latch instead: the frame starts [budget] before the release VrApi would give it anyway, on the
-// release grid measured from throttled submits, so its slot is unchanged and the video it shows is
-// newer by the time moved. After a late frame it also holds the next one for that point, rather
-// than letting it into the same refresh.
+// latch instead: the frame starts [budget] before the release VrApi would give it anyway, so its
+// slot is unchanged and the video it shows is newer by the time moved. The release grid comes from
+// the predicted display times (release = predicted - (lead + 1.38) refreshes), so it holds when
+// VrApi stops throttling after a late frame. After a late frame the next one waits for that point
+// rather than going into the same refresh, and when every frame of half a second shows a refresh
+// early, one release is skipped (a repeated frame) so the lead falls back to 0.
 
 #ifndef PLEIKKARI_VR_FRAME_PACING_H
 #define PLEIKKARI_VR_FRAME_PACING_H
@@ -45,8 +47,13 @@ typedef enum pleikkari_vr_pacing_mode_t
 // A frame started this close to the release or closer would come late (start to submit plus the
 // ~3 ms the submit needs before the release); the late start and the hold aim at the next one.
 #define PLEIKKARI_VR_PACING_MIN_START_NS 6000000LL
-// The predicted display time minus a throttled submit's return, in refreshes, at lead 0.
+// The predicted display time minus a throttled submit's return, in refreshes, at lead 0 (measured
+// on the Go at 72 and 60 Hz, PLE-715).
 #define PLEIKKARI_VR_PACING_LEAD0_REFRESHES 1.38
+// The late start drains a lead of 1 or more after this many frames in a row at it, at most once
+// per PLEIKKARI_VR_PACING_DRAIN_INTERVAL_NS.
+#define PLEIKKARI_VR_PACING_DRAIN_FRAMES 36
+#define PLEIKKARI_VR_PACING_DRAIN_INTERVAL_NS 2000000000LL
 // Debug experiments: one-shot stalls at given frames.
 #define PLEIKKARI_VR_PACING_MAX_STALLS 8
 
@@ -58,6 +65,7 @@ typedef struct pleikkari_vr_pacing_config_t
 	// Debug experiments (a debug build's debug.pleikkari.vr_pacing property), all off by default.
 	bool trace;               // one GoPacing line per frame
 	bool hold;                // in PLEIKKARI_VR_PACING_VRAPI too: hold the frame after a late one
+	uint32_t drain_refreshes; // the late start's skip out of a lead of 1 or more; 0 turns it off
 	int64_t sleep_ns;         // a fixed sleep at the top of every frame
 	int64_t sweep_step_ns;    // added to that sleep every sweep_frames frames, up to sweep_max_ns
 	uint32_t sweep_frames;
@@ -86,7 +94,8 @@ typedef struct pleikkari_vr_pacing_window_t
 	int64_t lead_min_ns;
 	int64_t lead_max_ns;
 	int64_t start_to_photon_sum_ns; // frame start (the video latch) to predicted display
-	uint32_t leads[3];     // throttled frames at lead 0, 1, and 2 or more
+	uint32_t leads[3];     // frames at lead 0, 1, and 2 or more
+	uint32_t drains;       // releases skipped to drain the lead
 	int64_t period_ns;     // the measured refresh period at the window's end
 } PleikkariVrPacingWindow;
 
@@ -96,15 +105,19 @@ typedef struct pleikkari_vr_pacing_t
 	uint64_t frames;         // frames recorded
 	int64_t return_ns;       // the last submit's return; 0 before the first
 	bool throttled;          // that submit waited for VrApi's release
-	int64_t release_ns;      // the last VrApi release seen (a throttled return); 0 before the first
+	int64_t release_ns;      // a VrApi release on the grid, from the last predicted display time; 0 before
 	int64_t period_ns;       // the refresh period, measured from predicted display times
 	int64_t predicted_ns;    // the last frame's predicted display time
+	int lead;                // the last frame's lead in refreshes, -1 before the first
+	uint32_t lead_frames;    // frames in a row at a lead of 1 or more
+	int64_t drain_ns;        // the last drain, 0 for none
+	bool draining;           // the frame being started skips a release
 	int64_t sweep_sleep_ns;  // the sweep's current sleep
 	PleikkariVrPacingWindow window;
 } PleikkariVrPacing;
 
 void pleikkari_vr_pacing_config_default(PleikkariVrPacingConfig *config, float refresh_hz);
-// "trace,hold,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,budget=US": the debug
+// "trace,hold,drain=N,sleep=US,sweep=STEP_US/FRAMES/MAX_US,stall=FRAME:US;FRAME:US,late,budget=US": the debug
 // property's experiments, on top of the config. Unknown items are ignored; returns how many were read.
 int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char *spec);
 

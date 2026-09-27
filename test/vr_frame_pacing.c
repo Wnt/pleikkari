@@ -71,6 +71,12 @@ static MunitResult test_vrapi_never_sleeps(const MunitParameter params[], void *
 	return MUNIT_OK;
 }
 
+// The predicted display time sits (lead + 1.38) refreshes after the release it was submitted for.
+static int64_t lead0(int64_t period)
+{
+	return (int64_t)(PLEIKKARI_VR_PACING_LEAD0_REFRESHES * (double)period + 0.5);
+}
+
 static MunitResult test_late_start(const MunitParameter params[], void *user)
 {
 	(void)params;
@@ -81,40 +87,43 @@ static MunitResult test_late_start(const MunitParameter params[], void *user)
 	PleikkariVrPacing pacing;
 	pleikkari_vr_pacing_init(&pacing, &config);
 	const int64_t t = 1000 * MS;
-	// Nothing to key on before the first release.
+	const int64_t budget = PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS;
+	// Nothing to key on before the first frame.
 	munit_assert_int64(pleikkari_vr_pacing_next_release_ns(&pacing, t), ==, 0);
 	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, t), ==, 0);
-	// VrApi held the submit 10.7 ms: it returned at its release, so the next frame starts the
-	// budget before the release after it. The predicted display is 1.38 refreshes on: lead 0.
-	frame(&pacing, t, 3 * MS, 10700000LL, t + 13700000LL + 19200000LL);
-	munit_assert_true(pacing.throttled);
+	// VrApi held the submit 10.7 ms, to its release; the frame is shown 1.38 refreshes later
+	// (lead 0), and the next frame starts the budget before the next release.
 	const int64_t release = t + 13700000LL;
+	frame(&pacing, t, 3 * MS, 10700000LL, release + lead0(PERIOD_72));
+	munit_assert_true(pacing.throttled);
+	munit_assert_int(pacing.lead, ==, 0);
 	munit_assert_int64(pleikkari_vr_pacing_next_release_ns(&pacing, release + 100000LL), ==, release + PERIOD_72);
-	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 100000LL), ==,
-		release + PERIOD_72 - PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS);
-	// A start already inside the budget goes at once.
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 100000LL), ==, release + PERIOD_72 - budget);
+	// A start already inside the budget goes at once while 6 ms or more are left.
 	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + PERIOD_72 - 7 * MS), ==, 0);
-	// A frame that came late (VrApi let it through after its 2 ms minimum) is off the grid: the
-	// next one still aims at the grid's next release, not at the late return plus a refresh.
+	// A frame that came after its release was let through after VrApi's 2 ms minimum. Its
+	// predicted display is still on the grid, so the next one aims at the release after it.
 	const int64_t late = release + PERIOD_72 - 1 * MS;
-	frame(&pacing, late, 3 * MS, 2 * MS, late + 40 * MS);
+	const int64_t late_predicted = release + 2 * PERIOD_72 + lead0(PERIOD_72);
+	frame(&pacing, late, 3 * MS, 2 * MS, late_predicted);
 	munit_assert_false(pacing.throttled);
-	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, late + 5 * MS + 1000), ==,
-		release + 2 * PERIOD_72 - PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS);
+	munit_assert_int(pacing.lead, ==, 0);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, late + 5 * MS + 1000), ==, release + 2 * PERIOD_72 - budget);
 	PleikkariVrPacingWindow window;
 	pleikkari_vr_pacing_take_window(&pacing, &window);
 	munit_assert_uint32(window.frames, ==, 2);
 	munit_assert_uint32(window.throttled, ==, 1);
 	munit_assert_uint32(window.late, ==, 1);
-	munit_assert_uint32(window.leads[0], ==, 1);
+	munit_assert_uint32(window.leads[0], ==, 2);
 	munit_assert_uint32(window.leads[1], ==, 0);
+	munit_assert_uint32(window.drains, ==, 0);
 	munit_assert_int64(window.wait_min_ns, ==, 2 * MS);
 	munit_assert_int64(window.wait_max_ns, ==, 10700000LL);
 	munit_assert_int64(window.work_max_ns, ==, 3 * MS);
-	munit_assert_int64(window.ahead_min_ns, ==, 29900000LL);
-	munit_assert_int64(window.ahead_max_ns, ==, 37 * MS);
-	munit_assert_int64(window.lead_min_ns, ==, 19200000LL);
-	munit_assert_int64(window.lead_max_ns, ==, 35 * MS);
+	munit_assert_int64(window.ahead_min_ns, ==, release + lead0(PERIOD_72) - (t + 3 * MS));
+	munit_assert_int64(window.ahead_max_ns, ==, late_predicted - (late + 3 * MS));
+	munit_assert_int64(window.lead_min_ns, ==, lead0(PERIOD_72));
+	munit_assert_int64(window.lead_max_ns, ==, late_predicted - (late + 5 * MS));
 	// The next window starts empty.
 	pleikkari_vr_pacing_take_window(&pacing, &window);
 	munit_assert_uint32(window.frames, ==, 0);
@@ -123,47 +132,105 @@ static MunitResult test_late_start(const MunitParameter params[], void *user)
 	return MUNIT_OK;
 }
 
+// The Go's real refresh at "72 Hz" is 13.924 ms; the grid follows the predicted display times.
+#define REAL_72 13924000LL
+
+// Frames VrApi throttles, released one refresh apart from [release], each shown [lead] refreshes
+// early; returns the last release.
+static int64_t throttled_frames(PleikkariVrPacing *pacing, int64_t release, int count, int lead)
+{
+	for(int i = 0; i < count; i++)
+	{
+		const int64_t start = release + 50000LL;
+		release += REAL_72;
+		frame(pacing, start, 3 * MS, release - start - 3 * MS, release + lead * REAL_72 + lead0(REAL_72));
+	}
+	return release;
+}
+
 static MunitResult test_hold_and_period(const MunitParameter params[], void *user)
 {
 	(void)params;
 	(void)user;
-	// The Go's real refresh at "72 Hz" is 13.924 ms; the grid follows the predicted display times.
-	const int64_t real = 13924000LL;
+	const int64_t budget = PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS;
 	PleikkariVrPacingConfig config;
 	pleikkari_vr_pacing_config_default(&config, 72.0f);
 	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "hold"), ==, 1);
 	munit_assert_true(config.hold);
 	PleikkariVrPacing pacing;
 	pleikkari_vr_pacing_init(&pacing, &config);
-	int64_t release = 2000 * MS;
-	for(int i = 0; i < 400; i++)
-	{
-		// VRAPI mode with hold: throttled frames start at once.
-		munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
-		release += real;
-		frame(&pacing, release - real + 50000LL, 3 * MS, real - 3050000LL, release + 33100000LL);
-	}
-	munit_assert_int64(pacing.period_ns, >, real - 20000LL);
-	munit_assert_int64(pacing.period_ns, <, real + 20000LL);
+	// VRAPI mode with hold: throttled frames start at once, and the period is learnt.
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, 2000 * MS), ==, 0);
+	const int64_t release = throttled_frames(&pacing, 2000 * MS, 400, 1);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	munit_assert_int64(pacing.period_ns, >, REAL_72 - 2000LL);
+	munit_assert_int64(pacing.period_ns, <, REAL_72 + 2000LL);
 	PleikkariVrPacingWindow window;
 	pleikkari_vr_pacing_take_window(&pacing, &window);
 	munit_assert_uint32(window.leads[1], ==, 400); // every frame one refresh early
+	munit_assert_uint32(window.drains, ==, 0);     // VRAPI mode never drains
 	// A stall makes the next frame late; the hold keeps the one after it out of that refresh.
 	// Its release comes 3.8 ms after the late return, too close, so it aims at the one after.
-	const int64_t late = release + real + 5 * MS;
-	frame(&pacing, late, 3 * MS, 2 * MS, late + 30 * MS);
+	const int64_t late = release + REAL_72 + 5 * MS;
+	frame(&pacing, late, 3 * MS, 2 * MS, release + 3 * REAL_72 + lead0(REAL_72));
 	const int64_t wake = pleikkari_vr_pacing_wake_ns(&pacing, late + 5 * MS + 100000LL);
-	munit_assert_int64(wake, >=, release + 3 * real - PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS - 20000LL);
-	munit_assert_int64(wake, <=, release + 3 * real - PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS + 20000LL);
+	munit_assert_int64(wake, >=, release + 3 * REAL_72 - budget - 20000LL);
+	munit_assert_int64(wake, <=, release + 3 * REAL_72 - budget + 20000LL);
 	// A late frame back just after a release: the next frame starts the budget before the next
 	// release, and a loop top already past that point but 7 ms before it goes at once.
-	const int64_t r4 = release + 4 * real;
-	frame(&pacing, r4 - 4 * MS, 3 * MS, 2 * MS, r4 + 30 * MS);
-	const int64_t r5 = r4 + real;
+	const int64_t r4 = release + 4 * REAL_72;
+	const int64_t r5 = r4 + REAL_72;
+	frame(&pacing, r4 - 4 * MS, 3 * MS, 2 * MS, r5 + REAL_72 + lead0(REAL_72));
 	const int64_t hold = pleikkari_vr_pacing_wake_ns(&pacing, r4 + 1100000LL);
-	munit_assert_int64(hold, >=, r5 - PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS - 20000LL);
-	munit_assert_int64(hold, <=, r5 - PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS + 20000LL);
+	munit_assert_int64(hold, >=, r5 - budget - 20000LL);
+	munit_assert_int64(hold, <=, r5 - budget + 20000LL);
 	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, r5 - 7 * MS), ==, 0);
+	return MUNIT_OK;
+}
+
+static MunitResult test_drain(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	const int64_t budget = PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS;
+	PleikkariVrPacingConfig config;
+	pleikkari_vr_pacing_config_default(&config, 72.0f);
+	config.mode = PLEIKKARI_VR_PACING_LATE;
+	PleikkariVrPacing pacing;
+	pleikkari_vr_pacing_init(&pacing, &config);
+	// Not yet: 35 frames in a row one refresh early.
+	int64_t release = throttled_frames(&pacing, 3000 * MS, PLEIKKARI_VR_PACING_DRAIN_FRAMES - 1, 1);
+	int64_t wake = pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_false(pacing.draining);
+	munit_assert_int64(wake - (release + REAL_72 - budget), <, 20000LL);
+	munit_assert_int64(wake - (release + REAL_72 - budget), >, -20000LL);
+	// The 36th: the next frame skips one release.
+	release = throttled_frames(&pacing, release, 1, 1);
+	wake = pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_true(pacing.draining);
+	munit_assert_int64(wake - (release + 2 * REAL_72 - budget), <, 20000LL);
+	munit_assert_int64(wake - (release + 2 * REAL_72 - budget), >, -20000LL);
+	// Still at lead 1 afterwards: no second drain within 2 s.
+	release = throttled_frames(&pacing, release + REAL_72, 100, 1);
+	pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_false(pacing.draining);
+	// After 2 s (144 frames) another is allowed.
+	release = throttled_frames(&pacing, release, 60, 1);
+	pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_true(pacing.draining);
+	PleikkariVrPacingWindow window;
+	pleikkari_vr_pacing_take_window(&pacing, &window);
+	munit_assert_uint32(window.drains, ==, 2);
+	// At lead 0 nothing drains, and drain=0 turns it off.
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 9000 * MS, 200, 0);
+	pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_false(pacing.draining);
+	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "drain=0"), ==, 1);
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 9000 * MS, 200, 1);
+	pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_false(pacing.draining);
 	return MUNIT_OK;
 }
 
@@ -194,6 +261,7 @@ MunitTest tests_vr_frame_pacing[] = {
 	{ "/vrapi_never_sleeps", test_vrapi_never_sleeps, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/late_start", test_late_start, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/hold_and_period", test_hold_and_period, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
+	{ "/drain", test_drain, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/experiments", test_experiments, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL }
 };
