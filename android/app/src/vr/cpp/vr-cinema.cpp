@@ -98,12 +98,13 @@ void main() { color = vec4(texture(picture, texcoord).rgb, 1.0); }
 // averages a 16x9 grid of the picture (through the SurfaceTexture's transform, as the screen samples
 // it) into a single pixel; the render loop reads it back asynchronously (see LumaProbe).
 GLuint lumaProgram() {
-    const char *vs = R"(#version 300 es
+    // Named apart from program()'s vs/oes/plain: test/vr_shaders_check.py finds shaders by variable name.
+    const char *lumaVs = R"(#version 300 es
 void main() {
     vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
     gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
 })";
-    const char *fs = R"(#version 300 es
+    const char *lumaFs = R"(#version 300 es
 #extension GL_OES_EGL_image_external_essl3 : require
 precision highp float;
 uniform samplerExternalOES picture;
@@ -119,7 +120,7 @@ void main() {
     }
     color = vec4(sum / 144.0, 0.0, 0.0, 1.0);
 })";
-    GLuint v = shader(GL_VERTEX_SHADER, vs), f = shader(GL_FRAGMENT_SHADER, fs);
+    GLuint v = shader(GL_VERTEX_SHADER, lumaVs), f = shader(GL_FRAGMENT_SHADER, lumaFs);
     if(!v || !f) { if(v) glDeleteShader(v); if(f) glDeleteShader(f); return 0; }
     GLuint p = glCreateProgram();
     glAttachShader(p, v); glAttachShader(p, f); glLinkProgram(p);

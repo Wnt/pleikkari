@@ -6,7 +6,7 @@
 #
 # Programs come from the sources themselves: every link(kVs, kFs) call in
 # vr-environment.cpp (both arms of a ternary), the VrUi pair in vr-ui-shaders.h
-# and the cinema's vs + oes/plain pair. Exit 77 (ctest SKIP) when there is no
+# and the cinema's vs + oes/plain pair and its PLE-746 luma pair. Exit 77 (ctest SKIP) when there is no
 # usable Mesa EGL/GLES 3 on the host.
 import ctypes
 import ctypes.util
@@ -44,6 +44,8 @@ def programs():
 	cinema = raw_strings(CINEMA_CPP)
 	for fs in ('oes', 'plain'):
 		out.append(('vr-cinema vs+' + fs, cinema['vs'], cinema[fs]))
+	# PLE-746: the latency probe's 1x1 luma pass.
+	out.append(('vr-cinema lumaVs+lumaFs', cinema['lumaVs'], cinema['lumaFs']))
 	return out
 
 
