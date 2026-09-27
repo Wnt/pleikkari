@@ -110,9 +110,44 @@ real SDK 1.35.0 headers and `libvrapi.so`, and has no warnings under `-Wall -Wex
 against either 1.35.0 or 1.50.0 (PLE-623). The stub it was first type-checked against
 did not differ from the real declarations.
 
-The screen remains world-locked. Go touchpad click recentres it. Go Back opens a
-head-following menu: click the left/centre/right third of the touchpad for
-Resume/Recentre/Disconnect. The Bluetooth pad retains `StreamInput` unchanged.
+The screen remains world-locked. With the VR menu switch off (below), a Go touchpad click
+recentres it, and Go Back opens a head-following menu: click the left/centre/right third of
+the touchpad for Resume/Recentre/Disconnect. The Bluetooth pad retains `StreamInput` unchanged.
+
+**The VR menu (PLE-722, `docs/design/vr-ui.md` §10).** The Go-only switch **VR menu with
+pointer** (`stream_go_vr_ui`, on by default; off gives the strip menu above) replaces the strip
+menu with the first screen of the VR UI toolkit (`src/vr/java/.../stream/vrui/`,
+`src/vr/cpp/vr-ui-layers.cpp`, `src/main/cpp/vr-ui-panel.c`). The menu is a 50 x 28 degree
+panel, a VrApi cylinder layer 2 m away (always in front of the picture) at 16 texels per degree.
+Its texture is an Android Surface from `vrapi_CreateAndroidSurfaceSwapChain` that the toolkit
+draws with Canvas on its own `GoVrUi` thread, only when something changed; the compositor
+latches it, so the GoCinema thread draws none of the panel. It is an underlay: the eye buffer
+punches the panel's rounded rectangle out of its alpha and draws the controller's laser and
+reticle over it, from the remote's pose at the frame's own predicted display time. With the
+menu closed (and the stats overlay off) the frame is exactly the old one: one layer, ONE/ZERO.
+
+- Open: Go Back, a trigger or touchpad click, the pad's `KEYCODE_MENU`, or the pad's Share
+  and Options held together for 0.8 s (both still reach the console; Options alone stays the
+  game's pause menu). While the menu is open the pad drives it and the console sees the pad
+  at rest.
+- Point with the remote; trigger or touchpad click selects on release; a 3-degree move of a
+  press drags (sliders, list scroll); a finger dragged on the touchpad scrolls the list under
+  the ray, with a fling. Pad: D-pad or left stick moves focus, A selects, B or Back closes, left
+  and right step a slider, L1/R1 page, the right stick scrolls.
+- Contents: Resume, Recentre, Disconnect (Exit before a Library launch streams); Room (every
+  `VrEnvironmentKind`), screen Distance and Size (rooms only; the plain screen is fixed), Match
+  60 Hz (from the next stream), Stats overlay (a 25 x 7 degree panel inside the picture's
+  top-left corner, redrawn once a second from the stream's stats).
+- A long press of the remote's Back that reaches Android (0.75 s) recentres.
+- Logcat tag `GoVrUi`: panels, placement, open/close with the reason, hover, focus,
+  activation, and once a second the redraw count and time.
+- **Debug builds:** the remote cannot be injected, so `adb shell setprop
+  debug.pleikkari.vr_pointer x,y` aims a synthetic ray x degrees right and y up of the open
+  menu's middle (`off` or any non-pair turns it off; read every 250 ms while the menu is open).
+  `input keyevent KEYCODE_MENU` opens the menu, and `input gamepad keyevent KEYCODE_DPAD_*`,
+  `KEYCODE_BUTTON_A` and `KEYCODE_BUTTON_B` drive it. `docs/verification/PLE-722/go-ui.sh`
+  runs all of it on the Go under the lease, with `windows.py` for VrApi's figures per window.
+
 Connecting and failure messages are drawn inside VR. A console login PIN currently
 requires returning to Oculus TV; the cinema displays this instruction. Initialization
 failure logs `GoCinema`, shows an explanation and returns to the existing task,

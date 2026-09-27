@@ -411,12 +411,25 @@
     <string name="go_vr_connecting">Connecting to PlayStation…</string>
     <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
     <string name="go_vr_pin">Console login PIN required. Use Oculus TV to enter it.</string>
+    <string name="go_vr_pin_pad">Console login PIN required.</string>
+    <string name="go_vr_pin_incorrect">Wrong PIN. Try again</string>
+    <string name="go_vr_pin_clear">Clear</string>
     <string name="go_vr_menu">Pleikkari cinema</string>
     <string name="go_vr_resume">Resume</string>
     <string name="go_vr_recentre">Recentre</string>
     <string name="go_vr_disconnect">Disconnect</string>
     <string name="go_vr_menu_help">Click left: Resume · centre: Recentre · right: Disconnect</string>
     <string name="go_vr_exit">Exit</string>
+    <string name="go_vr_ui_title">VR menu with pointer (Oculus Go)</string>
+    <string name="go_vr_ui_summary">Back opens a menu panel you point at with the Go controller or move through with a gamepad. Turn off for the older touchpad-thirds menu.</string>
+    <string name="go_vr_ui_room">Room</string>
+    <string name="go_vr_ui_room_plain">Plain</string>
+    <string name="go_vr_ui_distance">Distance</string>
+    <string name="go_vr_ui_size">Size</string>
+    <string name="go_vr_ui_rooms_only">Rooms only</string>
+    <string name="go_vr_ui_match_60hz">Match 60 Hz</string>
+    <string name="go_vr_ui_match_60hz_detail">From the next stream</string>
+    <string name="go_vr_ui_stats">Stats overlay</string>
     <string name="go_vr_menu_help_exit">Click left: Resume · centre: Recentre · right: Exit</string>
     <!-- PLE-690: the Go Library's VR launch, drawn in the cinema; keep lines under about 60 characters. -->
     <string name="go_vr_entry_loading">Pleikkari\n\nLooking for your PlayStation…</string>

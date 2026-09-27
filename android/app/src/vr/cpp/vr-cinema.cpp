@@ -13,6 +13,7 @@
 #include "vr-environment.h" // PLE-603: the room around the screen (plain GLES, no VrApi)
 #include "vr-screen-placement.h"
 #include "vr-frame-pacing.h"
+#include "vr-ui-layers.h" // PLE-722: the VR UI toolkit's panels, laser and reticle
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -151,6 +152,13 @@ struct Cinema {
     int64_t frameStartNs = 0;
     int64_t frameSleptNs = 0;
     int64_t pacingWindowStartNs = 0;
+    // PLE-722: the VR UI's panels and pointer; idle (no layer, no draw) until a panel opens.
+    pleikkari::VrUiLayers ui;
+    bool uiReady = false;
+    pleikkari::VrUiRemote remote;
+    // Where the picture was last placed, for panels anchored to it.
+    PleikkariVrVec3 screenCentre{0.0f, 0.0f, 0.0f};
+    PleikkariVrQuat screenOrientation{0.0f, 0.0f, 0.0f, 1.0f};
 
     Cinema() {
         pleikkari_vr_screen_placement_init(&placement);
@@ -161,6 +169,7 @@ struct Cinema {
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
+        if(initialized) ui.destroy();
         if(environment) pleikkari_vr_environment_destroy(environment);
         if(vr) vrapi_LeaveVrMode(vr);
         for(auto &eye : eyes) {
@@ -280,6 +289,13 @@ struct Cinema {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         videoProgram = program(true); messageProgram = program(false);
         if(!videoProgram || !messageProgram) return false;
+        // PLE-722: a UI that fails to build leaves the cinema as it was (the strip menu still works).
+        uiReady = ui.init();
+        if(!uiReady) LOGE("VR UI program failed; panels disabled");
+        // docs/design/vr-ui.md §11: the eye field of view settles the eye buffer's texel density.
+        LOGI("Suggested eye FOV %.1f x %.1f degrees",
+            vrapi_GetSystemPropertyFloat(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_X),
+            vrapi_GetSystemPropertyFloat(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_Y));
         glGenTextures(1, &video); glBindTexture(GL_TEXTURE_EXTERNAL_OES, video); textureParams(GL_TEXTURE_EXTERNAL_OES);
         glGenTextures(1, &message); glBindTexture(GL_TEXTURE_2D, message); textureParams(GL_TEXTURE_2D);
         std::vector<float> mesh;
@@ -416,6 +432,7 @@ struct Cinema {
     int input() {
         unsigned buttons = 0;
         float horizontal = 0.5f;
+        remote = pleikkari::VrUiRemote{};
         for(unsigned i = 0; ; ++i) {
             ovrInputCapabilityHeader header{};
             if(vrapi_EnumerateInputDevices(vr, i, &header) < 0) break;
@@ -426,8 +443,20 @@ struct Cinema {
             buttons |= state.Buttons;
             ovrInputTrackedRemoteCapabilities caps{};
             caps.Header = header;
-            if(vrapi_GetInputDeviceCapabilities(vr, &caps.Header) >= 0 && caps.TrackpadMaxX > 0)
+            const bool hasCaps = vrapi_GetInputDeviceCapabilities(vr, &caps.Header) >= 0;
+            if(hasCaps && caps.TrackpadMaxX > 0)
                 horizontal = state.TrackpadPosition.x / static_cast<float>(caps.TrackpadMaxX);
+            if(!remote.present) {
+                // PLE-722: the first remote points; its pose is read in draw() for the frame's own time.
+                remote.present = true;
+                remote.device = header.DeviceID;
+                remote.buttons = state.Buttons;
+                remote.touching = state.TrackpadStatus != 0;
+                if(hasCaps && caps.TrackpadMaxX > 0 && caps.TrackpadMaxY > 0) {
+                    remote.touchX = std::clamp(state.TrackpadPosition.x / static_cast<float>(caps.TrackpadMaxX), 0.0f, 1.0f);
+                    remote.touchY = std::clamp(state.TrackpadPosition.y / static_cast<float>(caps.TrackpadMaxY), 0.0f, 1.0f);
+                }
+            }
         }
         const unsigned pressed = buttons & ~previousButtons;
         previousButtons = buttons;
@@ -440,7 +469,9 @@ struct Cinema {
         return action;
     }
 
-    int draw(const float *textureTransform, bool showVideo, bool menu, bool newFrame) {
+    // uiControl: PLE-722's panels (null with the strip menu); uiOut receives the pointer's hit.
+    int draw(const float *textureTransform, bool showVideo, bool menu, bool newFrame,
+             const pleikkari::VrUiControl *uiControl, float *uiOut) {
         ++frameIndex;
         double time = vrapi_GetPredictedDisplayTime(vr, frameIndex);
         ovrTracking2 tracking = vrapi_GetPredictedTracking2(vr, time);
@@ -458,12 +489,29 @@ struct Cinema {
             screen = fullPoseRecentre ? ovrMatrix4f_CreateFromQuaternion(&q) : ovrMatrix4f_CreateRotation(0, yaw, 0);
             const auto &p = tracking.HeadPose.Pose.Position;
             screen.M[0][3] = p.x; screen.M[1][3] = p.y; screen.M[2][3] = p.z;
+            screenCentre = {p.x, p.y, p.z};
+            screenOrientation = fullPoseRecentre ? PleikkariVrQuat{q.x, q.y, q.z, q.w}
+                : PleikkariVrQuat{0.0f, std::sin(yaw * 0.5f), 0.0f, std::cos(yaw * 0.5f)};
             LOGI("Screen placed at frame %lld (%s): head yaw %.0f, pitch %.0f degrees, runtime recentres %d%s%s",
                 frameIndex, pleikkari_vr_screen_place_name(place), yaw * 57.2958f, pitch, recenters,
                 fullPoseRecentre ? ", full pose" : "",
                 placement.provisional ? "; provisional, placed again once the head is level" : "");
         }
+        const bool uiFrame = uiReady && uiControl;
+        if(uiFrame) {
+            ovrTracking remotePose{};
+            const bool posed = remote.present &&
+                vrapi_GetInputTrackingState(vr, remote.device, time, &remotePose) == ovrSuccess;
+            ui.beginFrame(*uiControl, tracking, time, remote, posed ? &remotePose : nullptr,
+                place != PLEIKKARI_VR_SCREEN_KEEP, screenCentre, screenOrientation, fullPoseRecentre);
+        }
+        const bool panels = uiFrame && ui.active();
         auto layer = vrapi_DefaultLayerProjection2();
+        if(panels) {
+            // PLE-722: the panels lie under the eye buffer, which lets them through where its alpha is 0.
+            layer.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
+            layer.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
+        }
         layer.HeadPose = tracking.HeadPose;
         layer.Header.Flags |= VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION;
         // Android video/Canvas samples already contain display-encoded RGB values.
@@ -516,6 +564,10 @@ struct Cinema {
             auto mvp = ovrMatrix4f_Multiply(&projection, &mv);
             matrixUniform(glGetUniformLocation(p, "mvp"), mvp);
             if(!environment || !showVideo) glDrawArrays(GL_TRIANGLE_STRIP, 0, (Segments + 1) * 2);
+            if(uiFrame) {
+                ui.drawEye(view, projection);
+                glBindVertexArray(vao);
+            }
             // Keep an opaque black border for timewarp's out-of-range sampling.
             glEnable(GL_SCISSOR_TEST);
             glScissor(0, 0, width, 1); glClear(GL_COLOR_BUFFER_BIT);
@@ -544,12 +596,17 @@ struct Cinema {
             environmentStatsFrame = frameIndex;
         }
         glFlush();
-        const ovrLayerHeader2 *layers[] = {&layer.Header};
+        ovrLayerCylinder2 panelLayers[pleikkari::VrUiMaxPanels];
+        const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
+        const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 1];
+        for(int i = 0; i < panelCount; ++i) layers[i] = &panelLayers[i].Header;
+        layers[panelCount] = &layer.Header;
+        if(uiFrame && uiOut) ui.output(uiOut);
         ovrSubmitFrameDescription2 frame{};
         frame.SwapInterval = 1;
         frame.FrameIndex = frameIndex;
         frame.DisplayTime = time;
-        frame.LayerCount = 1;
+        frame.LayerCount = static_cast<uint32_t>(panelCount + 1);
         frame.Layers = layers;
         submitNs = monotonicNs();
         predictedDisplayNs = std::llround(time * 1e9);
@@ -583,11 +640,34 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setFullPoseRecentre)(JNIEnv *, jobj
     cinema(h)->fullPoseRecentre = enabled;
     pleikkari_vr_screen_placement_request(&cinema(h)->placement);
 }
-extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h, jfloatArray transform, jboolean video, jboolean menu, jboolean newFrame) {
+// uiControl: null for the strip menu, else StreamVrActivity's VrUiFrame.control; uiOut its output.
+extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h, jfloatArray transform, jboolean video,
+        jboolean menu, jboolean newFrame, jfloatArray uiControl, jfloatArray uiOut) {
     float matrix[16];
     env->GetFloatArrayRegion(transform, 0, 16, matrix);
     if(env->ExceptionCheck()) return -1;
-    return cinema(h)->draw(matrix, video, menu, newFrame);
+    if(!uiControl) return cinema(h)->draw(matrix, video, menu, newFrame, nullptr, nullptr);
+    float in[7];
+    env->GetFloatArrayRegion(uiControl, 0, 7, in);
+    if(env->ExceptionCheck()) return -1;
+    pleikkari::VrUiControl control;
+    control.visible = static_cast<int>(in[0]);
+    control.flags = static_cast<int>(in[1]);
+    control.pointerX = in[2];
+    control.pointerY = in[3];
+    control.radius = in[4];
+    control.anchorX = in[5];
+    control.anchorY = in[6];
+    float out[pleikkari::VrUiOutCount];
+    const int result = cinema(h)->draw(matrix, video, menu, newFrame, &control, out);
+    if(uiOut) env->SetFloatArrayRegion(uiOut, 0, pleikkari::VrUiOutCount, out);
+    return result;
+}
+// PLE-722: a toolkit panel's Surface (Canvas draws into it; the compositor latches it), or null.
+extern "C" JNIEXPORT jobject JNICALL JNI_METHOD(createPanel)(JNIEnv *env, jobject, jlong h, jint index, jint width, jint height,
+        jfloat inset, jfloat corner, jint anchor) {
+    Cinema *c = cinema(h);
+    return c->uiReady ? c->ui.createPanel(env, index, width, height, inset, corner, anchor) : nullptr;
 }
 // PLE-698: {submit call, predicted display time} of the last draw, CLOCK_MONOTONIC ns.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(submitTiming)(JNIEnv *env, jobject, jlong h, jlongArray out) {
