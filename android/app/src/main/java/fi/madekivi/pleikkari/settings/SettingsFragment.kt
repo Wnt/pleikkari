@@ -301,6 +301,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				summary = getString(R.string.go_vr_frame_listener_thread_summary)
 				isChecked = preferences.goVrFrameListenerThread
 			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrLateStartKey
+				title = getString(R.string.go_vr_late_start_title)
+				summary = getString(R.string.go_vr_late_start_summary)
+				isChecked = preferences.goVrLateStart
+			})
 		}
 
 		preferenceScreen.findPreference<Preference>(preferences.decoderQcomVtLowLatencyKey)?.isVisible =
