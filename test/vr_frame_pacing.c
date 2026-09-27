@@ -28,8 +28,9 @@ static MunitResult test_config(const MunitParameter params[], void *user)
 	munit_assert_int64(config.period_ns, ==, 16666667LL);
 
 	munit_assert_int(pleikkari_vr_pacing_config_parse(&config,
-		"trace,late,budget=4000,sleep=1500,sweep=500/144/13000,stall=600:20000;1200:30000,bogus"), ==, 6);
+		"trace,late,budget=4000,sleep=1500,sweep=500/144/13000,stall=600:20000;1200:30000,signal,bogus"), ==, 7);
 	munit_assert_true(config.trace);
+	munit_assert_true(config.latch_on_signal);
 	munit_assert_int(config.mode, ==, PLEIKKARI_VR_PACING_LATE);
 	munit_assert_int64(config.budget_ns, ==, 4 * MS);
 	munit_assert_int64(config.sleep_ns, ==, 1500000LL);
@@ -329,6 +330,99 @@ static MunitResult test_experiments(const MunitParameter params[], void *user)
 	return MUNIT_OK;
 }
 
+static MunitResult test_latch_on_signal(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	const int64_t budget = PLEIKKARI_VR_PACING_DEFAULT_BUDGET_NS;
+	PleikkariVrPacingConfig config;
+	pleikkari_vr_pacing_config_default(&config, 72.0f);
+	munit_assert_false(config.latch_on_signal);
+	PleikkariVrPacing pacing;
+	// Off (the default): the loop never waits for the frame signal.
+	pleikkari_vr_pacing_init(&pacing, &config);
+	int64_t release = throttled_frames(&pacing, 4000 * MS, 10, 1);
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, release + 50000LL), ==, 0);
+
+	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "signal"), ==, 1);
+	munit_assert_true(config.latch_on_signal);
+	munit_assert_int(config.mode, ==, PLEIKKARI_VR_PACING_VRAPI);
+	pleikkari_vr_pacing_init(&pacing, &config);
+	// Nothing to key on before the first frame.
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, 4000 * MS), ==, 0);
+	// After a submit VrApi held to its release: wait until the budget before the next release.
+	// Today's loop never sleeps; pace() still starts at once. (400 frames learn the period.)
+	release = throttled_frames(&pacing, 4000 * MS, 400, 1);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	int64_t deadline = pleikkari_vr_pacing_latch_deadline_ns(&pacing, release + 50000LL);
+	munit_assert_int64(deadline, >=, release + REAL_72 - budget - 20000LL);
+	munit_assert_int64(deadline, <=, release + REAL_72 - budget + 20000LL);
+	// A loop top already past that point latches at once, never aiming at a later release.
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, release + REAL_72 - budget + 100000LL), ==, 0);
+	// VrApi's return a little either side of the grid still names the next release.
+	for(int side = -1; side <= 1; side += 2)
+	{
+		const int64_t grid = release + REAL_72;
+		const int64_t returned = grid + side * 400000LL;
+		const int64_t start = release + 50000LL;
+		pleikkari_vr_pacing_frame(&pacing, start, 0, start + 3 * MS, returned, grid + REAL_72 + lead0(REAL_72));
+		munit_assert_true(pacing.throttled);
+		deadline = pleikkari_vr_pacing_latch_deadline_ns(&pacing, returned + 100000LL);
+		munit_assert_int64(deadline, >=, grid + REAL_72 - budget - 20000LL);
+		munit_assert_int64(deadline, <=, grid + REAL_72 - budget + 20000LL);
+		release = grid;
+	}
+
+	// A wait the frame signal ended, then a throttled submit: nothing is held.
+	pleikkari_vr_pacing_latch_waited(&pacing, 3 * MS, true);
+	release = throttled_frames(&pacing, release, 1, 1);
+	munit_assert_false(pacing.latch_hold);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	// A wait to the deadline, and the frame still came late: no wait after it, and the next frame
+	// is held out of that refresh, to the budget before the release after it.
+	pleikkari_vr_pacing_latch_waited(&pacing, 5 * MS, false);
+	const int64_t late = release + REAL_72 + 1 * MS;
+	frame(&pacing, late - 3 * MS, 3 * MS, 2 * MS, release + 2 * REAL_72 + REAL_72 + lead0(REAL_72));
+	munit_assert_false(pacing.throttled);
+	munit_assert_true(pacing.latch_hold);
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, late + 2 * MS + 50000LL), ==, 0);
+	int64_t wake = pleikkari_vr_pacing_wake_ns(&pacing, late + 2 * MS + 50000LL);
+	munit_assert_int64(wake, >=, release + 2 * REAL_72 - budget - 20000LL);
+	munit_assert_int64(wake, <=, release + 2 * REAL_72 - budget + 20000LL);
+	PleikkariVrPacingWindow window;
+	pleikkari_vr_pacing_take_window(&pacing, &window);
+	munit_assert_uint32(window.latch_waits, ==, 2);
+	munit_assert_uint32(window.latch_signalled, ==, 1);
+	munit_assert_int64(window.latch_wait_sum_ns, ==, 8 * MS);
+	munit_assert_int64(window.latch_wait_max_ns, ==, 5 * MS);
+	munit_assert_uint32(window.latch_late, ==, 1);
+	// A late frame the loop did not make wait is today's: no hold.
+	release = throttled_frames(&pacing, release + 2 * REAL_72, 10, 1);
+	frame(&pacing, release + REAL_72 - 2 * MS, 3 * MS, 2 * MS, release + 2 * REAL_72 + REAL_72 + lead0(REAL_72));
+	munit_assert_false(pacing.latch_hold);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + REAL_72 + 3 * MS + 50000LL), ==, 0);
+	pleikkari_vr_pacing_take_window(&pacing, &window);
+	munit_assert_uint32(window.latch_waits, ==, 0);
+	munit_assert_uint32(window.latch_late, ==, 0);
+	munit_assert_int64(window.latch_wait_max_ns, ==, 0);
+
+	// Under the late start the frame already starts at that point: the latch never waits.
+	config.mode = PLEIKKARI_VR_PACING_LATE;
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 6000 * MS, 10, 0);
+	wake = pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_int64(wake, >=, release + REAL_72 - budget - 20000LL);
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, release + 50000LL), ==, 0);
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, wake), ==, 0);
+
+	// PLE-753: nor under the hold and drain, which is not VrApi's release either.
+	config.mode = PLEIKKARI_VR_PACING_HOLD;
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 8000 * MS, 400, 0);
+	munit_assert_int64(pleikkari_vr_pacing_latch_deadline_ns(&pacing, release + 50000LL), ==, 0);
+	return MUNIT_OK;
+}
+
 MunitTest tests_vr_frame_pacing[] = {
 	{ "/config", test_config, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/vrapi_never_sleeps", test_vrapi_never_sleeps, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
@@ -337,5 +431,6 @@ MunitTest tests_vr_frame_pacing[] = {
 	{ "/drain", test_drain, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/hold_drain", test_hold_drain, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/experiments", test_experiments, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
+	{ "/latch_on_signal", test_latch_on_signal, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL }
 };

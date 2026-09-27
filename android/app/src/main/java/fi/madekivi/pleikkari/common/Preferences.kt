@@ -332,6 +332,13 @@ class Preferences(context: Context)
 			?: GO_VR_ROOM_MSAA_DEFAULT
 		set(value) { sharedPreferences.edit().putString(goVrRoomMsaaKey, value.toString()).apply() }
 
+	// PLE-801: A/B the cinema latching on the decoder's frame signal, as late as VrApi's next release
+	// allows, instead of right after the last submit returns (vr-frame-pacing.h).
+	val goVrLatchOnSignalKey get() = "stream_go_vr_latch_on_signal"
+	var goVrLatchOnSignal
+		get() = sharedPreferences.getBoolean(goVrLatchOnSignalKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrLatchOnSignalKey, value).apply() }
+
 	// PLE-755: A/B a warm-up draw of the cinema's eye images before the first submit.
 	val goVrWarmUpKey get() = "stream_go_vr_warm_up"
 	var goVrWarmUp

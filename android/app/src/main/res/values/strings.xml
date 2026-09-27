@@ -413,6 +413,8 @@
     <string name="go_vr_room_msaa_4x">4x MSAA (default)</string>
     <string name="go_vr_room_msaa_2x">2x MSAA, less GPU time</string>
     <string name="go_vr_room_msaa_off">Off, least GPU time</string>
+    <string name="go_vr_latch_on_signal_title">Cinema latches on the new-frame signal</string>
+    <string name="go_vr_latch_on_signal_summary">In the plain cinema, wait for the decoder\'s next frame before drawing, until just before the headset takes the frame, instead of drawing the last one right away, so a frame decoded meanwhile shows a refresh sooner. Does nothing while Cinema frames start late or Keep the headset from running ahead is on.</string>
     <string name="go_vr_warm_up_title">Warm up the cinema</string>
     <string name="go_vr_warm_up_summary">Draw every eye image once before the first frame, so the first frames are quick and the headset does not start a frame ahead.</string>
     <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>

@@ -43,6 +43,7 @@ import java.util.TimeZone
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.LockSupport
 
 /** VrApi owns the display; Android's SurfaceView is only the native-window handoff. */
 class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
@@ -669,8 +670,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     holdDrain -> PACING_HOLD
                     else -> PACING_VRAPI
                 }
-                VrCinemaNative.setPacing(native, pacing, if(holdDrain) PACING_HOLD else PACING_VRAPI,
-                    frameLatency, pacingSpec, refreshHz)
+                // PLE-801: the latch on the frame signal, an A/B setting too (or the debug property's `signal`).
+                val latchOnSignal = VrCinemaNative.setPacing(native, pacing, if(holdDrain) PACING_HOLD else PACING_VRAPI,
+                    Preferences(this@StreamVrActivity).goVrLatchOnSignal, frameLatency, pacingSpec, refreshHz)
                 // PLE-755: pay the first-draw cost before the first submit, not inside it.
                 if(Preferences(this@StreamVrActivity).goVrWarmUp) VrCinemaNative.warmUp(native)
                 val frameReady = AtomicBoolean(false)
@@ -687,7 +689,12 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     Log.i("GoCinema", "Frame-available listener on its own thread")
                     Handler(thread.looper)
                 } else main
-                consumer.setOnFrameAvailableListener({ available.incrementAndGet(); frameReady.set(true) }, listenerHandler)
+                consumer.setOnFrameAvailableListener({
+                    available.incrementAndGet()
+                    frameReady.set(true)
+                    // PLE-801: wake a loop waiting for this frame before its latch.
+                    if(latchOnSignal) LockSupport.unpark(this@CinemaThread)
+                }, listenerHandler)
                 val output = Surface(consumer)
                 decoder = output
                 // Before the output is published: a Library launch attaches its session as soon as it is.
@@ -770,6 +777,22 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         }
                     }
                     picture?.post()
+                    // PLE-801: once video shows and no new frame is in, wait for the decoder's frame signal
+                    // until the latest point that still makes VrApi's next release, rather than drawing the
+                    // last frame now and making a frame decoded meanwhile wait out the submit; no deadline
+                    // (a late frame, a room, the late start) latches at once, as without the setting.
+                    if(latchOnSignal && hasFrame && !frameReady.get()) {
+                        val deadlineNs = VrCinemaNative.latchDeadline(native)
+                        if(deadlineNs > 0L) {
+                            val waitStartNs = System.nanoTime()
+                            var nowNs = waitStartNs
+                            while(nowNs < deadlineNs && !frameReady.get() && running.get()) {
+                                LockSupport.parkNanos(deadlineNs - nowNs)
+                                nowNs = System.nanoTime()
+                            }
+                            VrCinemaNative.latchWaited(native, waitStartNs, frameReady.get())
+                        }
+                    }
                     val newFrame = frameReady.getAndSet(false)
                     if(newFrame) {
                         if(probe) android.os.Trace.beginSection("PLE746 cinema updateTexImage")
@@ -1027,8 +1050,14 @@ internal object VrCinemaNative {
      * PLE-715: mode 0 VrApi's release (default), 1 the late start, 2 (PLE-753) the hold and drain;
      * [roomMode] the same while a room is drawn (a room never takes the late start); log the
      * per-second pacing line.
+     * PLE-801: [latchOnSignal] waits for the frame signal before the latch; returns it (or the spec's `signal`).
      */
-    external fun setPacing(handle: Long, mode: Int, roomMode: Int, log: Boolean, spec: String, refreshHz: Float)
+    external fun setPacing(handle: Long, mode: Int, roomMode: Int, latchOnSignal: Boolean, log: Boolean, spec: String,
+        refreshHz: Float): Boolean
+    /** PLE-801: until when (System.nanoTime) the loop may wait for the frame signal before the latch; 0 latches now. */
+    external fun latchDeadline(handle: Long): Long
+    /** PLE-801: the wait before the latch, from [waitStartNs] to now; [signalled] if a frame came before the deadline. */
+    external fun latchWaited(handle: Long, waitStartNs: Long, signalled: Boolean)
     external fun warmUp(handle: Long)
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)

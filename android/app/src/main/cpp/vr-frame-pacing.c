@@ -63,6 +63,8 @@ int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char
 			config->mode = PLEIKKARI_VR_PACING_HOLD;
 		else if(strcmp(item, "flusheyes") == 0)
 			config->flush_eyes = true;
+		else if(strcmp(item, "signal") == 0)
+			config->latch_on_signal = true;
 		else if(strncmp(item, "sleep=", 6) == 0)
 			config->sleep_ns = parse_us(value, NULL);
 		else if(strncmp(item, "budget=", 7) == 0)
@@ -146,19 +148,49 @@ static bool drain_due(PleikkariVrPacing *pacing, int64_t now_ns)
 	return true;
 }
 
+int64_t pleikkari_vr_pacing_latch_deadline_ns(const PleikkariVrPacing *pacing, int64_t now_ns)
+{
+	const PleikkariVrPacingConfig *config = &pacing->config;
+	// Only right after a submit VrApi held to its release, where the loop knows its refresh; after a
+	// late frame, or before the first, it latches at once as without the setting.
+	if(!config->latch_on_signal || config->mode != PLEIKKARI_VR_PACING_VRAPI || !pacing->return_ns
+			|| !pacing->throttled)
+		return 0;
+	// The release after the one that submit returned at: the grid point nearest a period later, so a
+	// grid a little either side of the return still names the right one.
+	const int64_t release = pleikkari_vr_pacing_next_release_ns(pacing, pacing->return_ns + pacing->period_ns / 2);
+	if(!release)
+		return 0;
+	const int64_t deadline = release - config->budget_ns;
+	return deadline > now_ns ? deadline : 0;
+}
+
+void pleikkari_vr_pacing_latch_waited(PleikkariVrPacing *pacing, int64_t waited_ns, bool signalled)
+{
+	PleikkariVrPacingWindow *window = &pacing->window;
+	pacing->latch_waited = true;
+	window->latch_waits++;
+	if(signalled)
+		window->latch_signalled++;
+	window->latch_wait_sum_ns += waited_ns;
+	if(waited_ns > window->latch_wait_max_ns)
+		window->latch_wait_max_ns = waited_ns;
+}
+
 int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns)
 {
 	const PleikkariVrPacingConfig *config = &pacing->config;
 	const uint64_t frame = pacing->frames;
 	int64_t wake = 0;
 	// The late start aims at the next release on the grid; so does the hold, but only after a
-	// late frame. A start already inside the budget goes at once while the release is still in
-	// reach, else it waits for the budget before the release after it.
+	// late frame (and PLE-801's latch on the signal after a late frame it made wait). A start
+	// already inside the budget goes at once while the release is still in reach, else it waits
+	// for the budget before the release after it.
 	const bool late_frame = pacing->return_ns > 0 && !pacing->throttled;
 	int64_t release = pleikkari_vr_pacing_next_release_ns(pacing, now_ns);
 	pacing->draining = false;
 	if(release && (config->mode == PLEIKKARI_VR_PACING_LATE
-			|| (config->mode == PLEIKKARI_VR_PACING_VRAPI && config->hold && late_frame)))
+			|| (config->mode == PLEIKKARI_VR_PACING_VRAPI && (config->hold || pacing->latch_hold) && late_frame)))
 	{
 		if(release - now_ns < PLEIKKARI_VR_PACING_MIN_START_NS)
 			release += pacing->period_ns;
@@ -207,6 +239,12 @@ void pleikkari_vr_pacing_frame(PleikkariVrPacing *pacing, int64_t start_ns, int6
 		window->throttled++;
 	else
 		window->late++;
+	// PLE-801: a frame the latch wait brought close to the release and that still came late holds
+	// the next one out of this refresh.
+	pacing->latch_hold = pacing->latch_waited && !throttled;
+	if(pacing->latch_hold)
+		window->latch_late++;
+	pacing->latch_waited = false;
 	window->slept_sum_ns += slept_ns;
 	if(slept_ns > window->slept_max_ns)
 		window->slept_max_ns = slept_ns;
