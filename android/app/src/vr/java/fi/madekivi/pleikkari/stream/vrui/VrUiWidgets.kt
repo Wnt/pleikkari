@@ -231,8 +231,12 @@ class VrList(val viewport: Box, val children: List<Widget>)
 	}
 }
 
-/** One panel's content: its widgets (lists included) and the pointer and pad state over them. */
-class VrScreen(val width: Int, val height: Int, val title: String, val widgets: List<Widget>, val lists: List<VrList> = emptyList())
+/**
+ * One panel's content: its widgets (lists included) and the pointer and pad state over them.
+ * [initialFocus]: where the pad's first move lands (PLE-730: Home's last-played card), else the first focusable.
+ */
+class VrScreen(val width: Int, val height: Int, val title: String, val widgets: List<Widget>, val lists: List<VrList> = emptyList(),
+	val initialFocus: Widget? = null)
 {
 	val all: List<Widget> get() = widgets + lists.flatMap { it.children }
 

@@ -60,6 +60,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var debugInputReceiver: BroadcastReceiver? = null
     /** PLE-722: when the remote's Back went down, as Android saw it (a long press recentres). */
     private var backDownMs = 0L
+    /** PLE-730: VR Home's page (the Library flow's, then the connecting sheet); null once the stream shows. */
+    private var homeState: VrHomeState? = null
+    /** PLE-730: the console a Library launch connects to, for the connecting sheet's title. */
+    private var consoleName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,8 +106,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             // PLE-739: debug builds only, `adb shell setprop debug.pleikkari.go_entry_no_console 1`: the
             // Library flow sees no linked PS5, so its no-console message shows without clearing app data.
             val noConsoles = BuildConfig.DEBUG && debugProperty(NO_CONSOLE_PROPERTY) == "1"
-            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, ::showStatus, ::libraryConnect, ::openPanel, ::finish)
-                .also { it.start() }
+            libraryFlow = GoVrLibraryFlow(this, chooseFirst, noConsoles, ::showStatus, ::setHome, ::libraryConnect,
+                ::openPanel, ::finish).also { it.start() }
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
@@ -126,6 +130,12 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     else -> getString(R.string.go_vr_connecting)
                 }
                 cinema?.status = statusText
+                // PLE-730: VR Home's connecting sheet until the stream shows. A PIN, a quit or an error
+                // keeps today's text on the strip.
+                setHome(when(state) {
+                    StreamStateIdle, StreamStateConnecting, StreamStateLinkedStarting -> connectingSheet()
+                    else -> null
+                })
             }
             // PLE-722: the VR menu's stats overlay, once a second while it is on.
             vm.session.streamStats.observe(this) { stats ->
@@ -141,11 +151,46 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         cinema?.status = text
     }
 
+    /** PLE-730: VR Home's page, for the running VR UI and any the next cinema start makes. */
+    private fun setHome(state: VrHomeState?) {
+        homeState = state
+        cinema?.ui?.home(state)
+    }
+
+    private fun connectingSheet(): VrHomeState {
+        val name = consoleName
+        return VrHomeState.Status(name ?: getString(R.string.go_vr_home_title),
+            if(name != null) getString(R.string.go_vr_home_connecting, name) else getString(R.string.go_vr_connecting),
+            emptyList(), busy = true, buttons = listOf(VrHomeButton(getString(R.string.go_vr_home_cancel), VrHomeAction.Cancel)),
+            back = VrHomeAction.Cancel)
+    }
+
+    /**
+     * PLE-730: a VR Home button, from the GoVrUi thread. Before the stream the Library flow acts on
+     * it; Cancel while a stream connects leaves as Disconnect does.
+     */
+    private fun homeAction(action: VrHomeAction) = main.post {
+        if(isFinishing) return@post
+        Log.i(TAG_ENTRY, "Home: $action")
+        val flow = libraryFlow
+        when(action) {
+            is VrHomeAction.Play -> flow?.play(action.id)
+            VrHomeAction.Cancel -> if(flow != null) flow.cancel() else leave()
+            VrHomeAction.Retry -> flow?.retry()
+            VrHomeAction.Consoles -> flow?.consoles()
+            VrHomeAction.OculusTv -> openPanel()
+            // Until the Go has a VR Settings sheet: the menu holds the room, screen and stats settings.
+            VrHomeAction.Settings -> cinema?.ui?.openMenu("Home Settings")
+            VrHomeAction.Exit -> finish()
+        }
+    }
+
     /** PLE-690: the Library flow picked and found a console; stream it into the running cinema. */
-    private fun libraryConnect(info: ConnectInfo) {
+    private fun libraryConnect(info: ConnectInfo, name: String) {
         picking = false
         libraryFlow?.stop()
         libraryFlow = null
+        consoleName = name
         createModel(info)
         attachSession()
     }
@@ -261,6 +306,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // PLE-722: the VR UI toolkit's menu unless the switch keeps PLE-602's strip menu.
         val prefs = Preferences(this)
         val ui = if(prefs.goVrUi) createUi(prefs) else null
+        ui?.home(homeState)
         cinema = CinemaThread(surface, profile, frameLatency, ui).also { it.status = statusText; it.start() }
     }
 
@@ -293,7 +339,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // right and y up of the open menu's middle, so screencaps can show hover and press (third_party README).
         val debugPointer: (() -> String)? = if(BuildConfig.DEBUG) { { debugProperty(POINTER_PROPERTY) } } else null
         val host = VrUiHost(this, { VrMenu.build(model, text) }, { VrMenu.refresh(it, model) }, ::menuChanged,
-            prefs.mappingShare, prefs.mappingOptions, debugPointer)
+            prefs.mappingShare, prefs.mappingOptions, debugPointer, ::homeAction)
         model.host = host
         host.showStats(prefs.streamDiagnosticsOverlayEnabled)
         return host
@@ -510,7 +556,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 while(running.get()) {
                     VrCinemaNative.pace(native)
                     frame++
-                    val input = VrCinemaNative.input(native) or debugInput.getAndSet(0)
+                    val debug = debugInput.getAndSet(0)
+                    val input = VrCinemaNative.input(native) or debug
                     val host = ui
                     if(host != null) {
                         // PLE-722: Back opens and closes the VR menu; a click with no menu opens it (the
@@ -518,7 +565,14 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         // console, whose chooser keeps the touchpad thirds.
                         if(input and MENU != 0) host.back()
                         host.clickOpensMenu = !picking
-                        if(input and CLICK != 0 && picking && !host.menuOpen) {
+                        // PLE-730: VR Home takes the remote through the pointer; the debug broadcast's
+                        // thirds (PLE-739) drive it as the pad's D-pad and A.
+                        if(debug and CLICK != 0 && host.homeShown && !host.menuOpen) host.debugKey(when {
+                            debug and CENTRE != 0 -> KeyEvent.KEYCODE_BUTTON_A
+                            debug and RIGHT != 0 -> KeyEvent.KEYCODE_DPAD_DOWN
+                            else -> KeyEvent.KEYCODE_DPAD_UP
+                        })
+                        if(input and CLICK != 0 && picking && !host.menuOpen && !host.homeShown) {
                             val touch = when {
                                 input and CENTRE != 0 -> GoVrLibraryFlow.Touch.CENTRE
                                 input and RIGHT != 0 -> GoVrLibraryFlow.Touch.RIGHT
@@ -566,6 +620,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         getString(R.string.go_vr_resume) + "     |     " + getString(R.string.go_vr_recentre) +
                         "     |     " + getString(if(picking) R.string.go_vr_exit else R.string.go_vr_disconnect) + "\n\n" +
                         getString(if(picking) R.string.go_vr_menu_help_exit else R.string.go_vr_menu_help)
+                    // PLE-730: VR Home carries the words; the strip under it stays blank.
+                    else if(host != null && host.homeShown) ""
                     else status
                     if(text != previousText) {
                         uploadText(VrCinemaNative.messageTexture(native), text)
