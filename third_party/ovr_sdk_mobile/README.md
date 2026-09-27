@@ -148,6 +148,39 @@ menu closed (and the stats overlay off) the frame is exactly the old one: one la
   `KEYCODE_BUTTON_A` and `KEYCODE_BUTTON_B` drive it. `docs/verification/PLE-722/go-ui.sh`
   runs all of it on the Go under the lease, with `windows.py` for VrApi's figures per window.
 
+**VR Home (PLE-730, `docs/design/vr-ui.md` §10.8).** With the VR menu switch on, the Library
+flow above is drawn as VR Home, not as strip text. Home appears on the menu's own gaze panel
+whenever the menu is closed, so it adds no layer. It is summoned at the gaze, then world-locked,
+and a click away from it brings it back in front. `GoVrLibraryFlow` describes each screen as a
+`VrHomeState`, and `vrui/VrHome.kt` builds it.
+
+- **Cards.** One card per linked PS5, then the Oculus TV screen row, with Settings and Exit
+  along the bottom. A card shows the console's name, its state and a Play pill; the whole card is
+  the target. The states are Ready, "In rest mode · Play wakes it", "Looking on this network…",
+  "Not found on this network" (after the 15 s find timeout) and "Not discovered · Play tries its
+  saved address". Settings opens PLE-732's Go Settings sheet on the same panel; Back returns
+  to the menu, then to Home.
+- **Status sheets** show a spinner that turns at 8 redraws a second:
+  - Looking for or waking a console: Cancel returns to the cards.
+  - "did not answer": Try again, or Consoles.
+  - No PS5 linked: Oculus TV screen, or Exit.
+  - "Connecting to <console>…": Cancel leaves as Disconnect does. This sheet shows until
+    `StreamStateConnected`, for a Connect-started stream too.
+- **What stays on the strip.** A PIN request, a quit and an error keep today's strip text.
+- **Input.** Point and click. On a pad, D-pad or stick focus starts on the last-played card, and
+  A plays it. Back (the remote or the pad's B) pops a sheet to the cards; on the cards it opens
+  the menu, which has Exit.
+- **Page updates.** New words (a discovery update, looking turning to waking) change the page in
+  place, so a press in progress and the pad's focus survive them.
+- **Fallback.** With the switch off, or if the panels cannot be made, the strip text and touchpad
+  thirds above are unchanged.
+- **Logcat** (tag `GoVrUi`): `Home: <page>`, `Home closed`, `Home Back: <action>` and
+  `Home summoned to the gaze`. GoVrEntry logs `Home: <action>`.
+- **Debug builds.** PLE-739's `DEBUG_GO_VR_INPUT` broadcast drives Home: `left` and `right` are
+  the pad's D-pad up and down, `centre` is A, and `back` is Back. `debug.pleikkari.vr_pointer`
+  aims at Home as it does at the menu. `docs/verification/PLE-730/go-home.sh` runs it on the Go
+  under the lease.
+
 Connecting and failure messages are drawn inside VR. A console login PIN currently
 requires returning to Oculus TV; the cinema displays this instruction. Initialization
 failure logs `GoCinema`, shows an explanation and returns to the existing task,

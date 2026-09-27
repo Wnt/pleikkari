@@ -408,11 +408,13 @@
     <string name="go_vr_late_start_title">Cinema frames start late</string>
     <string name="go_vr_late_start_summary">Draw each frame of the plain cinema just before the headset takes it, instead of right after the last one, and keep the headset from running a frame ahead, so it shows a newer video frame.</string>
     <string name="go_vr_hold_drain_title">Keep the headset from running ahead</string>
+    <string name="go_vr_hold_drain_summary">In the plain cinema and in rooms, keep the headset from running a frame ahead, so each frame reaches the display one refresh sooner. Frames still start as soon as the headset takes the last one, so rooms keep their drawing time.</string>
     <string name="go_vr_room_msaa_title">Room anti-aliasing</string>
     <string name="go_vr_room_msaa_4x">4x MSAA (default)</string>
     <string name="go_vr_room_msaa_2x">2x MSAA, less GPU time</string>
     <string name="go_vr_room_msaa_off">Off, least GPU time</string>
-    <string name="go_vr_hold_drain_summary">In the plain cinema and in rooms, keep the headset from running a frame ahead, so each frame reaches the display one refresh sooner. Frames still start as soon as the headset takes the last one, so rooms keep their drawing time.</string>
+    <string name="go_vr_warm_up_title">Warm up the cinema</string>
+    <string name="go_vr_warm_up_summary">Draw every eye image once before the first frame, so the first frames are quick and the headset does not start a frame ahead.</string>
     <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>
     <string name="go_vr_connecting">Connecting to PlayStation…</string>
     <string name="go_vr_disconnected">Stream ended. Press Back for the menu.</string>
@@ -454,4 +456,29 @@
     <string name="go_vr_entry_choose">Choose a PlayStation</string>
     <string name="go_vr_entry_panel">Link a console or change settings (Oculus TV screen)</string>
     <string name="go_vr_entry_choose_help">Click left or right to move, centre to choose.\nGamepad: D-pad to move, A to choose, B to leave.</string>
+    <!-- PLE-730: VR Home on the Go, drawn on a VR UI panel: console cards and status sheets. Buttons fit about 16 characters, card lines about 50. -->
+    <string name="go_vr_home_title">Pleikkari</string>
+    <string name="go_vr_home_loading">Looking for your PlayStation…</string>
+    <string name="go_vr_home_play">Play</string>
+    <string name="go_vr_home_ready">Ready</string>
+    <string name="go_vr_home_rest">In rest mode · Play wakes it</string>
+    <string name="go_vr_home_manual">Not discovered · Play tries its saved address</string>
+    <string name="go_vr_home_looking">Looking on this network…</string>
+    <string name="go_vr_home_not_found">Not found on this network</string>
+    <string name="go_vr_home_last_played">%1$s · last played</string>
+    <string name="go_vr_home_settings">Settings</string>
+    <string name="go_vr_home_cancel">Cancel</string>
+    <string name="go_vr_home_retry">Try again</string>
+    <string name="go_vr_home_consoles">Consoles</string>
+    <string name="go_vr_home_address">Set address</string>
+    <string name="go_vr_address_title">Console address</string>
+    <string name="go_vr_address_save">Save</string>
+    <string name="go_vr_home_oculus_tv">Oculus TV screen</string>
+    <string name="go_vr_home_finding_detail">It must be on, or in rest mode, on the same network as this headset.</string>
+    <string name="go_vr_home_waking_detail">A PS5 takes about 20 seconds to wake.</string>
+    <string name="go_vr_home_not_found_message">%1$s did not answer on this network.</string>
+    <string name="go_vr_home_not_found_detail">Check that it is on or in rest mode, on the same network as this headset.</string>
+    <string name="go_vr_home_no_console">No PlayStation 5 is linked to Pleikkari yet.</string>
+    <string name="go_vr_home_no_console_detail">Link one in Pleikkari on the Oculus TV screen.</string>
+    <string name="go_vr_home_connecting">Connecting to %1$s…</string>
 </resources>

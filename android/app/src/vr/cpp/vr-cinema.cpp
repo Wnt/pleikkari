@@ -324,6 +324,42 @@ struct Cinema {
         return glGetError() == GL_NO_ERROR;
     }
 
+    // PLE-755: the first frame of a session pays the driver's first-use work (program binaries,
+    // texture and swap-chain image allocation, tile setup) and takes 25-34 ms; the late submit
+    // followed by a quick one is what puts VrApi's scheduler a refresh ahead (PLE-715). Draw
+    // every swap-chain image of both eyes once with both screen programs, and wait for the GPU,
+    // before the first submit. Nothing drawn here is submitted: the first frame clears it.
+    void warmUp() {
+        const int64_t start = monotonicNs();
+        const auto identity = ovrMatrix4f_CreateIdentity();
+        glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
+        glBindVertexArray(vao);
+        glActiveTexture(GL_TEXTURE0);
+        for(auto &eye : eyes) {
+            for(GLuint fbo : eye.fbos) {
+                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                glViewport(0, 0, width, height);
+                glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+                for(GLuint p : {videoProgram, messageProgram}) {
+                    const bool isVideo = p == videoProgram;
+                    glUseProgram(p);
+                    glBindTexture(isVideo ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, isVideo ? video : message);
+                    glUniform1i(glGetUniformLocation(p, "picture"), 0);
+                    matrixUniform(glGetUniformLocation(p, "textureTransform"), identity);
+                    matrixUniform(glGetUniformLocation(p, "mvp"), identity);
+                    glDrawArrays(GL_TRIANGLE_STRIP, 0, (Segments + 1) * 2);
+                }
+                glClear(GL_COLOR_BUFFER_BIT);
+            }
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(0);
+        glUseProgram(0);
+        glFinish();
+        for(GLenum error = glGetError(); error != GL_NO_ERROR; error = glGetError()) LOGE("GL error 0x%x in the warm-up draw", error);
+        LOGI("Warm-up draw: %zu + %zu eye images, %.2f ms", eyes[0].fbos.size(), eyes[1].fbos.size(), (monotonicNs() - start) / 1e6);
+    }
+
     // PLE-603: apply the environment setting. PLAIN drops the renderer so nothing of it
     // runs per frame; anything else builds or reconfigures it on this GL thread. A room
     // that fails to build logs and falls back to the plain screen rather than failing VR.
@@ -521,7 +557,7 @@ struct Cinema {
         }
         const bool panels = uiFrame && ui.active();
         auto layer = vrapi_DefaultLayerProjection2();
-        if(panels) {
+        if(panels && !ui.overlay()) {
             // PLE-722: the panels lie under the eye buffer, which lets them through where its alpha is 0.
             layer.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
             layer.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
@@ -619,11 +655,13 @@ struct Cinema {
         flushNs = monotonicNs();
         glFlush();
         flushedNs = monotonicNs();
-        ovrLayerCylinder2 panelLayers[pleikkari::VrUiMaxPanels];
+        ovrLayer_Union2 panelLayers[pleikkari::VrUiMaxPanels];
         const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
         const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 1];
-        for(int i = 0; i < panelCount; ++i) layers[i] = &panelLayers[i].Header;
-        layers[panelCount] = &layer.Header;
+        // PLE-761: the overlay switch submits the panels after the eye buffer instead of before it.
+        const bool overlay = panels && ui.overlay();
+        layers[overlay ? 0 : panelCount] = &layer.Header;
+        for(int i = 0; i < panelCount; ++i) layers[(overlay ? 1 : 0) + i] = &panelLayers[i].Header;
         if(uiFrame && uiOut) ui.output(uiOut);
         ovrSubmitFrameDescription2 frame{};
         frame.SwapInterval = 1;
@@ -663,6 +701,7 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jl
     cinema(h)->setPacing(known(mode), known(roomMode), log, chars, refreshHz);
     if(chars) env->ReleaseStringUTFChars(spec, chars);
 }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(warmUp)(JNIEnv *, jobject, jlong h) { cinema(h)->warmUp(); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { pleikkari_vr_screen_placement_request(&cinema(h)->placement); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(setFullPoseRecentre)(JNIEnv *, jobject, jlong h, jboolean enabled) {
     cinema(h)->fullPoseRecentre = enabled;
@@ -698,6 +737,17 @@ extern "C" JNIEXPORT jobject JNICALL JNI_METHOD(createPanel)(JNIEnv *env, jobjec
     return c->uiReady ? c->ui.createPanel(env, index, width, height, inset, corner, anchor) : nullptr;
 }
 // PLE-698: {submit call, predicted display time} of the last draw, CLOCK_MONOTONIC ns.
+// PLE-761: debug builds only, before createPanel; see vr-ui-layers.h's VrUiDebug.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetUiLayers)(JNIEnv *, jobject, jlong h, jboolean quad, jboolean overlay,
+        jfloat texelScale, jboolean filterExpensive, jint maxPanels) {
+    pleikkari::VrUiDebug debug;
+    debug.quad = quad;
+    debug.overlay = overlay;
+    debug.texelScale = std::clamp(static_cast<float>(texelScale), 0.5f, 2.0f);
+    debug.filterExpensive = filterExpensive;
+    debug.maxPanels = std::clamp(static_cast<int>(maxPanels), 1, pleikkari::VrUiMaxPanels);
+    cinema(h)->ui.setDebug(debug);
+}
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(submitTiming)(JNIEnv *env, jobject, jlong h, jlongArray out) {
     const jlong timing[] = {cinema(h)->submitNs, cinema(h)->predictedDisplayNs};
     env->SetLongArrayRegion(out, 0, 2, timing);

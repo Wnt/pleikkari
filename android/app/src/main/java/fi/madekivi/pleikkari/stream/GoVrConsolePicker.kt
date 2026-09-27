@@ -59,6 +59,17 @@ object GoVrConsolePicker {
             ?.let { Route.Manual(it.host) } ?: Route.Unknown
     }
 
+    /** PLE-730: what a VR Home console card says; Play works in every state (it finds, wakes, connects). */
+    enum class Presence { READY, STANDBY, MANUAL, LOOKING, NOT_FOUND }
+
+    /** [stillLooking]: discovery has not yet had its find timeout to see an unknown console. */
+    fun presence(route: Route, stillLooking: Boolean) = when(route) {
+        is Route.Ready -> Presence.READY
+        is Route.Standby -> Presence.STANDBY
+        is Route.Manual -> Presence.MANUAL
+        Route.Unknown -> if(stillLooking) Presence.LOOKING else Presence.NOT_FOUND
+    }
+
     /**
      * The in-VR list: every console, then one row that opens the 2D app on the Oculus TV screen.
      * Touchpad left/right thirds (or the pad's D-pad) move, the centre (or A) chooses.

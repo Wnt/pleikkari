@@ -119,19 +119,26 @@ jobject VrUiLayers::createPanel(JNIEnv *env, int index, int width, int height, f
     Panel &panel = panels[index];
     if(panel.chain) vrapi_DestroyTextureSwapChain(panel.chain);
     panel = Panel{};
+    // PLE-761: the texel-density switch scales the texture, keeping its angular size; the toolkit
+    // scales its Canvas to match.
+    width = static_cast<int>(std::lround(width * debug.texelScale));
+    height = static_cast<int>(std::lround(height * debug.texelScale));
+    inset *= debug.texelScale; corner *= debug.texelScale;
+    const float texelsPerDegree = PLEIKKARI_VR_UI_TEXELS_PER_DEGREE * debug.texelScale;
     panel.chain = vrapi_CreateAndroidSurfaceSwapChain(width, height);
     if(!panel.chain) { LOGE("Panel %d: no Android surface swapchain", index); return nullptr; }
     panel.width = width; panel.height = height; panel.inset = inset; panel.corner = corner; panel.anchor = anchor;
-    pleikkari_vr_panel_init(&panel.shape, width, height, PLEIKKARI_VR_UI_RADIUS_M);
+    pleikkari_vr_panel_init_density(&panel.shape, width, height, PLEIKKARI_VR_UI_RADIUS_M, texelsPerDegree);
     jobject surface = vrapi_GetTextureSwapChainAndroidSurface(panel.chain);
     if(ANativeWindow *window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr) {
         // Canvas draws premultiplied RGBA; the panel needs its alpha for the rounded corners.
         ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBA_8888);
         ANativeWindow_release(window);
     }
-    LOGI("Panel %d: %dx%d texels, %.1f x %.1f degrees, %s-anchored cylinder layer", index, width, height,
-        width / PLEIKKARI_VR_UI_TEXELS_PER_DEGREE, height / PLEIKKARI_VR_UI_TEXELS_PER_DEGREE,
-        anchor == VrUiAnchorGaze ? "gaze" : "picture");
+    LOGI("Panel %d: %dx%d texels, %.1f x %.1f degrees, %s-anchored %s %s layer%s, at most %d panels", index,
+        width, height, width / texelsPerDegree, height / texelsPerDegree,
+        anchor == VrUiAnchorGaze ? "gaze" : "picture", debug.overlay ? "overlay" : "underlay",
+        debug.quad ? "quad" : "cylinder", debug.filterExpensive ? ", expensive filter" : "", debug.maxPanels);
     return surface ? env->NewLocalRef(surface) : nullptr;
 }
 
@@ -147,7 +154,7 @@ void VrUiLayers::beginFrame(const VrUiControl &control, const ovrTracking2 &head
     for(int i = 0; i < VrUiMaxPanels; ++i) {
         Panel &panel = panels[i];
         if(!panel.chain) continue;
-        const bool wanted = (control.visible & (1 << i)) != 0;
+        const bool wanted = (control.visible & (1 << i)) != 0 && i < debug.maxPanels;
         panel.shape.radius_m = control.radius;
         if(panel.anchor == VrUiAnchorPicture) {
             pleikkari_vr_panel_place_relative(&panel.shape, screenCentre, screenOrientation, control.anchorX, control.anchorY);
@@ -211,11 +218,12 @@ void VrUiLayers::drawEye(const ovrMatrix4f &view, const ovrMatrix4f &projection)
     glEnableVertexAttribArray(0);
     // 1. Footprints: colour times one minus the panel's alpha; eye-buffer alpha 0.
     glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ZERO);
-    glUniform1i(modeLocation, 0);
+    // PLE-761: a flat footprint under a quad; none under an overlay, which covers the eye buffer.
+    glUniform1i(modeLocation, debug.quad ? 3 : 0);
     glBindBuffer(GL_ARRAY_BUFFER, stripVertices);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
     for(const Panel &panel : panels) {
-        if(!panel.chain || panel.opacity <= 0.0f) continue;
+        if(debug.overlay || !panel.chain || panel.opacity <= 0.0f) continue;
         float model[16];
         pleikkari_vr_panel_matrix(&panel.shape, false, model);
         const ovrMatrix4f modelMatrix = toOvr(model);
@@ -258,17 +266,46 @@ void VrUiLayers::drawEye(const ovrMatrix4f &view, const ovrMatrix4f &projection)
     glBindVertexArray(0);
 }
 
-int VrUiLayers::layers(const ovrTracking2 &head, ovrLayerCylinder2 *out) const {
+int VrUiLayers::layers(const ovrTracking2 &head, ovrLayer_Union2 *out) const {
     int count = 0;
     // Back to front: the picture-anchored readout under the summoned menu.
     for(int i = VrUiMaxPanels - 1; i >= 0; --i) {
         const Panel &panel = panels[i];
         if(!panel.chain || panel.opacity <= 0.0f) continue;
-        ovrLayerCylinder2 layer = vrapi_DefaultLayerCylinder2();
-        layer.Header.Flags |= VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION |
-                              VRAPI_FRAME_LAYER_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
+        const uint32_t headerFlags = VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION |
+                                     VRAPI_FRAME_LAYER_FLAG_INHIBIT_SRGB_FRAMEBUFFER |
+                                     (debug.filterExpensive ? VRAPI_FRAME_LAYER_FLAG_FILTER_EXPENSIVE : 0);
         // Canvas pixels are premultiplied; a fade scales all four channels (§10.2).
-        layer.Header.ColorScale = {panel.opacity, panel.opacity, panel.opacity, panel.opacity};
+        const ovrVector4f colorScale = {panel.opacity, panel.opacity, panel.opacity, panel.opacity};
+        if(debug.quad) {
+            // PLE-761: a flat quad at the cylinder's radius, as wide at its middle as the arc.
+            ovrLayerProjection2 quad = vrapi_DefaultLayerProjection2();
+            quad.Header.Flags |= headerFlags;
+            quad.Header.ColorScale = colorScale;
+            quad.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
+            quad.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
+            quad.HeadPose = head.HeadPose;
+            float model[16];
+            pleikkari_vr_panel_matrix(&panel.shape, false, model);
+            const float r = panel.shape.radius_m;
+            const ovrMatrix4f place = toOvr(model);
+            const ovrMatrix4f push = ovrMatrix4f_CreateTranslation(0.0f, 0.0f, -r);
+            const ovrMatrix4f size = ovrMatrix4f_CreateScale(r * std::tan(panel.shape.arc_rad * 0.5f),
+                                                             r * panel.shape.height_tan * 0.5f, 1.0f);
+            const ovrMatrix4f pushed = ovrMatrix4f_Multiply(&place, &push);
+            const ovrMatrix4f modelMatrix = ovrMatrix4f_Multiply(&pushed, &size);
+            for(int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; ++eye) {
+                const ovrMatrix4f modelView = ovrMatrix4f_Multiply(&head.Eye[eye].ViewMatrix, &modelMatrix);
+                quad.Textures[eye].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromUnitSquare(&modelView);
+                quad.Textures[eye].ColorSwapChain = panel.chain;
+                quad.Textures[eye].SwapChainIndex = 0;
+            }
+            out[count++].Projection = quad;
+            continue;
+        }
+        ovrLayerCylinder2 layer = vrapi_DefaultLayerCylinder2();
+        layer.Header.Flags |= headerFlags;
+        layer.Header.ColorScale = colorScale;
         layer.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
         layer.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
         layer.HeadPose = head.HeadPose;
@@ -287,7 +324,7 @@ int VrUiLayers::layers(const ovrTracking2 &head, ovrLayerCylinder2 *out) const {
             layer.Textures[eye].TextureMatrix.M[1][1] = 0.5f;
             layer.Textures[eye].TextureMatrix.M[1][2] = 0.25f;
         }
-        out[count++] = layer;
+        out[count++].Cylinder = layer;
     }
     return count;
 }

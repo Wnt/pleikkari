@@ -257,7 +257,7 @@ class VrFocus
 		val current = focused?.takeIf { it.focusable && it in screen.all }
 		if(current == null)
 		{
-			set(screen.all.firstOrNull { it.focusable })
+			set(screen.initialFocus?.takeIf { it.focusable } ?: screen.all.firstOrNull { it.focusable })
 			ringVisible = true
 			return true
 		}

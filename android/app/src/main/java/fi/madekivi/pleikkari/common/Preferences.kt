@@ -332,6 +332,12 @@ class Preferences(context: Context)
 			?: GO_VR_ROOM_MSAA_DEFAULT
 		set(value) { sharedPreferences.edit().putString(goVrRoomMsaaKey, value.toString()).apply() }
 
+	// PLE-755: A/B a warm-up draw of the cinema's eye images before the first submit.
+	val goVrWarmUpKey get() = "stream_go_vr_warm_up"
+	var goVrWarmUp
+		get() = sharedPreferences.getBoolean(goVrWarmUpKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrWarmUpKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)

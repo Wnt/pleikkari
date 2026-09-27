@@ -1,0 +1,11 @@
+09-27 15:50:43.232 20303 20320 I GoVrUi  : Stats overlay off
+09-27 15:50:43.914 20303 20321 I GoCinema: Suggested eye FOV 90.0 x 90.0 degrees
+09-27 15:50:43.920 20303 20321 I GoVrUi  : Panel 0: 800x448 texels, 50.0 x 28.0 degrees, gaze-anchored cylinder layer
+09-27 15:50:43.922 20303 20321 I GoVrUi  : Panel 1: 400x112 texels, 25.0 x 7.0 degrees, picture-anchored cylinder layer
+09-27 15:50:43.923 20303 20320 I GoVrUi  : Panels attached: menu true, stats true
+09-27 15:50:56.048 20303 20303 I GoVrUi  : Remote Back held -27703531 ms
+09-27 15:51:05.570 20303 20303 I GoVrUi  : Remote Back held -27713056 ms
+09-27 15:51:09.936 20303 20320 I GoVrUi  : Menu opened (pad Menu key)
+09-27 15:51:09.939 20303 20321 I GoVrUi  : Panel 0 placed: head yaw -1, pitch -87 degrees, radius 2.00 m, full pose
+09-27 15:51:09.946 20303 20320 I GoVrUi  : Redraws: 2 in 26.7 s, mean 17.85 ms, max 27.31 ms
+09-27 15:51:09.946 20303 20320 I GoVrUi  : Menu closed (pad)

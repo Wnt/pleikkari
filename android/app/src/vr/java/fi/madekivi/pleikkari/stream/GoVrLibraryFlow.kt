@@ -16,7 +16,15 @@ import fi.madekivi.pleikkari.common.getDatabase
 import fi.madekivi.pleikkari.discovery.DiscoveryManager
 import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.DiscoveryHost
+import fi.madekivi.pleikkari.stream.GoVrConsolePicker.Presence
 import fi.madekivi.pleikkari.stream.GoVrConsolePicker.Route
+import fi.madekivi.pleikkari.stream.vrui.ButtonStyle
+import fi.madekivi.pleikkari.stream.vrui.VrCardTone
+import fi.madekivi.pleikkari.stream.vrui.VrConsoleCard
+import fi.madekivi.pleikkari.stream.vrui.VrHomeAction
+import fi.madekivi.pleikkari.stream.vrui.VrHomeButton
+import fi.madekivi.pleikkari.stream.vrui.VrHomeState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -27,13 +35,18 @@ import kotlinx.coroutines.launch
  * [show]; [connect] starts the stream on the same StreamSession path as Connect. Main thread only.
  * With [chooseFirst] (after a Disconnect) it opens the chooser instead of streaming on its own.
  * With [noConsoles] (PLE-739, debug builds only) it ignores every linked console.
+ *
+ * PLE-730: every screen goes to [show] as today's strip text (the touchpad-thirds fallback) and to
+ * [home] as a VR Home page (console cards and status sheets), which the VR UI shows when it runs.
+ * [play], [cancel], [retry] and [consoles] are its buttons; [connect] also names the console.
  */
 internal class GoVrLibraryFlow(
     private val activity: ComponentActivity,
     private val chooseFirst: Boolean,
     private val noConsoles: Boolean,
     private val show: (String) -> Unit,
-    private val connect: (ConnectInfo) -> Unit,
+    private val home: (VrHomeState) -> Unit,
+    private val connect: (ConnectInfo, String) -> Unit,
     private val openPanel: () -> Unit,
     private val exit: () -> Unit
 ) {
@@ -65,8 +78,13 @@ internal class GoVrLibraryFlow(
     private var manual = emptyList<ManualHost>()
     private var discovered = emptyList<DiscoveryHost>()
     private var screen: Screen = Screen.Loading
+    /** PLE-730: when discovery started; a card says "not found" only after [FIND_TIMEOUT_MS] of it. */
+    private var lookingSinceMs = 0L
+    private val lookedLongEnough = Runnable { if(screen is Screen.Choosing) render() }
 
     fun start() {
+        lookingSinceMs = SystemClock.elapsedRealtime()
+        handler.postDelayed(lookedLongEnough, FIND_TIMEOUT_MS)
         render()
         discovery.active = true
         jobs += activity.lifecycleScope.launch {
@@ -79,6 +97,8 @@ internal class GoVrLibraryFlow(
             discovery.discoveredHosts.collect {
                 discovered = it
                 update()
+                // PLE-730: the cards show what discovery sees.
+                if(screen is Screen.Choosing) render()
             }
         }
     }
@@ -108,6 +128,60 @@ internal class GoVrLibraryFlow(
             is Screen.NotFound -> choose(current.console)
             else -> return
         }
+        render()
+    }
+
+    /** PLE-730: VR Home's Play on a console card: find it (waking it if it rests) and connect. */
+    fun play(id: String) {
+        if(screen !is Screen.Choosing) return
+        val console = GoVrConsolePicker.consoles(registered).firstOrNull { it.serverMac.toString() == id } ?: return
+        find(console)
+        render()
+    }
+
+    /** PLE-730: Cancel on the finding or waking sheet: back to the cards. */
+    fun cancel() {
+        val finding = screen as? Screen.Finding ?: return
+        Log.i(TAG, "Stopped looking for ${GoVrConsolePicker.name(finding.console)}")
+        choose(finding.console)
+        render()
+    }
+
+    /** PLE-730: Try again on the not-found sheet. */
+    fun retry() {
+        val notFound = screen as? Screen.NotFound ?: return
+        find(notFound.console)
+        render()
+    }
+
+    /** PLE-730: Consoles on the not-found sheet: back to the cards. */
+    fun consoles() {
+        val notFound = screen as? Screen.NotFound ?: return
+        choose(notFound.console)
+        render()
+    }
+
+    /** PLE-733: the not-found console's saved manual address ("" if none), for the address pad; null off that sheet. */
+    fun address(): String? {
+        val notFound = screen as? Screen.NotFound ?: return null
+        return manual.firstOrNull { it.registeredHost == notFound.console.id }?.host ?: ""
+    }
+
+    /**
+     * PLE-733: the address pad's Save: store [host] as the not-found console's manual address
+     * (replacing the one it had), then look for it again, which tries that address.
+     */
+    fun saveAddress(host: String) {
+        val console = (screen as? Screen.NotFound)?.console ?: return
+        val existing = manual.firstOrNull { it.registeredHost == console.id }
+        val saved = existing?.copy(host = host) ?: ManualHost(host = host, registeredHost = console.id)
+        manual = manual.filter { it !== existing } + saved
+        Log.i(TAG, "Manual address for ${GoVrConsolePicker.name(console)} " + if(existing != null) "changed" else "added")
+        jobs += activity.lifecycleScope.launch(Dispatchers.IO) {
+            val dao = getDatabase(activity).manualHostDao()
+            if(existing != null) dao.update(saved) else dao.insert(saved)
+        }
+        find(console)
         render()
     }
 
@@ -195,10 +269,11 @@ internal class GoVrLibraryFlow(
         stop()
         preferences.lastConsoleMac = console.serverMac
         show(activity.getString(R.string.go_vr_connecting))
-        connect(preferences.connectInfo(address, console))
+        connect(preferences.connectInfo(address, console), GoVrConsolePicker.name(console))
     }
 
     private fun render() {
+        homeState()?.let(home)
         show(when(val current = screen) {
             Screen.Connected -> return // The session's own state text takes over.
             Screen.Loading -> activity.getString(R.string.go_vr_entry_loading)
@@ -210,6 +285,67 @@ internal class GoVrLibraryFlow(
             is Screen.NotFound -> activity.getString(R.string.go_vr_entry_not_found, GoVrConsolePicker.name(current.console)) +
                 "\n\n" + activity.getString(R.string.go_vr_entry_not_found_help)
         })
+    }
+
+    /** PLE-730: the VR Home page for the current screen; null once connected (the activity's connecting sheet). */
+    private fun homeState(): VrHomeState? {
+        val cancel = VrHomeButton(activity.getString(R.string.go_vr_home_cancel), VrHomeAction.Cancel)
+        val exit = VrHomeButton(activity.getString(R.string.go_vr_exit), VrHomeAction.Exit)
+        val title = activity.getString(R.string.go_vr_home_title)
+        return when(val current = screen) {
+            Screen.Connected -> null
+            Screen.Loading -> VrHomeState.Status(title, activity.getString(R.string.go_vr_home_loading), emptyList(),
+                busy = true, buttons = listOf(exit), back = null)
+            Screen.NoConsole -> VrHomeState.Status(title, activity.getString(R.string.go_vr_home_no_console),
+                listOf(activity.getString(R.string.go_vr_home_no_console_detail)), busy = false,
+                buttons = listOf(exit, VrHomeButton(activity.getString(R.string.go_vr_home_oculus_tv), VrHomeAction.OculusTv, ButtonStyle.PRIMARY)),
+                back = null)
+            is Screen.Choosing -> {
+                val stillLooking = SystemClock.elapsedRealtime() - lookingSinceMs < FIND_TIMEOUT_MS
+                val lastUsed = preferences.lastConsoleMac
+                VrHomeState.Consoles(activity.getString(R.string.go_vr_entry_choose),
+                    current.chooser.consoles.map { card(it, stillLooking, it.serverMac == lastUsed) },
+                    current.chooser.selected?.serverMac?.toString(), activity.getString(R.string.go_vr_home_play),
+                    activity.getString(R.string.go_vr_entry_panel),
+                    listOf(VrHomeButton(activity.getString(R.string.go_vr_home_settings), VrHomeAction.Settings),
+                        exit.copy(style = ButtonStyle.DESTRUCTIVE)))
+            }
+            is Screen.Finding -> {
+                val name = GoVrConsolePicker.name(current.console)
+                val waking = current.wakeSentMs != null
+                VrHomeState.Status(name,
+                    activity.getString(if(waking) R.string.go_vr_entry_waking else R.string.go_vr_entry_finding, name),
+                    listOf(activity.getString(if(waking) R.string.go_vr_home_waking_detail else R.string.go_vr_home_finding_detail)),
+                    busy = true, buttons = listOf(cancel), back = VrHomeAction.Cancel)
+            }
+            is Screen.NotFound -> {
+                val name = GoVrConsolePicker.name(current.console)
+                VrHomeState.Status(name, activity.getString(R.string.go_vr_home_not_found_message, name),
+                    listOf(activity.getString(R.string.go_vr_home_not_found_detail)), busy = false,
+                    buttons = listOf(VrHomeButton(activity.getString(R.string.go_vr_home_consoles), VrHomeAction.Consoles),
+                        VrHomeButton(activity.getString(R.string.go_vr_home_address), VrHomeAction.Address),
+                        VrHomeButton(activity.getString(R.string.go_vr_home_retry), VrHomeAction.Retry, ButtonStyle.PRIMARY)),
+                    back = VrHomeAction.Consoles)
+            }
+        }
+    }
+
+    private fun card(console: RegisteredHost, stillLooking: Boolean, lastUsed: Boolean): VrConsoleCard {
+        val presence = GoVrConsolePicker.presence(GoVrConsolePicker.route(console, discovered, manual), stillLooking)
+        val state = activity.getString(when(presence) {
+            Presence.READY -> R.string.go_vr_home_ready
+            Presence.STANDBY -> R.string.go_vr_home_rest
+            Presence.MANUAL -> R.string.go_vr_home_manual
+            Presence.LOOKING -> R.string.go_vr_home_looking
+            Presence.NOT_FOUND -> R.string.go_vr_home_not_found
+        })
+        val tone = when(presence) {
+            Presence.READY -> VrCardTone.READY
+            Presence.STANDBY -> VrCardTone.ASLEEP
+            else -> VrCardTone.UNKNOWN
+        }
+        return VrConsoleCard(console.serverMac.toString(), GoVrConsolePicker.name(console),
+            if(lastUsed) activity.getString(R.string.go_vr_home_last_played, state) else state, tone)
     }
 
     private fun chooserText(chooser: GoVrConsolePicker.Chooser): String {

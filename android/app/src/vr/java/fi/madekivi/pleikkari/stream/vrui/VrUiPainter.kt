@@ -35,10 +35,23 @@ class VrUiPainter(context: Context)
 	private val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
 	private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
 	private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = VrUi.deg(0.15f); color = accent }
+	/** PLE-730: a card's rest-mode dot and the spinner's arc. */
+	private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
 	private val titlePaint = textPaint(VrUi.deg(1.6f), medium)
 	private val labelPaint = textPaint(VrUi.deg(1.2f), medium)
 	private val secondaryPaint = textPaint(VrUi.deg(1.05f), Typeface.DEFAULT)
 	private val rect = RectF()
+
+	/** PLE-763: a laid-out string, so a redraw of unchanged text skips ellipsize and measureText. */
+	private class Shown(val text: String, val width: Float)
+	private data class TextKey(val value: String, val paint: TextPaint, val width: Float)
+	/** Access-ordered, so the eldest entry is the least recently drawn. */
+	private val shownCache = object : LinkedHashMap<TextKey, Shown>(64, 0.75f, true)
+	{
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextKey, Shown>?) = size > TEXT_CACHE_SIZE
+	}
+	/** Per text paint; their size and face never change after construction. */
+	private val baselineOffset = HashMap<TextPaint, Float>()
 
 	private fun textPaint(size: Float, face: Typeface) = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
 		textSize = size
@@ -142,6 +155,8 @@ class VrUiPainter(context: Context)
 				canvas.drawCircle(if(w.checked) s.right - s.height / 2 else s.left + s.height / 2, s.centerY, r, fill)
 			}
 			is VrSlider -> drawSlider(canvas, w)
+			is VrCard -> drawCard(canvas, w)
+			is VrSpinner -> drawSpinner(canvas, w)
 		}
 		if(focus.ringVisible && focus.focused === w)
 		{
@@ -188,6 +203,49 @@ class VrUiPainter(context: Context)
 		}
 	}
 
+	/** PLE-730: a Home console card: a state dot, the name over its state, and the Play pill on the right. */
+	private fun drawCard(canvas: Canvas, w: VrCard)
+	{
+		val box = w.box
+		roundRect(canvas, box, tint(w, row, rowHover, rowPressed))
+		val inset = VrUi.deg(0.6f)
+		val lineH = (box.height - 2 * inset) / 2
+		val dotX = box.left + VrUi.deg(1.4f)
+		val dotY = box.top + inset + lineH / 2
+		val dot = VrUi.deg(0.45f)
+		when(w.tone)
+		{
+			VrCardTone.READY -> { fill.color = accent; canvas.drawCircle(dotX, dotY, dot, fill) }
+			VrCardTone.ASLEEP ->
+			{
+				line.color = secondary
+				line.strokeWidth = VrUi.deg(0.15f)
+				canvas.drawCircle(dotX, dotY, dot - line.strokeWidth / 2, line)
+			}
+			VrCardTone.UNKNOWN -> { fill.color = disabled; canvas.drawCircle(dotX, dotY, dot, fill) }
+		}
+		val pill = w.pillBox
+		val left = box.left + VrUi.deg(2.6f)
+		val width = pill.left - VrUi.deg(1f) - left
+		drawText(canvas, w.name, labelPaint, text, left, box.top + inset, width, lineH, center = false)
+		drawText(canvas, w.detail, secondaryPaint, secondary, left, box.top + inset + lineH, width, lineH, center = false)
+		fill.color = if(w.pressed) accentPressed else if(w.hovered) accentHover else accent
+		rect.set(pill.left, pill.top, pill.right, pill.bottom)
+		canvas.drawRoundRect(rect, pill.height / 2, pill.height / 2, fill)
+		drawText(canvas, w.action, labelPaint, onAccent, pill.left, pill.top, pill.width, pill.height, center = true)
+	}
+
+	/** PLE-730: §10.5 Progress, a three-quarter arc the host turns between redraws. */
+	private fun drawSpinner(canvas: Canvas, w: VrSpinner)
+	{
+		val b = w.box
+		line.color = accent
+		line.strokeWidth = VrUi.deg(0.3f)
+		val half = line.strokeWidth / 2
+		rect.set(b.left + half, b.top + half, b.right - half, b.bottom - half)
+		canvas.drawArc(rect, w.phase * 360f - 90f, 270f, false, line)
+	}
+
 	private fun tint(w: Widget, normal: Int, hover: Int, pressed: Int) = when
 	{
 		!w.enabled -> row
@@ -207,10 +265,19 @@ class VrUiPainter(context: Context)
 		width: Float, height: Float, center: Boolean)
 	{
 		paint.color = color
-		val shown = TextUtils.ellipsize(value, paint, width, TextUtils.TruncateAt.END).toString()
-		val fm = paint.fontMetrics
-		val baseline = top + height / 2 - (fm.ascent + fm.descent) / 2
-		val x = if(center) left + (width - paint.measureText(shown)) / 2 else left
-		canvas.drawText(shown, x, baseline, paint)
+		val shown = shownCache.getOrPut(TextKey(value, paint, width)) {
+			val t = TextUtils.ellipsize(value, paint, width, TextUtils.TruncateAt.END).toString()
+			Shown(t, paint.measureText(t))
+		}
+		val offset = baselineOffset.getOrPut(paint) { paint.fontMetrics.let { -(it.ascent + it.descent) / 2 } }
+		val baseline = top + height / 2 + offset
+		val x = if(center) left + (width - shown.width) / 2 else left
+		canvas.drawText(shown.text, x, baseline, paint)
+	}
+
+	private companion object
+	{
+		/** Comfortably above the strings of one screen plus the stats panel's. */
+		const val TEXT_CACHE_SIZE = 256
 	}
 }

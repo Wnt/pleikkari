@@ -8,6 +8,7 @@ import fi.madekivi.pleikkari.common.RegisteredHost
 import fi.madekivi.pleikkari.lib.DiscoveryHost
 import fi.madekivi.pleikkari.lib.Target
 import fi.madekivi.pleikkari.stream.GoVrConsolePicker.Pick
+import fi.madekivi.pleikkari.stream.GoVrConsolePicker.Presence
 import fi.madekivi.pleikkari.stream.GoVrConsolePicker.Route
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -111,6 +112,20 @@ class GoVrConsolePickerTest
 		// Discovery still wins: it knows whether the console is awake.
 		assertEquals(Route.Standby("192.168.1.164"),
 			GoVrConsolePicker.route(ps5, listOf(discovered(ps5, DiscoveryHost.State.STANDBY)), manual))
+	}
+
+	@Test
+	fun aHomeCardSaysNotFoundOnlyAfterDiscoveryHadItsTime()
+	{
+		val ps5 = registered(1, "PS5-466")
+		val presence = { discovered: List<DiscoveryHost>, manual: List<ManualHost>, stillLooking: Boolean ->
+			GoVrConsolePicker.presence(GoVrConsolePicker.route(ps5, discovered, manual), stillLooking)
+		}
+		assertEquals(Presence.READY, presence(listOf(discovered(ps5, DiscoveryHost.State.READY)), emptyList(), false))
+		assertEquals(Presence.STANDBY, presence(listOf(discovered(ps5, DiscoveryHost.State.STANDBY)), emptyList(), true))
+		assertEquals(Presence.MANUAL, presence(emptyList(), listOf(ManualHost(1, "10.0.0.9", registeredHost = 1)), false))
+		assertEquals(Presence.LOOKING, presence(emptyList(), emptyList(), true))
+		assertEquals(Presence.NOT_FOUND, presence(emptyList(), emptyList(), false))
 	}
 
 	@Test

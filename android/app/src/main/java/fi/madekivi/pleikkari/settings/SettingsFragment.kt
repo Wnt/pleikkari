@@ -36,9 +36,11 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.goVrMatch60HzKey -> preferences.goVrMatch60Hz
 		preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu
 		preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread
-		// PLE-753: PLE-715's late start was missing here, so its switch never stored a change.
+		// PLE-753: PLE-715's late start and PLE-755's warm-up were missing here, so their switches
+		// never stored a change.
 		preferences.goVrLateStartKey -> preferences.goVrLateStart
 		preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain
+		preferences.goVrWarmUpKey -> preferences.goVrWarmUp
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -91,6 +93,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread = value
 			preferences.goVrLateStartKey -> preferences.goVrLateStart = value
 			preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain = value
+			preferences.goVrWarmUpKey -> preferences.goVrWarmUp = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
@@ -338,6 +341,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				title = getString(R.string.go_vr_hold_drain_title)
 				summary = getString(R.string.go_vr_hold_drain_summary)
 				isChecked = preferences.goVrHoldDrain
+			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrWarmUpKey
+				title = getString(R.string.go_vr_warm_up_title)
+				summary = getString(R.string.go_vr_warm_up_summary)
+				isChecked = preferences.goVrWarmUp
 			})
 		}
 

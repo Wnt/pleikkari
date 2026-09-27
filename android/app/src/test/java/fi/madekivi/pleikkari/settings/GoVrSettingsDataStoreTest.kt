@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 /**
  * PLE-753: the Go-only switches are added to the settings screen in code and read and written
  * through [DataStore]; a key missing there shows a switch that never stores a change, as
- * PLE-715's late start did.
+ * PLE-715's late start and PLE-755's warm-up did.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [25])
@@ -32,6 +32,7 @@ class GoVrSettingsDataStoreTest
 			preferences.goVrFrameListenerThreadKey to { preferences.goVrFrameListenerThread },
 			preferences.goVrLateStartKey to { preferences.goVrLateStart },
 			preferences.goVrHoldDrainKey to { preferences.goVrHoldDrain },
+			preferences.goVrWarmUpKey to { preferences.goVrWarmUp },
 		)
 		for((key, read) in switches)
 		{

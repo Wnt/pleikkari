@@ -1,0 +1,106 @@
+== s1-20260927T120936Z/resident-native
+-- go_stream.sh start (or launch):
+   go-stream: debug.pleikkari.vr_full_pose=1 for this run: the screen follows the Go's full pose, in view of a Go on the table
+   go-stream: launching (native, auto_connect_host=192.168.1.164)
+   Starting: Intent { cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras) }
+   go-stream: live: fi.madekivi.pleikkari/.stream.StreamVrActivity on display 0 (native), frames after 7 s
+-- logcat:
+   09-27 15:21:31.420   902  1406 I ActivityManager: START u0 {flg=0x10000000 cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras)} from uid 2000 on display 0
+   09-27 15:21:32.403   902  1335 I ActivityManager: START u0 {cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity (has extras)} from uid 10063 on display 0
+   09-27 15:21:33.269 13142 13178 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+   09-27 15:21:38.284 13142 13178 I GoCinema: Cinema video: 128 decoder frames latched in 5.0 s (25.5 fps), 156 of 354 submitted frames showed video, 129 frame signals
+   09-27 15:21:43.296 13142 13178 I GoCinema: Cinema video: 299 decoder frames latched in 5.0 s (59.7 fps), 360 of 360 submitted frames showed video, 299 frame signals
+   09-27 15:21:36.773 13142 13188 I Chiaki  : Feedback stats: window 1001 ms video received 50 decoded 45 dropped_input 0 dropped_presenter 0 dropped_bounded_age 0 recovery_flushes 0 recovery_flushed 0 lost 0 discarded_for_idr 0 reorder_timeou
+   counts: Cinema video 7, Feedback stats 35, FATAL 0
+-- screen_check.py:
+   shot.png: mean luma 13.2, max 230, 14.1 % of the frame lit: picture
+
+== s1-20260927T120936Z/head-native
+-- go_stream.sh start (or launch):
+   go-stream: debug.pleikkari.vr_full_pose=1 for this run: the screen follows the Go's full pose, in view of a Go on the table
+   go-stream: launching (native, auto_connect_host=192.168.1.164)
+   Starting: Intent { cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras) }
+   go-stream: live: fi.madekivi.pleikkari/.stream.StreamVrActivity on display 0 (native), frames after 9 s
+-- logcat:
+   09-27 15:22:47.103   902  2580 I ActivityManager: START u0 {flg=0x10000000 cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras)} from uid 2000 on display 0
+   09-27 15:22:48.128   902  1288 I ActivityManager: START u0 {cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity (has extras)} from uid 10063 on display 0
+   09-27 15:22:49.026 13455 13492 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+   09-27 15:22:54.039 13455 13492 I GoCinema: Cinema video: 83 decoder frames latched in 5.0 s (16.6 fps), 100 of 353 submitted frames showed video, 84 frame signals
+   09-27 15:22:59.052 13455 13492 I GoCinema: Cinema video: 300 decoder frames latched in 5.0 s (59.8 fps), 360 of 360 submitted frames showed video, 300 frame signals
+   09-27 15:22:53.324 13455 13503 I Chiaki  : Feedback stats: window 1001 ms video received 50 decoded 47 dropped_input 0 dropped_presenter 0 dropped_bounded_age 0 recovery_flushes 0 recovery_flushed 0 lost 0 discarded_for_idr 0 reorder_timeou
+   counts: Cinema video 7, Feedback stats 35, FATAL 0
+-- screen_check.py:
+   shot.png: mean luma 13.2, max 225, 14.0 % of the frame lit: picture
+
+== s1-20260927T120936Z/head-tv-fresh
+-- go_stream.sh start (or launch):
+   build/ple729/s1-20260927T120936Z/head-tv-fresh/state/prefs-run.xml: 1 file pushed, 0 skipped. 0.6 MB/s (254 bytes in 0.000s)
+   go-stream: prefs for this run: stream_feedback_stats_log (the original is kept in build/ple729/s1-20260927T120936Z/head-tv-fresh/state/prefs-before.xml)
+   go-stream: launching (tv, auto_connect_host=192.168.1.164)
+   go-stream: no frames 45s after the launch (resumed: fi.madekivi.pleikkari/.stream.StreamVrActivity 189); is the build older than PLE-659, or the console asleep? (build/ple729/s1-20260927T120936Z/head-tv-fresh/state/start-logcat.txt)
+-- logcat:
+   09-27 15:23:57.079   902  1047 I ActivityManager: START u0 {flg=0x18010000 cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras)} from uid 1000 on display 189
+   09-27 15:23:59.850   902  1288 I ActivityManager: START u0 {cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity (has extras)} from uid 10063 on display 0
+   09-27 15:24:01.278 13811 13886 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+   09-27 15:24:06.300 13811 13886 I GoCinema: Cinema video: 115 decoder frames latched in 5.0 s (23.0 fps), 158 of 350 submitted frames showed video, 115 frame signals
+   09-27 15:24:11.311 13811 13886 I GoCinema: Cinema video: 254 decoder frames latched in 5.0 s (50.7 fps), 353 of 353 submitted frames showed video, 255 frame signals
+   09-27 15:24:04.692 13811 13901 I Chiaki  : Feedback stats: window 1001 ms video received 47 decoded 39 dropped_input 1 dropped_presenter 0 dropped_bounded_age 0 recovery_flushes 0 recovery_flushed 0 lost 0 discarded_for_idr 0 reorder_timeou
+   counts: Cinema video 7, Feedback stats 37, FATAL 0
+
+== s2-20260927T124006Z/mine-native-fresh
+-- go_stream.sh start (or launch):
+   build/ple729/s2-20260927T124006Z/mine-native-fresh/state/prefs-run.xml: 1 file pushed, 0 skipped. 2.3 MB/s (311 bytes in 0.000s)
+   go-stream: prefs for this run: stream_go_vr_enabled stream_feedback_stats_log (the original is kept in build/ple729/s2-20260927T124006Z/mine-native-fresh/state/prefs-before.xml)
+   go-stream: debug.pleikkari.vr_full_pose=1 for this run: the screen follows the Go's full pose, in view of a Go on the table
+   go-stream: launching (native, auto_connect_host=192.168.1.164)
+   Starting: Intent { cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras) }
+   go-stream: live: fi.madekivi.pleikkari/.stream.StreamVrActivity on display 0 (native), frames after 8 s
+-- logcat:
+   09-27 15:44:40.479   902   925 I ActivityManager: START u0 {flg=0x10000000 cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras)} from uid 2000 on display 0
+   09-27 15:44:41.149 18267 18267 I AutoConnect: auto_connect_host 192.168.1.164: streaming as soon as it is listed as a registered console
+   09-27 15:44:41.469 18267 18267 I AutoConnect: 192.168.1.164 is listed as registered console PS5-466: connecting
+   09-27 15:44:41.480   902  1335 I ActivityManager: START u0 {cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity (has extras)} from uid 10063 on display 0
+   09-27 15:44:42.646 18267 18305 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+   09-27 15:44:47.662 18267 18305 I GoCinema: Cinema video: 134 decoder frames latched in 5.0 s (26.8 fps), 165 of 350 submitted frames showed video, 135 frame signals
+   09-27 15:44:52.675 18267 18305 I GoCinema: Cinema video: 299 decoder frames latched in 5.0 s (59.7 fps), 360 of 360 submitted frames showed video, 299 frame signals
+   09-27 15:44:45.983 18267 18315 I Chiaki  : Feedback stats: window 1001 ms video received 49 decoded 45 dropped_input 0 dropped_presenter 0 dropped_bounded_age 0 recovery_flushes 0 recovery_flushed 0 lost 0 discarded_for_idr 0 reorder_timeou
+   counts: Cinema video 6, Feedback stats 30, FATAL 0
+-- screen_check.py:
+   shot.png: mean luma 13.3, max 235, 14.1 % of the frame lit: picture
+
+== s2-20260927T124006Z/mine-library
+-- go_stream.sh start (or launch):
+   Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.INFO] flg=0x10010000 cmp=fi.madekivi.pleikkari/.stream.GoVrLibraryEntry }
+   Warning: Activity not started, its current task has been brought to the front
+-- logcat:
+   09-27 15:45:39.014   902   925 I ActivityManager: START u0 {flg=0x14010000 cmp=fi.madekivi.pleikkari/.stream.GoVrLibraryEntry} from uid 1000 on display 0
+   09-27 15:45:39.341 18539 18539 I GoVrEntry: Library VR launch, referrer none
+   09-27 15:45:39.574 18539 18539 I GoVrEntry: Picked PS5-466: the only of 1 linked console(s)
+   09-27 15:45:39.580 18539 18539 I GoVrEntry: Connecting to PS5-466 at 192.168.1.164 (awake)
+   09-27 15:45:39.733 18539 18559 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+   09-27 15:45:44.744 18539 18559 I GoCinema: Cinema video: 118 decoder frames latched in 5.0 s (23.6 fps), 142 of 357 submitted frames showed video, 119 frame signals
+   09-27 15:45:49.756 18539 18559 I GoCinema: Cinema video: 297 decoder frames latched in 5.0 s (59.3 fps), 359 of 359 submitted frames showed video, 297 frame signals
+   counts: Cinema video 7, Feedback stats 0, FATAL 0
+-- screen_check.py:
+   shot.png: mean luma 13.2, max 221, 14.1 % of the frame lit: picture
+
+== s2-20260927T124006Z/mine-tv-fresh
+-- go_stream.sh start (or launch):
+   build/ple729/s2-20260927T124006Z/mine-tv-fresh/state/prefs-run.xml: 1 file pushed, 0 skipped. 2.2 MB/s (312 bytes in 0.000s)
+   go-stream: prefs for this run: stream_go_vr_enabled stream_feedback_stats_log (the original is kept in build/ple729/s2-20260927T124006Z/mine-tv-fresh/state/prefs-before.xml)
+   go-stream: launching (tv, auto_connect_host=192.168.1.164)
+   go-stream: live: fi.madekivi.pleikkari/.stream.StreamActivity on display 210 (tv), frames after 9 s
+-- logcat:
+   09-27 15:46:43.436   902  1338 I ActivityManager: START u0 {flg=0x18010000 cmp=fi.madekivi.pleikkari/.main.MainActivity (has extras)} from uid 1000 on display 210
+   09-27 15:46:44.429 18760 18760 I AutoConnect: auto_connect_host 192.168.1.164: streaming as soon as it is listed as a registered console
+   09-27 15:46:45.328 18760 18760 I AutoConnect: 192.168.1.164 is listed as registered console PS5-466: connecting
+   09-27 15:46:45.343   902  1047 I ActivityManager: START u0 {cmp=fi.madekivi.pleikkari/.stream.StreamActivity (has extras)} from uid 10063 on display 210
+   09-27 15:46:50.389 18760 18806 I Chiaki  : Feedback stats: window 1001 ms video received 51 decoded 47 dropped_input 0 dropped_presenter 0 dropped_bounded_age 0 recovery_flushes 0 recovery_flushed 0 lost 0 discarded_for_idr 0 reorder_timeou
+   counts: Cinema video 0, Feedback stats 26, FATAL 0
+
+== s3-20260927T124816Z/old-refused
+-- go_stream.sh start (or launch):
+   go-stream: the installed fi.madekivi.pleikkari (base.apk md5 b6676be7a8f221524767a6ae45fae06b) has no auto_connect_host in its dex: it predates PLE-659 (fork/android-port 0b570f5e) and would stay on MainActivity. Back up the app data and install -r a current debug build first
+-- logcat:
+   counts: Cinema video 0, Feedback stats 0, FATAL 0
+
