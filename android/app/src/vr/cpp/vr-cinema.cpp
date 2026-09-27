@@ -109,6 +109,9 @@ struct Cinema {
     int width = 0, height = 0;
     long long frameIndex = 0;
     bool recenterPending = true;
+    // PLE-675: debug builds only. Recentre along the full head orientation (pitch and roll
+    // too), so a Go lying on a table still has the screen in view for a display-0 screencap.
+    bool fullPoseRecentre = false;
     ovrMatrix4f screen = ovrMatrix4f_CreateIdentity();
     unsigned previousButtons = 0;
     // PLE-603: the environment around the screen; null while the setting is "plain", so
@@ -327,7 +330,7 @@ struct Cinema {
             // Move the screen to the current horizontal gaze without resetting the tracking space.
             const auto &q = tracking.HeadPose.Pose.Orientation;
             float yaw = std::atan2(2.0f * (q.w*q.y + q.x*q.z), 1.0f - 2.0f * (q.y*q.y + q.x*q.x));
-            screen = ovrMatrix4f_CreateRotation(0, yaw, 0);
+            screen = fullPoseRecentre ? ovrMatrix4f_CreateFromQuaternion(&q) : ovrMatrix4f_CreateRotation(0, yaw, 0);
             const auto &p = tracking.HeadPose.Pose.Position;
             screen.M[0][3] = p.x; screen.M[1][3] = p.y; screen.M[2][3] = p.z;
             recenterPending = false;
@@ -437,6 +440,10 @@ extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jl
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(messageTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->message; }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) { return cinema(h)->input(); }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { cinema(h)->recenterPending = true; }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(setFullPoseRecentre)(JNIEnv *, jobject, jlong h, jboolean enabled) {
+    cinema(h)->fullPoseRecentre = enabled;
+    cinema(h)->recenterPending = true;
+}
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(draw)(JNIEnv *env, jobject, jlong h, jfloatArray transform, jboolean video, jboolean menu, jboolean newFrame) {
     float matrix[16];
     env->GetFloatArrayRegion(transform, 0, 16, matrix);
