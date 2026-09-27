@@ -20,6 +20,7 @@ import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -175,7 +176,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 main.post {
                     if(cinema === this && running.get() && resumed) {
                         model?.session?.attachToSurface(output)
-                        model?.session?.updateDisplayTiming(72.0, 0L)
+                        model?.session?.updateDisplayTiming(refreshHz.toDouble(), 0L) // PLE-654: the panel's real rate
                         model?.resume()
                     }
                 }
@@ -184,6 +185,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 var hasFrame = false
                 var menu = false
                 var previousText: String? = null
+                // PLE-654: decoder frames latched vs eye frames submitted, logged per window.
+                var windowStartNs = System.nanoTime()
+                var latched = 0
+                var submitted = 0
+                var shown = 0
                 while(running.get()) {
                     val input = VrCinemaNative.input(native)
                     if(input and MENU != 0) menu = !menu
@@ -200,6 +206,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         consumer.updateTexImage()
                         consumer.getTransformMatrix(transform)
                         hasFrame = true
+                        latched++
                         picture?.consumed()
                     }
                     val text = if(menu) getString(R.string.go_vr_menu) + "\n\n" +
@@ -210,8 +217,22 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         uploadText(VrCinemaNative.messageTexture(native), text)
                         previousText = text
                     }
-                    check(VrCinemaNative.draw(native, transform, hasFrame && text.isEmpty(), menu, newFrame) >= 0) {
+                    val video = hasFrame && text.isEmpty()
+                    check(VrCinemaNative.draw(native, transform, video, menu, newFrame) >= 0) {
                         "vrapi_SubmitFrame2 failed"
+                    }
+                    submitted++
+                    if(video) shown++
+                    val nowNs = System.nanoTime()
+                    if(nowNs - windowStartNs >= VIDEO_STATS_WINDOW_NS) {
+                        val seconds = (nowNs - windowStartNs) / 1e9
+                        Log.i("GoCinema", String.format(Locale.US,
+                            "Cinema video: %d decoder frames latched in %.1f s (%.1f fps), %d of %d submitted frames showed video",
+                            latched, seconds, latched / seconds, shown, submitted))
+                        windowStartNs = nowNs
+                        latched = 0
+                        submitted = 0
+                        shown = 0
                     }
                 }
             } catch(error: Exception) {
@@ -298,6 +319,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
         private const val PREVIEW_WIDTH = 1280
         private const val PREVIEW_HEIGHT = 720
+        private const val VIDEO_STATS_WINDOW_NS = 5_000_000_000L
     }
 }
 
