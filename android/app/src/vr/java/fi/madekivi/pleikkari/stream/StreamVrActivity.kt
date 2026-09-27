@@ -30,10 +30,16 @@ import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.lib.CinemaFrameLatency
 import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.ConnectVideoProfile
+import fi.madekivi.pleikkari.lib.ControllerState
+import fi.madekivi.pleikkari.lib.LatencyProbe
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
 import fi.madekivi.pleikkari.stream.vrui.*
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -248,11 +254,28 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
      * bits into the render loop, the same path as the touchpad and Back button:
      * `adb shell am broadcast -a fi.madekivi.pleikkari.DEBUG_GO_VR_INPUT --es key <back|left|centre|right>`.
      * Back toggles the menu; Disconnect is back then right.
+     *
+     * PLE-746: `--es pad <cross|circle|square|triangle|up|down|left|right|l1|r1|options|ps> [--ei hold_ms N]`
+     * instead presses that DualSense button on the streamed console for N ms (default 120). The Go's
+     * `input keyevent` cannot reach the D-pad (a pad sends it as HAT motion), so this is how a script
+     * parks the PS5 on a Settings toggle. It reaches the console: use it only in PS5 Settings.
      */
     private fun registerDebugInput() {
         if(debugInputReceiver != null) return
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                intent.getStringExtra(EXTRA_DEBUG_PAD)?.let { pad ->
+                    val button = DEBUG_PAD_BUTTONS[pad]
+                    val input = model?.input
+                    if(button == null || input == null) {
+                        Log.w(TAG_ENTRY, "Debug pad: ${if(button == null) "unknown button" else "no session for"} $pad")
+                        return
+                    }
+                    val holdMs = intent.getIntExtra(EXTRA_DEBUG_HOLD_MS, 120).toLong().coerceIn(20L, 2000L)
+                    Log.i(TAG_ENTRY, "Debug pad: $pad for $holdMs ms")
+                    input.debugPress(button, holdMs)
+                    return
+                }
                 val key = intent.getStringExtra(EXTRA_DEBUG_KEY)
                 val bits = when(key) {
                     "back" -> MENU
@@ -313,7 +336,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         val prefs = Preferences(this)
         val ui = if(prefs.goVrUi) createUi(prefs) else null
         ui?.home(homeState)
-        cinema = CinemaThread(surface, profile, frameLatency, ui).also { it.status = statusText; it.start() }
+        // PLE-746: the input-to-photon probe rides on the same frame join, so it needs the stats log too.
+        val latencyProbe = prefs.goVrLatencyProbe
+        if(latencyProbe && !frameLatency) Log.w("GoCinema", "Latency probe needs stream_feedback_stats_log; it stays off")
+        cinema = CinemaThread(surface, profile, frameLatency, latencyProbe && frameLatency, ui).also { it.status = statusText; it.start() }
         pinPadShown = null
         updatePinPad()
     }
@@ -525,6 +551,17 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // PLE-746: the key's dispatch in the app, for the probe's atrace capture.
+        if(!LatencyProbe.active) return dispatchKey(event)
+        android.os.Trace.beginSection("PLE746 input dispatchKeyEvent")
+        try {
+            return dispatchKey(event)
+        } finally {
+            android.os.Trace.endSection()
+        }
+    }
+
+    private fun dispatchKey(event: KeyEvent): Boolean {
         // Bluetooth pads retain the existing StreamInput mapping, including their Back key.
         val gamepad = event.isFromSource(InputDevice.SOURCE_GAMEPAD) || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
         val ui = cinema?.ui
@@ -557,7 +594,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** All EGL, VrApi and SurfaceTexture consumer calls are confined to this thread. */
     private inner class CinemaThread(private val surface: Surface, private val videoProfile: ConnectVideoProfile?,
-                                     private val frameLatency: Boolean, ui: VrUiHost?) : Thread("GoCinema") {
+                                     private val frameLatency: Boolean, private val latencyProbe: Boolean,
+                                     ui: VrUiHost?) : Thread("GoCinema") {
         /** PLE-722: the VR menu, or null for PLE-602's strip menu (or when its panels cannot be made). */
         @Volatile var ui: VrUiHost? = ui
         val running = AtomicBoolean(true)
@@ -575,6 +613,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var texture: SurfaceTexture? = null
             var decoder: Surface? = null
             var listenerThread: HandlerThread? = null
+            var probe = false
             // PLE-698: [frameLatency] times each frame (arrival, decode, latch, submit, predicted photon)
             // for the stats log's "Cinema latency" line. The debug preview has no decoder: its frames
             // time the latch, submit and predicted photon only.
@@ -643,6 +682,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 decoder = output
                 // Before the output is published: a Library launch attaches its session as soon as it is.
                 if(frameLatency) CinemaFrameLatency.enable(true)
+                // PLE-746: GPU luma of every latched frame, and presses.csv/frames.csv for the input-to-photon rounds.
+                if(latencyProbe) probe = startLatencyProbe(native)
                 this.output = output
                 val picture = if(preview) PreviewPicture(output) else null
                 if(picture != null)
@@ -660,6 +701,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 var shown = 0
                 var latchedNs = 0L
                 val submitTiming = LongArray(2)
+                val probeRows = LongArray(PROBE_ROWS * 5)
                 var latencyWindowStartNs = windowStartNs
                 val uiControl = FloatArray(VrUiHost.CONTROL_SIZE)
                 val uiOut = FloatArray(VrUiHost.OUTPUT_SIZE)
@@ -720,8 +762,13 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     picture?.post()
                     val newFrame = frameReady.getAndSet(false)
                     if(newFrame) {
+                        if(probe) android.os.Trace.beginSection("PLE746 cinema updateTexImage")
                         consumer.updateTexImage()
                         latchedNs = System.nanoTime()
+                        if(probe) {
+                            android.os.Trace.endSection()
+                            VrCinemaNative.probeFrame(native, consumer.timestamp, latchedNs)
+                        }
                         consumer.getTransformMatrix(transform)
                         hasFrame = true
                         latched++
@@ -747,7 +794,14 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     host?.frame(uiOut, System.nanoTime())
                     submitted++
                     if(video) shown++
-                    if(newFrame && frameLatency) {
+                    if(probe) {
+                        // PLE-746: latches come back once their luma is read, a frame or more later, in order.
+                        val rows = VrCinemaNative.probeTake(native, probeRows)
+                        for(i in 0 until rows) {
+                            CinemaFrameLatency.latched(probeRows[i * 5], probeRows[i * 5 + 1], probeRows[i * 5 + 2],
+                                probeRows[i * 5 + 3], probeRows[i * 5 + 4].toInt())
+                        }
+                    } else if(newFrame && frameLatency) {
                         if(video) VrCinemaNative.submitTiming(native, submitTiming)
                         CinemaFrameLatency.latched(consumer.timestamp, latchedNs,
                             if(video) submitTiming[0] else 0L, if(video) submitTiming[1] else 0L)
@@ -779,6 +833,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 detached.await()
                 // PLE-722: no Canvas may touch a panel Surface once its swapchain goes with the cinema.
                 ui?.shutdown()
+                if(probe) LatencyProbe.stop()
                 if(frameLatency) CinemaFrameLatency.enable(false)
                 listenerThread?.quitSafely()
                 decoder?.release()
@@ -796,6 +851,23 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             ui?.let {
                 it.radius = VrUi.panelRadius(environment)
                 it.statsAnchor = VrStatsPanel.anchor(environment)
+            }
+        }
+
+        /**
+         * PLE-746: a new directory per cinema, `<external files>/latency-probe/<UTC stamp>/`, readable over adb
+         * without run-as. False (and the probe off) when the luma pass or the files cannot be made.
+         */
+        private fun startLatencyProbe(native: Long): Boolean {
+            val stamp = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())
+            val directory = getExternalFilesDir(null)?.let { File(it, "latency-probe/$stamp") }
+            if(directory == null || !directory.mkdirs()) {
+                Log.e("GoCinema", "Latency probe: no directory for its files ($directory)")
+                return false
+            }
+            if(!VrCinemaNative.probeEnable(native)) return false
+            return LatencyProbe.start(directory.path).also {
+                if(it) Log.i("GoCinema", "Latency probe: writing ${directory.path}")
             }
         }
 
@@ -899,6 +971,18 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         /** PLE-739: debug builds only; see [registerDebugInput]. */
         private const val DEBUG_INPUT_ACTION = "fi.madekivi.pleikkari.DEBUG_GO_VR_INPUT"
         private const val EXTRA_DEBUG_KEY = "key"
+        /** PLE-746: debug builds only; see [registerDebugInput]. */
+        private const val EXTRA_DEBUG_PAD = "pad"
+        private const val EXTRA_DEBUG_HOLD_MS = "hold_ms"
+        private val DEBUG_PAD_BUTTONS = mapOf(
+            "cross" to ControllerState.BUTTON_CROSS, "circle" to ControllerState.BUTTON_MOON,
+            "square" to ControllerState.BUTTON_BOX, "triangle" to ControllerState.BUTTON_PYRAMID,
+            "up" to ControllerState.BUTTON_DPAD_UP, "down" to ControllerState.BUTTON_DPAD_DOWN,
+            "left" to ControllerState.BUTTON_DPAD_LEFT, "right" to ControllerState.BUTTON_DPAD_RIGHT,
+            "l1" to ControllerState.BUTTON_L1, "r1" to ControllerState.BUTTON_R1,
+            "options" to ControllerState.BUTTON_OPTIONS, "ps" to ControllerState.BUTTON_PS)
+        /** PLE-746: probe records taken per render loop; a loop normally has one or none. */
+        private const val PROBE_ROWS = 8
         /** PLE-690: set only by [leave]; the activity is not exported. */
         private const val EXTRA_LIBRARY_CHOOSER = "library_chooser"
         private const val TAG_ENTRY = "GoVrEntry"
@@ -940,6 +1024,11 @@ internal object VrCinemaNative {
     /** PLE-761: debug builds only, before createPanel; vr-ui-layers.h's VrUiDebug. */
     external fun debugSetUiLayers(handle: Long, quad: Boolean, overlay: Boolean, texelScale: Float,
         filterExpensive: Boolean, maxPanels: Int, reticleLayer: Boolean)
+    /** PLE-746: the input-to-photon probe's GPU luma pass; see vr-cinema.cpp's LumaProbe. */
+    external fun probeEnable(handle: Long): Boolean
+    external fun probeFrame(handle: Long, bufferTimestampNs: Long, latchedNs: Long)
+    /** Fills {buffer timestamp, latched, submitted, predicted photon, luma} records; returns how many. */
+    external fun probeTake(handle: Long, out: LongArray): Int
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
     external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,

@@ -11,6 +11,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.OnLifecycleEvent
 import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.lib.ControllerState
+import fi.madekivi.pleikkari.lib.LatencyProbe
 
 class StreamInput(val context: Context, val preferences: Preferences)
 {
@@ -244,6 +245,10 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			else -> return false
 		}
 
+		// PLE-746: the probe times a Cross press from its KeyEvent; a no-op unless it runs.
+		if(action && buttonMask == ControllerState.BUTTON_CROSS && event.repeatCount == 0 && LatencyProbe.active)
+			LatencyProbe.press(event.eventTime)
+
 		keyControllerState.buttons = keyControllerState.buttons.run {
 			if(action) this or buttonMask else this and buttonMask.inv()
 		}
@@ -269,6 +274,23 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			state.rightY = 0
 		}
 		controllerStateUpdated()
+	}
+
+	/**
+	 * PLE-746: debug builds only (StreamVrActivity's DEBUG_GO_VR_INPUT broadcast). Holds [buttons] down
+	 * for [holdMs], then releases them: the Go's `input keyevent` cannot send the D-pad, whose presses
+	 * only arrive as a gamepad's HAT motion, so parking the PS5 on a Settings toggle needs this.
+	 */
+	fun debugPress(buttons: UInt, holdMs: Long)
+	{
+		mainHandler.post {
+			keyControllerState.buttons = keyControllerState.buttons or buttons
+			controllerStateUpdated()
+		}
+		mainHandler.postDelayed({
+			keyControllerState.buttons = keyControllerState.buttons and buttons.inv()
+			controllerStateUpdated()
+		}, holdMs)
 	}
 
 	fun onGenericMotionEvent(event: MotionEvent): Boolean

@@ -142,11 +142,41 @@ data class VideoStats(
 object CinemaFrameLatency
 {
 	fun enable(enabled: Boolean) = ChiakiNative.cinemaFrameLatencyEnable(enabled)
-	/** [submittedNs] and [predictedDisplayNs] are 0 when the submit did not show the video. */
-	fun latched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long, predictedDisplayNs: Long) =
-		ChiakiNative.cinemaFrameLatencyLatched(bufferTimestampNs, latchedNs, submittedNs, predictedDisplayNs)
+	/**
+	 * [submittedNs] and [predictedDisplayNs] are 0 when the submit did not show the video. [luma] is the
+	 * picture's mean luma 0..255 when [LatencyProbe] measured it (PLE-746), else -1.
+	 */
+	fun latched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long, predictedDisplayNs: Long, luma: Int = -1) =
+		ChiakiNative.cinemaFrameLatencyLatched(bufferTimestampNs, latchedNs, submittedNs, predictedDisplayNs, luma)
 	/** Logs the window since the last call; only for a cinema with no session (the debug preview). */
 	fun logWindow() = ChiakiNative.cinemaFrameLatencyLog()
+}
+
+/**
+ * PLE-746: the Oculus Go's input-to-photon probe (stream_go_vr_latency_probe). While it runs,
+ * chiaki-jni writes presses.csv (each Cross press from its KeyEvent to the packet that took it to the
+ * console) and frames.csv ([CinemaFrameLatency]'s frames with their luma) into one directory, and
+ * arms the "PLE746" atrace markers. Times are CLOCK_MONOTONIC ns.
+ */
+object LatencyProbe
+{
+	@Volatile var active = false
+		private set
+
+	fun start(directory: String): Boolean = ChiakiNative.latencyProbeStart(directory).also { active = it }
+
+	fun stop()
+	{
+		active = false
+		ChiakiNative.latencyProbeStop()
+	}
+
+	/** A Cross KeyEvent: [eventTimeMs] is its getEventTime() (uptimeMillis, CLOCK_MONOTONIC). */
+	fun press(eventTimeMs: Long)
+	{
+		if(active)
+			ChiakiNative.latencyProbePress(eventTimeMs * 1_000_000L, System.nanoTime())
+	}
 }
 
 private class ChiakiNative
@@ -181,7 +211,10 @@ private class ChiakiNative
 		@JvmStatic external fun sessionSetLoginPin(ptr: Long, pin: String)
 		@JvmStatic external fun cinemaFrameLatencyEnable(enabled: Boolean)
 		@JvmStatic external fun cinemaFrameLatencyLatched(bufferTimestampNs: Long, latchedNs: Long, submittedNs: Long,
-			predictedDisplayNs: Long)
+			predictedDisplayNs: Long, luma: Int)
+		@JvmStatic external fun latencyProbeStart(directory: String): Boolean
+		@JvmStatic external fun latencyProbeStop()
+		@JvmStatic external fun latencyProbePress(eventNs: Long, receivedNs: Long)
 		@JvmStatic external fun cinemaFrameLatencyLog()
 		@JvmStatic external fun discoveryServiceCreate(result: CreateResult, options: DiscoveryServiceOptions, javaService: DiscoveryService)
 		@JvmStatic external fun discoveryServiceFree(ptr: Long)

@@ -29,6 +29,10 @@ add_library(chiaki-jni SHARED
         src/main/cpp/video-presenter.c
         src/main/cpp/video-frame-latency.h
         src/main/cpp/video-frame-latency.c
+        src/main/cpp/latency-probe.h
+        src/main/cpp/latency-probe.c
+        src/main/cpp/latency-trace.h
+        src/main/cpp/latency-trace.c
         src/main/cpp/audio-decoder.h
         src/main/cpp/audio-decoder.c
         src/main/cpp/audio-output.h

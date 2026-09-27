@@ -6,6 +6,7 @@
 #include "video-presenter-recovery.h"
 #include "video-presenter-histogram.h"
 #include "video-presenter-timing.h"
+#include "latency-trace.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -47,6 +48,7 @@ static void record_output_available(AndroidChiakiVideoPresenter *presenter,
 		input->valid = false;
 		frame->frame_index = input->frame_index;
 		frame->frame_ready_time_us = input->frame_ready_time_us;
+		frame->queued_ns = input->queued_ns;
 		frame->input_metadata_valid = input->frame_ready_time_us != 0;
 		if(presenter->diagnostics_enabled && frame->arrival_ns >= input->queued_ns
 				&& frame->arrival_ns - input->queued_ns <= 5000000000LL)
@@ -198,8 +200,12 @@ static void release_frame_locked(AndroidChiakiVideoPresenter *presenter,
 	if(render && presenter->frame_latency && frame->info.size != 0)
 		android_chiaki_video_frame_latency_record_decoded(presenter->frame_latency,
 				release_time_ns > 0 ? release_time_ns : frame->info.presentationTimeUs * 1000LL,
+				frame->input_metadata_valid ? (int32_t)frame->frame_index : -1,
 				frame->input_metadata_valid ? (int64_t)frame->frame_ready_time_us * 1000LL : 0,
+				frame->input_metadata_valid ? frame->queued_ns : 0,
 				frame->arrival_ns);
+	// PLE-746: the decoded frame goes to the SurfaceTexture (or is dropped) now.
+	android_chiaki_latency_trace_mark("PLE746 video release f=%u render=%d", (unsigned)frame->frame_index, render ? 1 : 0);
 	if(render && release_time_ns > 0)
 		result = AMediaCodec_releaseOutputBufferAtTime(presenter->codec, frame->index, release_time_ns);
 	else
@@ -723,6 +729,8 @@ static void *output_thread_func(void *user)
 		ssize_t status = AMediaCodec_dequeueOutputBuffer(presenter->codec, &info, -1);
 		if(status >= 0)
 		{
+			// PLE-746: the decoder's output is available (the PTS names the frame; frame index after the join).
+			android_chiaki_latency_trace_mark("PLE746 video decoded pts=%" PRId64, (int64_t)info.presentationTimeUs);
 			bool eos = (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0;
 			if(presenter->real_pts_enabled && info.size != 0)
 				CHIAKI_LOGV(presenter->log, "Video Decoder output PTS: %" PRId64 " us", info.presentationTimeUs);

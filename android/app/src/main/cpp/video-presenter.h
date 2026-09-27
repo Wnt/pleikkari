@@ -128,6 +128,7 @@ typedef struct android_chiaki_video_presenter_frame_t
 	int64_t arrival_ns;
 	ChiakiSeqNum16 frame_index;
 	uint64_t frame_ready_time_us;
+	int64_t queued_ns; // PLE-746: queued to the decoder; valid with input_metadata_valid
 	bool input_metadata_valid;
 } AndroidChiakiVideoPresenterFrame;
 

@@ -28,6 +28,8 @@ typedef struct chiaki_feedback_sender_t
 	ChiakiFeedbackHistoryBuffer history_buf;
 	uint8_t history_packets[CHIAKI_FEEDBACK_HISTORY_PACKET_QUEUE_SIZE][CHIAKI_FEEDBACK_HISTORY_PACKET_BUF_SIZE];
 	size_t history_packet_sizes[CHIAKI_FEEDBACK_HISTORY_PACKET_QUEUE_SIZE];
+	// PLE-746: the controller buttons as of the change that queued each packet, for chiaki_trace_event
+	uint32_t history_packet_buttons[CHIAKI_FEEDBACK_HISTORY_PACKET_QUEUE_SIZE];
 	size_t history_packet_begin;
 	size_t history_packet_len;
 

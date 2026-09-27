@@ -53,6 +53,37 @@ void android_chiaki_video_frame_latency_set_enabled(AndroidChiakiVideoFrameLaten
 	chiaki_mutex_unlock(&latency->mutex);
 }
 
+void android_chiaki_video_frame_latency_set_row_cb(AndroidChiakiVideoFrameLatency *latency,
+		AndroidChiakiVideoFrameLatencyRowCallback cb, void *user)
+{
+	chiaki_mutex_lock(&latency->mutex);
+	latency->row_cb = cb;
+	latency->row_cb_user = user;
+	chiaki_mutex_unlock(&latency->mutex);
+}
+
+/** Called with the mutex held. */
+static void emit_row_locked(AndroidChiakiVideoFrameLatency *latency, AndroidChiakiVideoFrameLatencyRowKind kind,
+		const AndroidChiakiVideoFrameLatencyPending *frame, int64_t latched_ns, int64_t submitted_ns,
+		int64_t predicted_display_ns, int32_t luma)
+{
+	if(!latency->row_cb)
+		return;
+	AndroidChiakiVideoFrameLatencyRow row = {
+		.kind = kind,
+		.buffer_timestamp_ns = frame->buffer_timestamp_ns,
+		.frame_index = frame->frame_index,
+		.arrival_ns = frame->arrival_ns,
+		.queued_ns = frame->queued_ns,
+		.decoded_ns = frame->decoded_ns,
+		.latched_ns = latched_ns,
+		.submitted_ns = submitted_ns,
+		.predicted_display_ns = predicted_display_ns,
+		.luma = luma,
+	};
+	latency->row_cb(latency->row_cb_user, &row);
+}
+
 /** Called with the mutex held. */
 static void add_sample_locked(AndroidChiakiVideoFrameLatency *latency, AndroidChiakiVideoFrameLatencyFigure figure,
 		int64_t value_ns)
@@ -67,7 +98,7 @@ static void add_sample_locked(AndroidChiakiVideoFrameLatency *latency, AndroidCh
 }
 
 void android_chiaki_video_frame_latency_record_decoded(AndroidChiakiVideoFrameLatency *latency,
-		int64_t buffer_timestamp_ns, int64_t arrival_ns, int64_t decoded_ns)
+		int64_t buffer_timestamp_ns, int32_t frame_index, int64_t arrival_ns, int64_t queued_ns, int64_t decoded_ns)
 {
 	chiaki_mutex_lock(&latency->mutex);
 	if(!latency->enabled)
@@ -79,20 +110,25 @@ void android_chiaki_video_frame_latency_record_decoded(AndroidChiakiVideoFrameLa
 	if(latency->pending_size == ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING)
 	{
 		// A second of frames with no latch: the oldest was never shown.
+		emit_row_locked(latency, ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_ROW_REPLACED,
+				&latency->pending[latency->pending_head], 0, 0, 0, -1);
 		latency->pending_head = (latency->pending_head + 1) % ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING;
 		latency->pending_size--;
 		latency->replaced++;
 	}
 	uint32_t tail = (latency->pending_head + latency->pending_size) % ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING;
 	latency->pending[tail].buffer_timestamp_ns = buffer_timestamp_ns;
+	latency->pending[tail].frame_index = frame_index;
 	latency->pending[tail].arrival_ns = arrival_ns;
+	latency->pending[tail].queued_ns = queued_ns;
 	latency->pending[tail].decoded_ns = decoded_ns;
 	latency->pending_size++;
 	chiaki_mutex_unlock(&latency->mutex);
 }
 
 void android_chiaki_video_frame_latency_record_latched(AndroidChiakiVideoFrameLatency *latency,
-		int64_t buffer_timestamp_ns, int64_t latched_ns, int64_t submitted_ns, int64_t predicted_display_ns)
+		int64_t buffer_timestamp_ns, int64_t latched_ns, int64_t submitted_ns, int64_t predicted_display_ns,
+		int32_t luma)
 {
 	chiaki_mutex_lock(&latency->mutex);
 	if(!latency->enabled)
@@ -112,13 +148,23 @@ void android_chiaki_video_frame_latency_record_latched(AndroidChiakiVideoFrameLa
 			continue;
 		frame = latency->pending[index];
 		found = true;
+		for(uint32_t skipped = 0; skipped < offset; skipped++)
+			emit_row_locked(latency, ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_ROW_REPLACED,
+					&latency->pending[(latency->pending_head + skipped) % ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING],
+					0, 0, 0, -1);
 		latency->replaced += offset;
 		latency->pending_head = (index + 1) % ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_PENDING;
 		latency->pending_size -= offset + 1;
 		break;
 	}
 	if(!found)
+	{
 		latency->unmatched++;
+		frame.buffer_timestamp_ns = buffer_timestamp_ns;
+		frame.frame_index = -1;
+	}
+	emit_row_locked(latency, found ? ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_ROW_LATCHED : ANDROID_CHIAKI_VIDEO_FRAME_LATENCY_ROW_UNMATCHED,
+			&frame, latched_ns, submitted_ns, predicted_display_ns, luma);
 	if(submitted_ns > 0)
 	{
 		latency->shown++;

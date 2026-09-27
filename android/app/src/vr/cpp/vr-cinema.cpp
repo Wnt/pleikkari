@@ -3,6 +3,7 @@
 #include <jni.h>
 #include <android/native_window_jni.h>
 #include <android/log.h>
+#include <android/trace.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -19,6 +20,8 @@
 #include <cstring>
 #include <cstdint>
 #include <cerrno>
+#include <cstdio>
+#include <deque>
 #include <memory>
 #include <time.h>
 #include <vector>
@@ -91,6 +94,51 @@ void main() { color = vec4(texture(picture, texcoord).rgb, 1.0); }
     return p;
 }
 
+// PLE-746: the input-to-photon probe's mean luma of the video picture, on the GPU. One 1x1 pass
+// averages a 16x9 grid of the picture (through the SurfaceTexture's transform, as the screen samples
+// it) into a single pixel; the render loop reads it back asynchronously (see LumaProbe).
+GLuint lumaProgram() {
+    // Named apart from program()'s vs/oes/plain: test/vr_shaders_check.py finds shaders by variable name.
+    const char *lumaVs = R"(#version 300 es
+void main() {
+    vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
+})";
+    const char *lumaFs = R"(#version 300 es
+#extension GL_OES_EGL_image_external_essl3 : require
+precision highp float;
+uniform samplerExternalOES picture;
+uniform mat4 textureTransform;
+out vec4 color;
+void main() {
+    float sum = 0.0;
+    for(int y = 0; y < 9; ++y) {
+        for(int x = 0; x < 16; ++x) {
+            vec2 uv = vec2((float(x) + 0.5) / 16.0, (float(y) + 0.5) / 9.0);
+            sum += dot(texture(picture, (textureTransform * vec4(uv, 0.0, 1.0)).xy).rgb, vec3(0.299, 0.587, 0.114));
+        }
+    }
+    color = vec4(sum / 144.0, 0.0, 0.0, 1.0);
+})";
+    GLuint v = shader(GL_VERTEX_SHADER, lumaVs), f = shader(GL_FRAGMENT_SHADER, lumaFs);
+    if(!v || !f) { if(v) glDeleteShader(v); if(f) glDeleteShader(f); return 0; }
+    GLuint p = glCreateProgram();
+    glAttachShader(p, v); glAttachShader(p, f); glLinkProgram(p);
+    glDeleteShader(v); glDeleteShader(f);
+    GLint ok = 0; glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if(!ok) { LOGE("Luma program link failed"); glDeleteProgram(p); return 0; }
+    return p;
+}
+
+// PLE-746: a zero-length atrace section, written only while atrace records this app.
+void traceMark(const char *format, long long a, long long b) {
+    if(!ATrace_isEnabled()) return;
+    char name[128];
+    snprintf(name, sizeof(name), format, a, b);
+    ATrace_beginSection(name);
+    ATrace_endSection();
+}
+
 // VrApi matrices are row-major; GLES requires column-major and transpose=GL_FALSE.
 void columnMajor(float out[16], const ovrMatrix4f &matrix) {
     for(int row = 0; row < 4; ++row)
@@ -109,6 +157,107 @@ void matrixUniform(GLint location, const ovrMatrix4f &matrix) {
     columnMajor(columns, matrix);
     glUniformMatrix4fv(location, 1, GL_FALSE, columns);
 }
+
+/**
+ * PLE-746: one latched frame's probe record. The luma pass runs in the frame's draw; its 1x1 result
+ * goes into a pixel-pack buffer behind a fence and is read once the fence has signalled, a frame or
+ * more later, so the render loop never waits for the GPU. The record then goes back to Kotlin, which
+ * reports the latch to CinemaFrameLatency with the luma.
+ */
+struct LumaRecord {
+    int64_t bufferTimestampNs = 0, latchedNs = 0, submittedNs = 0, predictedNs = 0;
+    int luma = -1;
+};
+
+struct LumaProbe {
+    static constexpr int Slots = 8;
+    struct Slot { GLuint pbo = 0; GLsync fence = nullptr; LumaRecord record; };
+    Slot slots[Slots];
+    int head = 0, size = 0; // in-flight slots, oldest first
+    GLuint program = 0, target = 0, fbo = 0;
+    GLint pictureUniform = -1, transformUniform = -1;
+    bool requested = false; // a frame was latched for this draw
+    LumaRecord next;
+    std::deque<LumaRecord> ready; // read back (or skipped, luma -1), waiting for Kotlin
+
+    bool init() {
+        program = lumaProgram();
+        if(!program) return false;
+        pictureUniform = glGetUniformLocation(program, "picture");
+        transformUniform = glGetUniformLocation(program, "textureTransform");
+        glGenTextures(1, &target);
+        glBindTexture(GL_TEXTURE_2D, target);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 1, 1);
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target, 0);
+        const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        for(auto &slot : slots) {
+            glGenBuffers(1, &slot.pbo);
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, slot.pbo);
+            glBufferData(GL_PIXEL_PACK_BUFFER, 4, nullptr, GL_STREAM_READ);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        return complete && glGetError() == GL_NO_ERROR;
+    }
+
+    void destroy() {
+        for(auto &slot : slots) {
+            if(slot.fence) glDeleteSync(slot.fence);
+            if(slot.pbo) glDeleteBuffers(1, &slot.pbo);
+        }
+        if(fbo) glDeleteFramebuffers(1, &fbo);
+        if(target) glDeleteTextures(1, &target);
+        if(program) glDeleteProgram(program);
+    }
+
+    /** In the draw, after the eye passes: measure the latched picture into the next free slot. */
+    void measure(GLuint video, const float *textureTransform, int64_t submittedNs, int64_t predictedNs) {
+        next.submittedNs = submittedNs;
+        next.predictedNs = predictedNs;
+        requested = false;
+        if(size == Slots) { next.luma = -1; ready.push_back(next); return; } // the GPU is 8 frames behind: skip
+        Slot &slot = slots[(head + size) % Slots];
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glViewport(0, 0, 1, 1);
+        glUseProgram(program);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, video);
+        glUniform1i(pictureUniform, 0);
+        glUniformMatrix4fv(transformUniform, 1, GL_FALSE, textureTransform);
+        glDisable(GL_SCISSOR_TEST);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, slot.pbo);
+        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        slot.fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        slot.record = next;
+        ++size;
+    }
+
+    /** Collect every slot whose fence has signalled, oldest first; never waits. */
+    void poll() {
+        while(size > 0) {
+            Slot &slot = slots[head];
+            const GLenum state = glClientWaitSync(slot.fence, 0, 0);
+            if(state == GL_TIMEOUT_EXPIRED) break;
+            LumaRecord record = slot.record;
+            if(state != GL_WAIT_FAILED) {
+                glBindBuffer(GL_PIXEL_PACK_BUFFER, slot.pbo);
+                auto *pixel = static_cast<const uint8_t *>(glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, 4, GL_MAP_READ_BIT));
+                if(pixel) { record.luma = pixel[0]; glUnmapBuffer(GL_PIXEL_PACK_BUFFER); }
+                glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            }
+            glDeleteSync(slot.fence);
+            slot.fence = nullptr;
+            ready.push_back(record);
+            head = (head + 1) % Slots;
+            --size;
+        }
+    }
+};
 
 struct Cinema {
     ovrJava java{};
@@ -159,6 +308,8 @@ struct Cinema {
     // Where the picture was last placed, for panels anchored to it.
     PleikkariVrVec3 screenCentre{0.0f, 0.0f, 0.0f};
     PleikkariVrQuat screenOrientation{0.0f, 0.0f, 0.0f, 1.0f};
+    // PLE-746: the input-to-photon probe; null unless stream_go_vr_latency_probe started it.
+    std::unique_ptr<LumaProbe> probe;
 
     Cinema() {
         pleikkari_vr_screen_placement_init(&placement);
@@ -170,6 +321,7 @@ struct Cinema {
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
         if(initialized) ui.destroy();
+        if(probe) probe->destroy();
         if(environment) pleikkari_vr_environment_destroy(environment);
         if(vr) vrapi_LeaveVrMode(vr);
         for(auto &eye : eyes) {
@@ -642,6 +794,10 @@ struct Cinema {
         // PLE-776: the reticle-layer switch draws the laser and reticle into their own layer, last.
         ovrLayerProjection2 reticle;
         const bool reticleOn = uiFrame && ui.reticleLayer(tracking, width, height, &reticle);
+        // PLE-746: after the eyes, so the probe's pass never delays the picture on the GPU.
+        const int64_t predictedNs = std::llround(time * 1e9);
+        if(probe && probe->requested)
+            probe->measure(video, textureTransform, showVideo ? monotonicNs() : 0, showVideo ? predictedNs : 0);
         glFlush();
         ovrLayer_Union2 panelLayers[pleikkari::VrUiMaxPanels];
         const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
@@ -659,11 +815,28 @@ struct Cinema {
         frame.LayerCount = static_cast<uint32_t>(panelCount + 1 + (reticleOn ? 1 : 0));
         frame.Layers = layers;
         submitNs = monotonicNs();
-        predictedDisplayNs = std::llround(time * 1e9);
+        predictedDisplayNs = predictedNs;
+        const bool traced = probe && ATrace_isEnabled();
+        if(traced) {
+            traceMark("PLE746 cinema submit frame=%lld predicted_ns=%lld", frameIndex, predictedDisplayNs);
+            ATrace_beginSection("PLE746 vrapi_SubmitFrame2");
+        }
         const int result = vrapi_SubmitFrame2(vr, &frame);
-        recordPacing(monotonicNs());
+        const int64_t returnedNs = monotonicNs();
+        if(traced) ATrace_endSection();
+        recordPacing(returnedNs);
         for(auto &eye : eyes) eye.index = (eye.index + 1) % eye.fbos.size();
         return result;
+    }
+
+    // PLE-746: a frame was latched for the next draw; the probe measures its luma in that draw.
+    void probeFrame(int64_t bufferTimestampNs, int64_t latchedNs) {
+        if(!probe) return;
+        probe->requested = true;
+        probe->next = LumaRecord{};
+        probe->next.bufferTimestampNs = bufferTimestampNs;
+        probe->next.latchedNs = latchedNs;
+        traceMark("PLE746 cinema latched ts=%lld at_ns=%lld", bufferTimestampNs, latchedNs);
     }
 };
 Cinema *cinema(jlong handle) { return reinterpret_cast<Cinema *>(handle); }
@@ -758,5 +931,35 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setRoomGpuLevel)(JNIEnv *, jobject,
 // PLE-666: debug preview only; call before setEnvironment (PLE-650 variants, 0 is shipped).
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetSkyVariant)(JNIEnv *, jobject, jlong h, jint variant) {
     cinema(h)->skyVariant = variant;
+}
+// PLE-746: start the input-to-photon probe's luma pass; false when the GPU objects cannot be made.
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(probeEnable)(JNIEnv *, jobject, jlong h) {
+    auto *c = cinema(h);
+    if(c->probe) return true;
+    std::unique_ptr<LumaProbe> probe(new LumaProbe());
+    if(!probe->init()) { probe->destroy(); LOGE("Latency probe: luma pass unavailable"); return false; }
+    c->probe = std::move(probe);
+    LOGI("Latency probe: GPU luma of every latched frame (16x9 taps, 1x1 pass, async PBO readback)");
+    return true;
+}
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(probeFrame)(JNIEnv *, jobject, jlong h, jlong bufferTimestampNs, jlong latchedNs) {
+    cinema(h)->probeFrame(bufferTimestampNs, latchedNs);
+}
+// PLE-746: up to out.length / 5 records {buffer timestamp, latched, submitted, predicted photon, luma};
+// returns how many were written. Submitted and predicted are 0 when the draw did not show the video.
+extern "C" JNIEXPORT jint JNICALL JNI_METHOD(probeTake)(JNIEnv *env, jobject, jlong h, jlongArray out) {
+    auto &probe = cinema(h)->probe;
+    if(!probe) return 0;
+    probe->poll();
+    const jsize capacity = env->GetArrayLength(out) / 5;
+    jint count = 0;
+    while(count < capacity && !probe->ready.empty()) {
+        const LumaRecord &r = probe->ready.front();
+        const jlong row[] = {r.bufferTimestampNs, r.latchedNs, r.submittedNs, r.predictedNs, r.luma};
+        env->SetLongArrayRegion(out, count * 5, 5, row);
+        probe->ready.pop_front();
+        ++count;
+    }
+    return count;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(destroy)(JNIEnv *, jobject, jlong h) { delete cinema(h); }
