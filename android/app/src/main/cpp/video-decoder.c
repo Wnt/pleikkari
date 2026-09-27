@@ -12,6 +12,7 @@
 #include <chiaki/time.h>
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -325,6 +326,41 @@ static bool replay_codec_header(AndroidChiakiVideoDecoder *decoder)
 			decoder->timestamp_cur, AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG) == AMEDIA_OK;
 }
 
+// Pre-API-28 fallback for the decoder log: AMediaCodec_getName is missing, so ask
+// MediaCodecList.findDecoderForFormat (API 21) which component matches the stream.
+// Writes an empty string on any failure; never throws back into Java.
+static void framework_decoder_for_format(JNIEnv *env, const char *mime, int width, int height, char *out, size_t out_size)
+{
+	out[0] = '\0';
+	if(!env || (*env)->PushLocalFrame(env, 8) != 0)
+		return;
+	jclass list_class = (*env)->FindClass(env, "android/media/MediaCodecList");
+	jclass format_class = list_class ? (*env)->FindClass(env, "android/media/MediaFormat") : NULL;
+	jmethodID list_ctor = format_class ? (*env)->GetMethodID(env, list_class, "<init>", "(I)V") : NULL;
+	jmethodID find = list_ctor ? (*env)->GetMethodID(env, list_class, "findDecoderForFormat",
+			"(Landroid/media/MediaFormat;)Ljava/lang/String;") : NULL;
+	jmethodID create_video = find ? (*env)->GetStaticMethodID(env, format_class, "createVideoFormat",
+			"(Ljava/lang/String;II)Landroid/media/MediaFormat;") : NULL;
+	jstring jmime = create_video ? (*env)->NewStringUTF(env, mime) : NULL;
+	jobject format = jmime ? (*env)->CallStaticObjectMethod(env, format_class, create_video, jmime, width, height) : NULL;
+	jobject list = format && !(*env)->ExceptionCheck(env)
+			? (*env)->NewObject(env, list_class, list_ctor, 0 /* REGULAR_CODECS */) : NULL;
+	jstring name = list && !(*env)->ExceptionCheck(env)
+			? (jstring)(*env)->CallObjectMethod(env, list, find, format) : NULL;
+	if(name && !(*env)->ExceptionCheck(env))
+	{
+		const char *chars = (*env)->GetStringUTFChars(env, name, NULL);
+		if(chars)
+		{
+			snprintf(out, out_size, "%s", chars);
+			(*env)->ReleaseStringUTFChars(env, name, chars);
+		}
+	}
+	if((*env)->ExceptionCheck(env))
+		(*env)->ExceptionClear(env);
+	(*env)->PopLocalFrame(env, NULL);
+}
+
 void android_chiaki_video_decoder_set_surface(AndroidChiakiVideoDecoder *decoder, JNIEnv *env, jobject surface,
 		unsigned int stream_fps, double refresh_hz, int64_t app_vsync_offset_ns)
 {
@@ -378,6 +414,14 @@ void android_chiaki_video_decoder_set_surface(AndroidChiakiVideoDecoder *decoder
 			&& decoder_name_allocated)
 		decoder_name = decoder_name_allocated;
 	CHIAKI_LOGI(decoder->log, "Video decoder component: %s", decoder_name);
+	if(!decoder_name_allocated)
+	{
+		char framework_pick[128];
+		framework_decoder_for_format(env, mime, decoder->target_width, decoder->target_height,
+				framework_pick, sizeof(framework_pick));
+		CHIAKI_LOGI(decoder->log, "Video decoder framework pick (MediaCodecList.findDecoderForFormat %dx%d): %s",
+				decoder->target_width, decoder->target_height, framework_pick[0] ? framework_pick : "none");
+	}
 
 	bool qti_decoder = strncmp(decoder_name, "c2.qti.", strlen("c2.qti.")) == 0;
 	if(decoder->operating_rate > 0)
