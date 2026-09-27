@@ -1,0 +1,61 @@
+diff --git a/lib/src/feedbacksender.c b/lib/src/feedbacksender.c
+index f275aa2f..12a9ea9a 100644
+--- a/lib/src/feedbacksender.c
++++ b/lib/src/feedbacksender.c
+@@ -11,6 +11,11 @@
+ #define FEEDBACK_HISTORY_BUFFER_SIZE 0x10
+ #define FEEDBACK_HISTORY_RESEND_EVENT_COUNT 0x4
+ 
++// PLE-800 DEVICE INSTRUMENTATION (temporary, not committed)
++static uint64_t ple800_queued_us[CHIAKI_FEEDBACK_HISTORY_PACKET_QUEUE_SIZE];
++static uint64_t ple800_since_state_us[CHIAKI_FEEDBACK_HISTORY_PACKET_QUEUE_SIZE];
++static uint64_t ple800_last_state_us;
++
+ static void *feedback_sender_thread_func(void *user);
+ static void feedback_sender_send_state(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state);
+ static void feedback_sender_send_history_packet(ChiakiFeedbackSender *feedback_sender, const uint8_t *buf, size_t buf_size);
+@@ -224,6 +229,8 @@ static void feedback_sender_flush_history_locked(ChiakiFeedbackSender *feedback_
+ 
+ 	if(feedback_sender->history_packet_len < CHIAKI_FEEDBACK_HISTORY_PACKET_QUEUE_SIZE)
+ 	{
++		ple800_queued_us[packet_index] = chiaki_time_now_monotonic_us();
++		ple800_since_state_us[packet_index] = ple800_queued_us[packet_index] - ple800_last_state_us;
+ 		feedback_sender->history_packet_sizes[packet_index] = packet_size;
+ 		feedback_sender->history_packet_len++;
+ 	}
+@@ -388,9 +395,12 @@ static void *feedback_sender_thread_func(void *user)
+ 				send_feedback_state = false;
+ 		} // else: timeout, or change still throttled by state_min_interval_ms
+ 
++		uint64_t ple800_queued = 0, ple800_since_state = 0;
+ 		if(feedback_sender->history_packet_len > 0)
+ 		{
+ 			size_t packet_index = feedback_sender->history_packet_begin;
++			ple800_queued = ple800_queued_us[packet_index];
++			ple800_since_state = ple800_since_state_us[packet_index];
+ 			history_buf_size = feedback_sender->history_packet_sizes[packet_index];
+ 			memcpy(history_buf, feedback_sender->history_packets[packet_index], history_buf_size);
+ 			feedback_sender->history_packet_begin = (feedback_sender->history_packet_begin + 1)
+@@ -404,7 +414,14 @@ static void *feedback_sender_thread_func(void *user)
+ 			feedback_sender_send_state(feedback_sender, &state_now);
+ 
+ 		if(send_feedback_history)
++		{
++			ChiakiSeqNum16 ple800_seq = feedback_sender->history_seq_num;
+ 			feedback_sender_send_history_packet(feedback_sender, history_buf, history_buf_size);
++			uint64_t ple800_sent = chiaki_time_now_monotonic_us();
++			CHIAKI_LOGI(feedback_sender->log, "PLE800 history seq=%u queued_to_sent_us=%llu queued_after_state_us=%llu state_sent_with_it=%d",
++				(unsigned int)ple800_seq, (unsigned long long)(ple800_sent - ple800_queued),
++				(unsigned long long)ple800_since_state, (int)send_feedback_state);
++		}
+ 
+ 		err = chiaki_mutex_lock(&feedback_sender->state_mutex);
+ 		if(err != CHIAKI_ERR_SUCCESS)
+@@ -417,6 +434,7 @@ static void *feedback_sender_thread_func(void *user)
+ 		{
+ 			feedback_sender->controller_state_prev = state_now;
+ 			feedback_sender->last_feedback_state_ms = chiaki_time_now_monotonic_ms();
++			ple800_last_state_us = chiaki_time_now_monotonic_us();
+ 		}
+ 	}
+ 
