@@ -30,7 +30,7 @@
 # Every streaming mode: PLE-654's go-live.sh `setup` (prefs, databases, app data and base.apk into
 # $BACKUP, once) and `ensure <apk>` (install -r, never uninstall or clear); the snapshot prefs plus
 # stream_feedback_stats_log, stream_go_vr_enabled and stream_go_vr_latency_probe, with the A/B keys
-# in BASELINE_DROP removed so their defaults apply; the Go Library VR entry (PLE-690/PLE-717, the
+# in BASELINE_DROP removed so their defaults apply, then ARM_PREFS set (PLE-802); the Go Library VR entry (PLE-690/PLE-717, the
 # route that works until PLE-729); debug.pleikkari.vr_full_pose=1 so a Go on the table has the
 # screen in its screencap. The stream ends with the cinema menu's Disconnect (PLE-739 broadcast:
 # back, then right), so the cinema stops and closes the probe's files before the force-stop; the
@@ -71,6 +71,9 @@ ATRACE_KB=${ATRACE_KB:-16384}
 PADS=${PADS:-}
 STEP_WAIT=${STEP_WAIT:-1.5}
 BASELINE_DROP=${BASELINE_DROP:-stream_go_vr_match_60hz stream_go_vr_room_high_gpu stream_go_vr_frame_listener_thread stream_decoder_qcom_vt_low_latency}
+# PLE-802: the A/B arm, space-separated boolean prefs set after the baseline drop, for example
+# ARM_PREFS="stream_go_vr_input_thread=true". Empty (the default) runs the baseline.
+ARM_PREFS=${ARM_PREFS:-}
 DEADLINE=${DEADLINE:-$(( $(date +%s) + 570 ))}
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
@@ -104,9 +107,9 @@ cleanup_props() {
 }
 
 step_prefs() {
-	python3 - "$BACKUP/prefs.xml" "$OUT/prefs-run.xml" "$BASELINE_DROP" <<'EOF' | tee -a "$LOG"
+	python3 - "$BACKUP/prefs.xml" "$OUT/prefs-run.xml" "$BASELINE_DROP" "$ARM_PREFS" <<'EOF' | tee -a "$LOG"
 import re, sys
-src, dst, drop = sys.argv[1:]
+src, dst, drop, arm = sys.argv[1:]
 text = open(src).read()
 for key in drop.split():
     found = re.search(r'<(boolean|string) name="%s"[^\n]*' % re.escape(key), text)
@@ -114,9 +117,15 @@ for key in drop.split():
         print("baseline: dropped %s (was: %s)" % (key, found.group(0).strip()))
     text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % re.escape(key), "", text)
     text = re.sub(r'\s*<string name="%s">[^<]*</string>' % re.escape(key), "", text)
-for key in ("stream_feedback_stats_log", "stream_go_vr_enabled", "stream_go_vr_latency_probe"):
-    text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % key, "", text)
-    text = text.replace("</map>", '    <boolean name="%s" value="true" />\n</map>' % key)
+arm_prefs = [tuple(pair.split("=", 1)) for pair in arm.split()]
+for pair in arm_prefs:
+    if len(pair) != 2 or pair[1] not in ("true", "false"):
+        sys.exit("ARM_PREFS: %s is not key=true or key=false" % "=".join(pair))
+for key, value in [(k, "true") for k in ("stream_feedback_stats_log", "stream_go_vr_enabled", "stream_go_vr_latency_probe")] + arm_prefs:
+    text = re.sub(r'\s*<boolean name="%s" value="[a-z]+" />' % re.escape(key), "", text)
+    text = text.replace("</map>", '    <boolean name="%s" value="%s" />\n</map>' % (key, value))
+    if (key, value) in arm_prefs:
+        print("arm: %s=%s" % (key, value))
 open(dst, "w").write(text)
 # The stream's own settings, for the summary's setup section.
 for line in text.splitlines():
@@ -250,7 +259,7 @@ step_stop() {
 		say "no probe directory written this session"
 	fi
 	awk '!s[$0]++' "$OUT/logcat-raw.txt" > "$OUT/logcat.txt"
-	grep -E ' (GoCinema|GoVrEntry|Chiaki|VrApi) *: ' "$OUT/logcat.txt" | grep -E 'Latency probe|Cinema video|Cinema latency|Debug pad|Debug input|FPS=|Screen placed|entered' > "$OUT/probe-lines.txt"
+	grep -E ' (GoCinema|GoVrEntry|Chiaki|VrApi|GoPadInput) *: ' "$OUT/logcat.txt" | grep -E 'Latency probe|Cinema video|Cinema latency|Debug pad|Debug input|FPS=|Screen placed|entered|Input window' > "$OUT/probe-lines.txt"
 	grep -E 'FATAL EXCEPTION' -A12 "$OUT/logcat.txt" | head -60 > "$OUT/crashes.txt"
 	say "fatal $(grep -c 'FATAL EXCEPTION' "$OUT/crashes.txt"), Cinema latency lines $(grep -c 'Cinema latency' "$OUT/probe-lines.txt")"
 	write_prefs "$BACKUP/prefs.xml" && say "snapshot prefs back"
