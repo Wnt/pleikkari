@@ -7,7 +7,9 @@
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
 
+#include <stdlib.h>
 #include <string.h>
+#include <sys/system_properties.h>
 #include <time.h>
 
 #define INPUT_BUFFER_TIMEOUT_MS 10
@@ -19,6 +21,21 @@ static void *android_chiaki_audio_decoder_output_thread_func(void *user);
 static void android_chiaki_audio_decoder_header(ChiakiAudioHeader *header, void *user);
 static void android_chiaki_audio_decoder_frame(uint8_t *buf, size_t buf_size, void *user);
 static void android_chiaki_audio_decoder_create_codec(AndroidChiakiAudioDecoder *decoder);
+
+// Fault injection for on-device checks of the re-create path (PLE-788): each
+// new non-zero value of this property, set with
+// `adb shell setprop debug.chiaki.audio_fail <n>`, stops the running codec
+// once so the output thread takes its real error path. Unset, it does nothing.
+#define AUDIO_FAIL_PROP "debug.chiaki.audio_fail"
+#define AUDIO_FAIL_PROP_CHECK_BUFFERS 50
+
+static long audio_fail_prop_read(void)
+{
+	char value[PROP_VALUE_MAX] = { 0 };
+	if(__system_property_get(AUDIO_FAIL_PROP, value) <= 0)
+		return 0;
+	return strtol(value, NULL, 10);
+}
 
 static uint64_t now_ms(void)
 {
@@ -78,9 +95,25 @@ void android_chiaki_audio_decoder_get_sink(AndroidChiakiAudioDecoder *decoder, C
 static void *android_chiaki_audio_decoder_output_thread_func(void *user)
 {
 	AndroidChiakiAudioDecoder *decoder = user;
+	// A value already set when the codec starts is not a new request.
+	long fail_seen = audio_fail_prop_read();
+	unsigned buffers = 0;
 
 	while(1)
 	{
+		if(++buffers % AUDIO_FAIL_PROP_CHECK_BUFFERS == 0)
+		{
+			long fail = audio_fail_prop_read();
+			if(fail != 0 && fail != fail_seen)
+			{
+				fail_seen = fail;
+				CHIAKI_LOGW(decoder->log, "Injecting an Audio Decoder failure (" AUDIO_FAIL_PROP "=%ld)", fail);
+				chiaki_mutex_lock(&decoder->codec_mutex);
+				AMediaCodec_stop(decoder->codec);
+				chiaki_mutex_unlock(&decoder->codec_mutex);
+			}
+		}
+
 		AMediaCodecBufferInfo info;
 		ssize_t codec_buf_index = AMediaCodec_dequeueOutputBuffer(decoder->codec, &info, -1);
 		if(codec_buf_index >= 0)
