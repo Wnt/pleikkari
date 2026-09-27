@@ -93,7 +93,7 @@ dismiss(){
 
 # connect <logfile> <tag>; echoes classification, returns 0 only when streaming.
 connect(){
-  local LOG=$1 tag=$2 i n
+  local LOG=$1 tag=$2 i n cls rc
   "$ADB" shell input keyevent 224 >/dev/null 2>&1   # WAKEUP
   "$ADB" shell wm dismiss-keyguard >/dev/null 2>&1 || true
   "$ADB" shell am start -n "$PKG/fi.madekivi.pleikkari.main.MainActivity" >/dev/null 2>&1
@@ -110,9 +110,10 @@ connect(){
   fi
   for i in $(seq 1 $((CONNECT_TIMEOUT/2))); do
     sleep 2
-    if grep -q "AvCap failed to initialize video" "$LOG"; then echo "AVCAP:$(grep -o 'InitResult:-[0-9]*' "$LOG" | tail -1)"; return 10; fi
-    if grep -q "rp_in_use" "$LOG"; then echo "RP_IN_USE"; return 11; fi
-    if grep -q "Session quit:" "$LOG"; then echo "QUIT:$(grep -m1 -o 'reason=[a-z_]*' "$LOG" | head -1)"; return 12; fi
+    # Same contract as this script's exit status: 10 wedge, 11 rp_in_use,
+    # 12 other quit; 13 (UNKNOWN) means no failure signature yet.
+    cls=$(classify_connect_failure "$LOG"); rc=$?
+    if [ $rc -ne 13 ]; then echo "$cls"; return $rc; fi
     n=$(stats_count "$LOG")
     [ "${n:-0}" -ge 3 ] && { echo "OK"; return 0; }
   done

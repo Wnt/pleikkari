@@ -55,7 +55,10 @@ this run and neither is the AvCap wedge.
 `wedge-probe.sh` in this directory drives one trial: connect → stream
 `STREAM_SECS` → leave by an exit mode → wait `WAIT_SECS` → connect again, and
 classifies the second connect as `OK` / `AVCAP:<code>` / `RP_IN_USE` /
-`QUIT:<reason>`. Raw logcat for both connects, screenshots and the results table
+`QUIT:<reason>`. Since PLE-452 the failure classes come from the shared
+`classify_connect_failure()` in `../lib/capture-guard.sh`, so new rows read
+`AVCAP_WEDGE:<code>` / `OTHER_QUIT:<reason>` (the committed `results.tsv` keeps
+the old labels), and an AvCap failure only counts after the bang. Raw logcat for both connects, screenshots and the results table
 are under `build/captures/ple385/` (gitignored); `results.tsv` is copied here.
 
 | Group | Provocation | n | Second connect |
