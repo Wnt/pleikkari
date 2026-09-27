@@ -1,0 +1,74 @@
+diff --git a/lib/src/feedbacksender.c b/lib/src/feedbacksender.c
+index b4d6c5db..f76bee3f 100644
+--- a/lib/src/feedbacksender.c
++++ b/lib/src/feedbacksender.c
+@@ -12,6 +12,13 @@
+ #define FEEDBACK_HISTORY_BUFFER_SIZE 0x10
+ #define FEEDBACK_HISTORY_RESEND_EVENT_COUNT 0x4
+ 
++// PLE-823 DEVICE INSTRUMENTATION (temporary, not committed)
++static uint64_t ple823_first_change_us; // first stick/motion change not yet in a state packet
++static uint64_t ple823_last_change_us;
++static uint64_t ple823_last_change_after_state_us;
++static uint64_t ple823_last_state_us;
++static bool controller_state_equals_for_feedback_state(ChiakiControllerState *a, ChiakiControllerState *b);
++
+ static void *feedback_sender_thread_func(void *user);
+ static void feedback_sender_send_state(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state);
+ static void feedback_sender_send_history_packet(ChiakiFeedbackSender *feedback_sender, const uint8_t *buf, size_t buf_size, uint32_t buttons);
+@@ -98,6 +105,14 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_set_controller_state(Chiaki
+ 		return CHIAKI_ERR_SUCCESS;
+ 	}
+ 
++	if(!controller_state_equals_for_feedback_state(state, &feedback_sender->controller_state))
++	{
++		uint64_t ple823_now = chiaki_time_now_monotonic_us();
++		if(!ple823_first_change_us)
++			ple823_first_change_us = ple823_now;
++		ple823_last_change_us = ple823_now;
++		ple823_last_change_after_state_us = ple823_now - ple823_last_state_us;
++	}
+ 	feedback_sender->controller_state = *state;
+ 	feedback_sender_record_history(feedback_sender, &feedback_sender->controller_state_history_prev, &feedback_sender->controller_state);
+ 	feedback_sender_flush_history_locked(feedback_sender);
+@@ -423,6 +438,14 @@ static void *feedback_sender_thread_func(void *user)
+ 			if(controller_state_equals_for_feedback_state(&state_now, &feedback_sender->controller_state_prev))
+ 				send_feedback_state = false;
+ 		} // else: timeout, or change still throttled by state_min_interval_ms
++		uint64_t ple823_first = 0, ple823_last = 0, ple823_after = 0;
++		if(send_feedback_state)
++		{
++			ple823_first = ple823_first_change_us;
++			ple823_last = ple823_last_change_us;
++			ple823_after = ple823_last_change_after_state_us;
++			ple823_first_change_us = 0;
++		}
+ 
+ 		if(feedback_sender->history_packet_len > 0)
+ 		{
+@@ -438,7 +461,17 @@ static void *feedback_sender_thread_func(void *user)
+ 		chiaki_mutex_unlock(&feedback_sender->state_mutex);
+ 
+ 		if(send_feedback_state)
++		{
++			ChiakiSeqNum16 ple823_seq = feedback_sender->state_seq_num;
+ 			feedback_sender_send_state(feedback_sender, &state_now);
++			uint64_t ple823_sent = chiaki_time_now_monotonic_us();
++			if(ple823_first)
++				CHIAKI_LOGI(feedback_sender->log, "PLE823 state seq=%u left_x=%d last_change_to_sent_us=%llu first_change_to_sent_us=%llu last_change_after_state_us=%llu",
++					(unsigned int)ple823_seq, (int)state_now.left_x, (unsigned long long)(ple823_sent - ple823_last),
++					(unsigned long long)(ple823_sent - ple823_first), (unsigned long long)ple823_after);
++			else
++				CHIAKI_LOGI(feedback_sender->log, "PLE823 state seq=%u left_x=%d keepalive", (unsigned int)ple823_seq, (int)state_now.left_x);
++		}
+ 
+ 		if(send_feedback_history)
+ 			feedback_sender_send_history_packet(feedback_sender, history_buf, history_buf_size, history_buttons);
+@@ -454,6 +487,7 @@ static void *feedback_sender_thread_func(void *user)
+ 		{
+ 			feedback_sender->controller_state_prev = state_now;
+ 			feedback_sender->last_feedback_state_ms = chiaki_time_now_monotonic_ms();
++			ple823_last_state_us = chiaki_time_now_monotonic_us();
+ 		}
+ 	}
+ 

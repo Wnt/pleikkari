@@ -341,6 +341,44 @@ static bool state_cond_check(void *user)
 	return now_ms - feedback_sender->last_feedback_state_ms >= feedback_sender->state_min_interval_ms;
 }
 
+/**
+ * How long the sender may sleep from now_ms: until the keepalive is due or, with a state change
+ * pending, until the state minimum since the last state packet ends.
+ */
+static uint64_t feedback_sender_wait_timeout_ms(ChiakiFeedbackSender *feedback_sender, uint64_t now_ms)
+{
+	uint64_t elapsed = now_ms - feedback_sender->last_feedback_state_ms;
+	uint64_t next_timeout = elapsed < FEEDBACK_STATE_TIMEOUT_MAX_MS
+		? FEEDBACK_STATE_TIMEOUT_MAX_MS - elapsed : 0;
+	if(feedback_sender->controller_state_changed && elapsed < feedback_sender->state_min_interval_ms)
+	{
+		uint64_t min_wait = feedback_sender->state_min_interval_ms - elapsed;
+		if(min_wait < next_timeout)
+			next_timeout = min_wait;
+	}
+	return next_timeout;
+}
+
+/**
+ * Like chiaki_cond_timedwait_pred() with state_cond_check(), but takes the timeout afresh each
+ * time the sender wakes. PLE-823: one chiaki_cond_timedwait_pred() kept the deadline it took
+ * before the wait, so a stick-only change inside the state minimum slept until the next
+ * controller change or the keepalive, up to 200 ms, instead of until the minimum ended.
+ */
+static ChiakiErrorCode feedback_sender_wait_locked(ChiakiFeedbackSender *feedback_sender)
+{
+	while(!state_cond_check(feedback_sender))
+	{
+		uint64_t timeout_ms = feedback_sender_wait_timeout_ms(feedback_sender, chiaki_time_now_monotonic_ms());
+		if(timeout_ms == 0)
+			return CHIAKI_ERR_TIMEOUT;
+		ChiakiErrorCode err = chiaki_cond_timedwait(&feedback_sender->state_cond, &feedback_sender->state_mutex, timeout_ms);
+		if(err != CHIAKI_ERR_SUCCESS)
+			return err;
+	}
+	return CHIAKI_ERR_SUCCESS;
+}
+
 static void *feedback_sender_thread_func(void *user)
 {
 	ChiakiFeedbackSender *feedback_sender = user;
@@ -355,18 +393,7 @@ static void *feedback_sender_thread_func(void *user)
 	{
 		if(feedback_sender->history_packet_len == 0)
 		{
-			uint64_t now_ms = chiaki_time_now_monotonic_ms();
-			uint64_t elapsed = now_ms - feedback_sender->last_feedback_state_ms;
-			uint64_t next_timeout = elapsed < FEEDBACK_STATE_TIMEOUT_MAX_MS
-				? FEEDBACK_STATE_TIMEOUT_MAX_MS - elapsed : 0;
-			if(feedback_sender->controller_state_changed && elapsed < feedback_sender->state_min_interval_ms)
-			{
-				uint64_t min_wait = feedback_sender->state_min_interval_ms - elapsed;
-				if(min_wait < next_timeout)
-					next_timeout = min_wait;
-			}
-
-			err = chiaki_cond_timedwait_pred(&feedback_sender->state_cond, &feedback_sender->state_mutex, next_timeout, state_cond_check, feedback_sender);
+			err = feedback_sender_wait_locked(feedback_sender);
 			if(err != CHIAKI_ERR_SUCCESS && err != CHIAKI_ERR_TIMEOUT)
 				break;
 		}

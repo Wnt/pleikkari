@@ -1,0 +1,569 @@
+09-27 18:55:53.447 Chiaki  : PLE823 state seq=0 left_x=0 keepalive
+09-27 18:55:53.647 Chiaki  : PLE823 state seq=1 left_x=0 keepalive
+09-27 18:55:53.848 Chiaki  : PLE823 state seq=2 left_x=0 keepalive
+09-27 18:55:54.048 Chiaki  : PLE823 state seq=3 left_x=0 keepalive
+09-27 18:55:54.249 Chiaki  : PLE823 state seq=4 left_x=0 keepalive
+09-27 18:55:54.450 Chiaki  : PLE823 state seq=5 left_x=0 keepalive
+09-27 18:55:54.651 Chiaki  : PLE823 state seq=6 left_x=0 keepalive
+09-27 18:55:54.851 Chiaki  : PLE823 state seq=7 left_x=0 keepalive
+09-27 18:55:55.051 Chiaki  : PLE823 state seq=8 left_x=0 keepalive
+09-27 18:55:55.252 Chiaki  : PLE823 state seq=9 left_x=0 keepalive
+09-27 18:55:55.452 Chiaki  : PLE823 state seq=10 left_x=0 keepalive
+09-27 18:55:55.653 Chiaki  : PLE823 state seq=11 left_x=0 keepalive
+09-27 18:55:55.853 Chiaki  : PLE823 state seq=12 left_x=0 keepalive
+09-27 18:55:56.054 Chiaki  : PLE823 state seq=13 left_x=0 keepalive
+09-27 18:55:56.254 Chiaki  : PLE823 state seq=14 left_x=0 keepalive
+09-27 18:55:56.455 Chiaki  : PLE823 state seq=15 left_x=0 keepalive
+09-27 18:55:56.655 Chiaki  : PLE823 state seq=16 left_x=0 keepalive
+09-27 18:55:56.856 Chiaki  : PLE823 state seq=17 left_x=0 keepalive
+09-27 18:55:57.056 Chiaki  : PLE823 state seq=18 left_x=0 keepalive
+09-27 18:55:57.257 Chiaki  : PLE823 state seq=19 left_x=0 keepalive
+09-27 18:55:57.457 Chiaki  : PLE823 state seq=20 left_x=0 keepalive
+09-27 18:55:57.658 Chiaki  : PLE823 state seq=21 left_x=0 keepalive
+09-27 18:55:57.858 Chiaki  : PLE823 state seq=22 left_x=0 keepalive
+09-27 18:55:58.058 Chiaki  : PLE823 state seq=23 left_x=0 keepalive
+09-27 18:55:58.259 Chiaki  : PLE823 state seq=24 left_x=0 keepalive
+09-27 18:55:58.460 Chiaki  : PLE823 state seq=25 left_x=0 keepalive
+09-27 18:55:58.660 Chiaki  : PLE823 state seq=26 left_x=0 keepalive
+09-27 18:55:58.861 Chiaki  : PLE823 state seq=27 left_x=0 keepalive
+09-27 18:55:59.061 Chiaki  : PLE823 state seq=28 left_x=0 keepalive
+09-27 18:55:59.268 Chiaki  : PLE823 state seq=29 left_x=0 keepalive
+09-27 18:55:59.469 Chiaki  : PLE823 state seq=30 left_x=0 keepalive
+09-27 18:55:59.669 Chiaki  : PLE823 state seq=31 left_x=0 keepalive
+09-27 18:55:59.870 Chiaki  : PLE823 state seq=32 left_x=0 keepalive
+09-27 18:56:00.071 Chiaki  : PLE823 state seq=33 left_x=0 keepalive
+09-27 18:56:00.273 Chiaki  : PLE823 state seq=34 left_x=0 keepalive
+09-27 18:56:00.474 Chiaki  : PLE823 state seq=35 left_x=0 keepalive
+09-27 18:56:00.675 Chiaki  : PLE823 state seq=36 left_x=0 keepalive
+09-27 18:56:00.876 Chiaki  : PLE823 state seq=37 left_x=0 keepalive
+09-27 18:56:01.076 Chiaki  : PLE823 state seq=38 left_x=0 keepalive
+09-27 18:56:01.277 Chiaki  : PLE823 state seq=39 left_x=0 keepalive
+09-27 18:56:01.478 Chiaki  : PLE823 state seq=40 left_x=0 keepalive
+09-27 18:56:01.678 Chiaki  : PLE823 state seq=41 left_x=0 keepalive
+09-27 18:56:01.879 Chiaki  : PLE823 state seq=42 left_x=0 keepalive
+09-27 18:56:02.080 Chiaki  : PLE823 state seq=43 left_x=0 keepalive
+09-27 18:56:02.280 Chiaki  : PLE823 state seq=44 left_x=0 keepalive
+09-27 18:56:02.481 Chiaki  : PLE823 state seq=45 left_x=0 keepalive
+09-27 18:56:02.682 Chiaki  : PLE823 state seq=46 left_x=0 keepalive
+09-27 18:56:02.885 Chiaki  : PLE823 state seq=47 left_x=0 keepalive
+09-27 18:56:03.086 Chiaki  : PLE823 state seq=48 left_x=0 keepalive
+09-27 18:56:03.287 Chiaki  : PLE823 state seq=49 left_x=0 keepalive
+09-27 18:56:03.487 Chiaki  : PLE823 state seq=50 left_x=0 keepalive
+09-27 18:56:03.688 Chiaki  : PLE823 state seq=51 left_x=0 keepalive
+09-27 18:56:03.888 Chiaki  : PLE823 state seq=52 left_x=0 keepalive
+09-27 18:56:04.089 Chiaki  : PLE823 state seq=53 left_x=0 keepalive
+09-27 18:56:04.289 Chiaki  : PLE823 state seq=54 left_x=0 keepalive
+09-27 18:56:04.369 PLE823  : stim start n=40
+09-27 18:56:04.450 Chiaki  : PLE823 state seq=55 left_x=901 last_change_to_sent_us=254 first_change_to_sent_us=254 last_change_after_state_us=160223
+09-27 18:56:04.466 Chiaki  : PLE823 state seq=56 left_x=1392 last_change_to_sent_us=202 first_change_to_sent_us=202 last_change_after_state_us=16188
+09-27 18:56:04.483 Chiaki  : PLE823 state seq=57 left_x=2785 last_change_to_sent_us=228 first_change_to_sent_us=228 last_change_after_state_us=16372
+09-27 18:56:04.500 Chiaki  : PLE823 state seq=58 left_x=4177 last_change_to_sent_us=234 first_change_to_sent_us=234 last_change_after_state_us=16589
+09-27 18:56:04.508 Chiaki  : PLE823 state seq=59 left_x=4915 last_change_to_sent_us=5568 first_change_to_sent_us=5568 last_change_after_state_us=2727
+09-27 18:56:04.584 Chiaki  : PLE823 state seq=60 left_x=4259 last_change_to_sent_us=256 first_change_to_sent_us=256 last_change_after_state_us=74884
+09-27 18:56:04.600 Chiaki  : PLE823 state seq=61 left_x=2621 last_change_to_sent_us=251 first_change_to_sent_us=251 last_change_after_state_us=16282
+09-27 18:56:04.617 Chiaki  : PLE823 state seq=62 left_x=1228 last_change_to_sent_us=282 first_change_to_sent_us=282 last_change_after_state_us=16056
+09-27 18:56:04.625 Chiaki  : PLE823 state seq=63 left_x=0 last_change_to_sent_us=5712 first_change_to_sent_us=5712 last_change_after_state_us=2798
+09-27 18:56:04.826 Chiaki  : PLE823 state seq=64 left_x=0 keepalive
+09-27 18:56:05.027 Chiaki  : PLE823 state seq=65 left_x=0 keepalive
+09-27 18:56:05.217 Chiaki  : PLE823 state seq=66 left_x=655 last_change_to_sent_us=487 first_change_to_sent_us=487 last_change_after_state_us=188910
+09-27 18:56:05.233 Chiaki  : PLE823 state seq=67 left_x=1310 last_change_to_sent_us=317 first_change_to_sent_us=317 last_change_after_state_us=16198
+09-27 18:56:05.250 Chiaki  : PLE823 state seq=68 left_x=2621 last_change_to_sent_us=318 first_change_to_sent_us=318 last_change_after_state_us=16247
+09-27 18:56:05.267 Chiaki  : PLE823 state seq=69 left_x=4013 last_change_to_sent_us=304 first_change_to_sent_us=304 last_change_after_state_us=16681
+09-27 18:56:05.275 Chiaki  : PLE823 state seq=70 left_x=4915 last_change_to_sent_us=5368 first_change_to_sent_us=5368 last_change_after_state_us=2815
+09-27 18:56:05.349 Chiaki  : PLE823 state seq=71 left_x=4259 last_change_to_sent_us=198 first_change_to_sent_us=198 last_change_after_state_us=73466
+09-27 18:56:05.366 Chiaki  : PLE823 state seq=72 left_x=3522 last_change_to_sent_us=194 first_change_to_sent_us=194 last_change_after_state_us=16666
+09-27 18:56:05.383 Chiaki  : PLE823 state seq=73 left_x=2293 last_change_to_sent_us=245 first_change_to_sent_us=245 last_change_after_state_us=16703
+09-27 18:56:05.400 Chiaki  : PLE823 state seq=74 left_x=983 last_change_to_sent_us=233 first_change_to_sent_us=233 last_change_after_state_us=16252
+09-27 18:56:05.408 Chiaki  : PLE823 state seq=75 left_x=0 last_change_to_sent_us=5376 first_change_to_sent_us=5376 last_change_after_state_us=2566
+09-27 18:56:05.608 Chiaki  : PLE823 state seq=76 left_x=0 keepalive
+09-27 18:56:05.809 Chiaki  : PLE823 state seq=77 left_x=0 keepalive
+09-27 18:56:06.009 Chiaki  : PLE823 state seq=78 left_x=0 keepalive
+09-27 18:56:06.033 Chiaki  : PLE823 state seq=79 left_x=737 last_change_to_sent_us=256 first_change_to_sent_us=256 last_change_after_state_us=23440
+09-27 18:56:06.050 Chiaki  : PLE823 state seq=80 left_x=2211 last_change_to_sent_us=343 first_change_to_sent_us=343 last_change_after_state_us=16361
+09-27 18:56:06.066 Chiaki  : PLE823 state seq=81 left_x=3604 last_change_to_sent_us=215 first_change_to_sent_us=215 last_change_after_state_us=16291
+09-27 18:56:06.075 Chiaki  : PLE823 state seq=82 left_x=4915 last_change_to_sent_us=6421 first_change_to_sent_us=6421 last_change_after_state_us=2264
+09-27 18:56:06.149 Chiaki  : PLE823 state seq=83 left_x=4259 last_change_to_sent_us=225 first_change_to_sent_us=225 last_change_after_state_us=73916
+09-27 18:56:06.167 Chiaki  : PLE823 state seq=84 left_x=3604 last_change_to_sent_us=250 first_change_to_sent_us=250 last_change_after_state_us=17019
+09-27 18:56:06.184 Chiaki  : PLE823 state seq=85 left_x=2375 last_change_to_sent_us=216 first_change_to_sent_us=216 last_change_after_state_us=16883
+09-27 18:56:06.200 Chiaki  : PLE823 state seq=86 left_x=983 last_change_to_sent_us=261 first_change_to_sent_us=261 last_change_after_state_us=15692
+09-27 18:56:06.209 Chiaki  : PLE823 state seq=87 left_x=0 last_change_to_sent_us=5350 first_change_to_sent_us=5350 last_change_after_state_us=3056
+09-27 18:56:06.409 Chiaki  : PLE823 state seq=88 left_x=0 keepalive
+09-27 18:56:06.610 Chiaki  : PLE823 state seq=89 left_x=0 keepalive
+09-27 18:56:06.810 Chiaki  : PLE823 state seq=90 left_x=0 keepalive
+09-27 18:56:06.833 Chiaki  : PLE823 state seq=91 left_x=655 last_change_to_sent_us=262 first_change_to_sent_us=262 last_change_after_state_us=22581
+09-27 18:56:06.850 Chiaki  : PLE823 state seq=92 left_x=2129 last_change_to_sent_us=260 first_change_to_sent_us=260 last_change_after_state_us=16370
+09-27 18:56:06.869 Chiaki  : PLE823 state seq=93 left_x=3522 last_change_to_sent_us=277 first_change_to_sent_us=277 last_change_after_state_us=19347
+09-27 18:56:06.877 Chiaki  : PLE823 state seq=94 left_x=4915 last_change_to_sent_us=4675 first_change_to_sent_us=4675 last_change_after_state_us=3350
+09-27 18:56:06.967 Chiaki  : PLE823 state seq=95 left_x=4177 last_change_to_sent_us=399 first_change_to_sent_us=399 last_change_after_state_us=89421
+09-27 18:56:06.985 Chiaki  : PLE823 state seq=96 left_x=2867 last_change_to_sent_us=250 first_change_to_sent_us=250 last_change_after_state_us=17714
+09-27 18:56:07.000 Chiaki  : PLE823 state seq=97 left_x=1310 last_change_to_sent_us=253 first_change_to_sent_us=253 last_change_after_state_us=14314
+09-27 18:56:07.018 Chiaki  : PLE823 state seq=98 left_x=81 last_change_to_sent_us=237 first_change_to_sent_us=237 last_change_after_state_us=17348
+09-27 18:56:07.026 Chiaki  : PLE823 state seq=99 left_x=0 last_change_to_sent_us=6315 first_change_to_sent_us=6315 last_change_after_state_us=2286
+09-27 18:56:07.227 Chiaki  : PLE823 state seq=100 left_x=0 keepalive
+09-27 18:56:07.427 Chiaki  : PLE823 state seq=101 left_x=0 keepalive
+09-27 18:56:07.628 Chiaki  : PLE823 state seq=102 left_x=0 keepalive
+09-27 18:56:07.637 Chiaki  : PLE823 state seq=103 left_x=737 last_change_to_sent_us=3300 first_change_to_sent_us=3300 last_change_after_state_us=5173
+09-27 18:56:07.649 Chiaki  : PLE823 state seq=104 left_x=1474 last_change_to_sent_us=242 first_change_to_sent_us=242 last_change_after_state_us=12578
+09-27 18:56:07.666 Chiaki  : PLE823 state seq=105 left_x=2785 last_change_to_sent_us=209 first_change_to_sent_us=209 last_change_after_state_us=16791
+09-27 18:56:07.684 Chiaki  : PLE823 state seq=106 left_x=4177 last_change_to_sent_us=527 first_change_to_sent_us=527 last_change_after_state_us=17052
+09-27 18:56:07.693 Chiaki  : PLE823 state seq=107 left_x=4915 last_change_to_sent_us=6527 first_change_to_sent_us=6527 last_change_after_state_us=1995
+09-27 18:56:07.766 Chiaki  : PLE823 state seq=108 left_x=4259 last_change_to_sent_us=276 first_change_to_sent_us=276 last_change_after_state_us=73331
+09-27 18:56:07.784 Chiaki  : PLE823 state seq=109 left_x=3522 last_change_to_sent_us=260 first_change_to_sent_us=260 last_change_after_state_us=17044
+09-27 18:56:07.800 Chiaki  : PLE823 state seq=110 left_x=2375 last_change_to_sent_us=243 first_change_to_sent_us=243 last_change_after_state_us=15795
+09-27 18:56:07.817 Chiaki  : PLE823 state seq=111 left_x=1064 last_change_to_sent_us=260 first_change_to_sent_us=260 last_change_after_state_us=16354
+09-27 18:56:07.825 Chiaki  : PLE823 state seq=112 left_x=0 last_change_to_sent_us=6434 first_change_to_sent_us=6434 last_change_after_state_us=2241
+09-27 18:56:08.026 Chiaki  : PLE823 state seq=113 left_x=0 keepalive
+09-27 18:56:08.227 Chiaki  : PLE823 state seq=114 left_x=0 keepalive
+09-27 18:56:08.427 Chiaki  : PLE823 state seq=115 left_x=0 keepalive
+09-27 18:56:08.450 Chiaki  : PLE823 state seq=116 left_x=655 last_change_to_sent_us=405 first_change_to_sent_us=405 last_change_after_state_us=22399
+09-27 18:56:08.467 Chiaki  : PLE823 state seq=117 left_x=2047 last_change_to_sent_us=491 first_change_to_sent_us=491 last_change_after_state_us=16492
+09-27 18:56:08.483 Chiaki  : PLE823 state seq=118 left_x=3440 last_change_to_sent_us=221 first_change_to_sent_us=221 last_change_after_state_us=15549
+09-27 18:56:08.501 Chiaki  : PLE823 state seq=119 left_x=4833 last_change_to_sent_us=421 first_change_to_sent_us=421 last_change_after_state_us=16911
+09-27 18:56:08.510 Chiaki  : PLE823 state seq=120 left_x=4915 last_change_to_sent_us=6652 first_change_to_sent_us=6652 last_change_after_state_us=2043
+09-27 18:56:08.582 Chiaki  : PLE823 state seq=121 left_x=4259 last_change_to_sent_us=250 first_change_to_sent_us=250 last_change_after_state_us=72369
+09-27 18:56:08.600 Chiaki  : PLE823 state seq=122 left_x=3522 last_change_to_sent_us=403 first_change_to_sent_us=403 last_change_after_state_us=16763
+09-27 18:56:08.617 Chiaki  : PLE823 state seq=123 left_x=2457 last_change_to_sent_us=245 first_change_to_sent_us=245 last_change_after_state_us=16705
+09-27 18:56:08.633 Chiaki  : PLE823 state seq=124 left_x=983 last_change_to_sent_us=213 first_change_to_sent_us=213 last_change_after_state_us=16129
+09-27 18:56:08.641 Chiaki  : PLE823 state seq=125 left_x=0 last_change_to_sent_us=5278 first_change_to_sent_us=5278 last_change_after_state_us=2735
+09-27 18:56:08.841 Chiaki  : PLE823 state seq=126 left_x=0 keepalive
+09-27 18:56:09.042 Chiaki  : PLE823 state seq=127 left_x=0 keepalive
+09-27 18:56:09.243 Chiaki  : PLE823 state seq=128 left_x=0 keepalive
+09-27 18:56:09.267 Chiaki  : PLE823 state seq=129 left_x=737 last_change_to_sent_us=370 first_change_to_sent_us=370 last_change_after_state_us=23462
+09-27 18:56:09.283 Chiaki  : PLE823 state seq=130 left_x=2211 last_change_to_sent_us=379 first_change_to_sent_us=379 last_change_after_state_us=16073
+09-27 18:56:09.300 Chiaki  : PLE823 state seq=131 left_x=3522 last_change_to_sent_us=296 first_change_to_sent_us=296 last_change_after_state_us=16452
+09-27 18:56:09.309 Chiaki  : PLE823 state seq=132 left_x=4915 last_change_to_sent_us=6489 first_change_to_sent_us=6489 last_change_after_state_us=2067
+09-27 18:56:09.382 Chiaki  : PLE823 state seq=133 left_x=4177 last_change_to_sent_us=161 first_change_to_sent_us=161 last_change_after_state_us=73299
+09-27 18:56:09.399 Chiaki  : PLE823 state seq=134 left_x=3440 last_change_to_sent_us=115 first_change_to_sent_us=115 last_change_after_state_us=16226
+09-27 18:56:09.416 Chiaki  : PLE823 state seq=135 left_x=2129 last_change_to_sent_us=213 first_change_to_sent_us=213 last_change_after_state_us=17246
+09-27 18:56:09.433 Chiaki  : PLE823 state seq=136 left_x=655 last_change_to_sent_us=220 first_change_to_sent_us=220 last_change_after_state_us=16547
+09-27 18:56:09.441 Chiaki  : PLE823 state seq=137 left_x=0 last_change_to_sent_us=4311 first_change_to_sent_us=4311 last_change_after_state_us=3344
+09-27 18:56:09.641 Chiaki  : PLE823 state seq=138 left_x=0 keepalive
+09-27 18:56:09.842 Chiaki  : PLE823 state seq=139 left_x=0 keepalive
+09-27 18:56:10.042 Chiaki  : PLE823 state seq=140 left_x=0 keepalive
+09-27 18:56:10.052 Chiaki  : PLE823 state seq=141 left_x=655 last_change_to_sent_us=1464 first_change_to_sent_us=1464 last_change_after_state_us=7416
+09-27 18:56:10.067 Chiaki  : PLE823 state seq=142 left_x=1392 last_change_to_sent_us=282 first_change_to_sent_us=282 last_change_after_state_us=15174
+09-27 18:56:10.084 Chiaki  : PLE823 state seq=143 left_x=2785 last_change_to_sent_us=298 first_change_to_sent_us=298 last_change_after_state_us=16455
+09-27 18:56:10.101 Chiaki  : PLE823 state seq=144 left_x=4177 last_change_to_sent_us=366 first_change_to_sent_us=366 last_change_after_state_us=16538
+09-27 18:56:10.110 Chiaki  : PLE823 state seq=145 left_x=4915 last_change_to_sent_us=4903 first_change_to_sent_us=4903 last_change_after_state_us=3264
+09-27 18:56:10.184 Chiaki  : PLE823 state seq=146 left_x=4177 last_change_to_sent_us=347 first_change_to_sent_us=347 last_change_after_state_us=73174
+09-27 18:56:10.200 Chiaki  : PLE823 state seq=147 left_x=3604 last_change_to_sent_us=492 first_change_to_sent_us=492 last_change_after_state_us=15429
+09-27 18:56:10.216 Chiaki  : PLE823 state seq=148 left_x=2621 last_change_to_sent_us=331 first_change_to_sent_us=331 last_change_after_state_us=16298
+09-27 18:56:10.234 Chiaki  : PLE823 state seq=149 left_x=1146 last_change_to_sent_us=448 first_change_to_sent_us=448 last_change_after_state_us=17368
+09-27 18:56:10.243 Chiaki  : PLE823 state seq=150 left_x=0 last_change_to_sent_us=6445 first_change_to_sent_us=6445 last_change_after_state_us=1965
+09-27 18:56:10.444 Chiaki  : PLE823 state seq=151 left_x=0 keepalive
+09-27 18:56:10.644 Chiaki  : PLE823 state seq=152 left_x=0 keepalive
+09-27 18:56:10.845 Chiaki  : PLE823 state seq=153 left_x=0 keepalive
+09-27 18:56:10.854 Chiaki  : PLE823 state seq=154 left_x=655 last_change_to_sent_us=4276 first_change_to_sent_us=4276 last_change_after_state_us=4627
+09-27 18:56:10.866 Chiaki  : PLE823 state seq=155 left_x=1310 last_change_to_sent_us=173 first_change_to_sent_us=173 last_change_after_state_us=12030
+09-27 18:56:10.883 Chiaki  : PLE823 state seq=156 left_x=2539 last_change_to_sent_us=255 first_change_to_sent_us=255 last_change_after_state_us=17279
+09-27 18:56:10.900 Chiaki  : PLE823 state seq=157 left_x=4013 last_change_to_sent_us=260 first_change_to_sent_us=260 last_change_after_state_us=16593
+09-27 18:56:10.909 Chiaki  : PLE823 state seq=158 left_x=4915 last_change_to_sent_us=6727 first_change_to_sent_us=6727 last_change_after_state_us=2028
+09-27 18:56:10.984 Chiaki  : PLE823 state seq=159 left_x=4177 last_change_to_sent_us=219 first_change_to_sent_us=219 last_change_after_state_us=74166
+09-27 18:56:11.000 Chiaki  : PLE823 state seq=160 left_x=3604 last_change_to_sent_us=231 first_change_to_sent_us=231 last_change_after_state_us=16014
+09-27 18:56:11.016 Chiaki  : PLE823 state seq=161 left_x=2375 last_change_to_sent_us=243 first_change_to_sent_us=243 last_change_after_state_us=15913
+09-27 18:56:11.034 Chiaki  : PLE823 state seq=162 left_x=983 last_change_to_sent_us=291 first_change_to_sent_us=291 last_change_after_state_us=17598
+09-27 18:56:11.043 Chiaki  : PLE823 state seq=163 left_x=0 last_change_to_sent_us=5603 first_change_to_sent_us=5603 last_change_after_state_us=2992
+09-27 18:56:11.244 Chiaki  : PLE823 state seq=164 left_x=0 keepalive
+09-27 18:56:11.444 Chiaki  : PLE823 state seq=165 left_x=0 keepalive
+09-27 18:56:11.644 Chiaki  : PLE823 state seq=166 left_x=0 keepalive
+09-27 18:56:11.667 Chiaki  : PLE823 state seq=167 left_x=655 last_change_to_sent_us=536 first_change_to_sent_us=536 last_change_after_state_us=21819
+09-27 18:56:11.684 Chiaki  : PLE823 state seq=168 left_x=2129 last_change_to_sent_us=252 first_change_to_sent_us=252 last_change_after_state_us=16408
+09-27 18:56:11.701 Chiaki  : PLE823 state seq=169 left_x=3522 last_change_to_sent_us=207 first_change_to_sent_us=207 last_change_after_state_us=16659
+09-27 18:56:11.709 Chiaki  : PLE823 state seq=170 left_x=4915 last_change_to_sent_us=5348 first_change_to_sent_us=5348 last_change_after_state_us=2924
+09-27 18:56:11.783 Chiaki  : PLE823 state seq=171 left_x=4177 last_change_to_sent_us=338 first_change_to_sent_us=338 last_change_after_state_us=73844
+09-27 18:56:11.800 Chiaki  : PLE823 state seq=172 left_x=3604 last_change_to_sent_us=284 first_change_to_sent_us=284 last_change_after_state_us=16570
+09-27 18:56:11.818 Chiaki  : PLE823 state seq=173 left_x=2375 last_change_to_sent_us=227 first_change_to_sent_us=227 last_change_after_state_us=17310
+09-27 18:56:11.833 Chiaki  : PLE823 state seq=174 left_x=901 last_change_to_sent_us=224 first_change_to_sent_us=224 last_change_after_state_us=15396
+09-27 18:56:11.842 Chiaki  : PLE823 state seq=175 left_x=0 last_change_to_sent_us=4293 first_change_to_sent_us=4293 last_change_after_state_us=4135
+09-27 18:56:12.042 Chiaki  : PLE823 state seq=176 left_x=0 keepalive
+09-27 18:56:12.243 Chiaki  : PLE823 state seq=177 left_x=0 keepalive
+09-27 18:56:12.444 Chiaki  : PLE823 state seq=178 left_x=0 keepalive
+09-27 18:56:12.452 Chiaki  : PLE823 state seq=179 left_x=655 last_change_to_sent_us=3257 first_change_to_sent_us=3257 last_change_after_state_us=5257
+09-27 18:56:12.467 Chiaki  : PLE823 state seq=180 left_x=1310 last_change_to_sent_us=225 first_change_to_sent_us=225 last_change_after_state_us=14546
+09-27 18:56:12.484 Chiaki  : PLE823 state seq=181 left_x=2375 last_change_to_sent_us=199 first_change_to_sent_us=199 last_change_after_state_us=16386
+09-27 18:56:12.500 Chiaki  : PLE823 state seq=182 left_x=3768 last_change_to_sent_us=245 first_change_to_sent_us=245 last_change_after_state_us=15705
+09-27 18:56:12.508 Chiaki  : PLE823 state seq=183 left_x=4915 last_change_to_sent_us=6289 first_change_to_sent_us=6289 last_change_after_state_us=2076
+09-27 18:56:12.583 Chiaki  : PLE823 state seq=184 left_x=4259 last_change_to_sent_us=215 first_change_to_sent_us=215 last_change_after_state_us=75123
+09-27 18:56:12.601 Chiaki  : PLE823 state seq=185 left_x=2785 last_change_to_sent_us=230 first_change_to_sent_us=230 last_change_after_state_us=16958
+09-27 18:56:12.617 Chiaki  : PLE823 state seq=186 left_x=1392 last_change_to_sent_us=448 first_change_to_sent_us=448 last_change_after_state_us=15831
+09-27 18:56:12.634 Chiaki  : PLE823 state seq=187 left_x=81 last_change_to_sent_us=386 first_change_to_sent_us=386 last_change_after_state_us=16068
+09-27 18:56:12.643 Chiaki  : PLE823 state seq=188 left_x=0 last_change_to_sent_us=5439 first_change_to_sent_us=5439 last_change_after_state_us=3458
+09-27 18:56:12.843 Chiaki  : PLE823 state seq=189 left_x=0 keepalive
+09-27 18:56:13.044 Chiaki  : PLE823 state seq=190 left_x=0 keepalive
+09-27 18:56:13.245 Chiaki  : PLE823 state seq=191 left_x=0 keepalive
+09-27 18:56:13.253 Chiaki  : PLE823 state seq=192 left_x=655 last_change_to_sent_us=2498 first_change_to_sent_us=2498 last_change_after_state_us=5913
+09-27 18:56:13.269 Chiaki  : PLE823 state seq=193 left_x=1638 last_change_to_sent_us=525 first_change_to_sent_us=525 last_change_after_state_us=14815
+09-27 18:56:13.286 Chiaki  : PLE823 state seq=194 left_x=3112 last_change_to_sent_us=623 first_change_to_sent_us=623 last_change_after_state_us=16142
+09-27 18:56:13.310 Chiaki  : PLE823 state seq=195 left_x=4505 last_change_to_sent_us=256 first_change_to_sent_us=256 last_change_after_state_us=23340
+09-27 18:56:13.318 Chiaki  : PLE823 state seq=196 left_x=4915 last_change_to_sent_us=5272 first_change_to_sent_us=5272 last_change_after_state_us=3386
+09-27 18:56:13.400 Chiaki  : PLE823 state seq=197 left_x=4259 last_change_to_sent_us=200 first_change_to_sent_us=200 last_change_after_state_us=80803
+09-27 18:56:13.418 Chiaki  : PLE823 state seq=198 left_x=3440 last_change_to_sent_us=237 first_change_to_sent_us=237 last_change_after_state_us=17951
+09-27 18:56:13.434 Chiaki  : PLE823 state seq=199 left_x=1966 last_change_to_sent_us=231 first_change_to_sent_us=231 last_change_after_state_us=15438
+09-27 18:56:13.451 Chiaki  : PLE823 state seq=200 left_x=655 last_change_to_sent_us=409 first_change_to_sent_us=409 last_change_after_state_us=16766
+09-27 18:56:13.459 Chiaki  : PLE823 state seq=201 left_x=0 last_change_to_sent_us=5402 first_change_to_sent_us=5402 last_change_after_state_us=2981
+09-27 18:56:13.660 Chiaki  : PLE823 state seq=202 left_x=0 keepalive
+09-27 18:56:13.861 Chiaki  : PLE823 state seq=203 left_x=0 keepalive
+09-27 18:56:14.062 Chiaki  : PLE823 state seq=204 left_x=0 keepalive
+09-27 18:56:14.071 Chiaki  : PLE823 state seq=205 left_x=737 last_change_to_sent_us=4356 first_change_to_sent_us=4356 last_change_after_state_us=4401
+09-27 18:56:14.083 Chiaki  : PLE823 state seq=206 left_x=1310 last_change_to_sent_us=383 first_change_to_sent_us=383 last_change_after_state_us=12340
+09-27 18:56:14.100 Chiaki  : PLE823 state seq=207 left_x=2539 last_change_to_sent_us=209 first_change_to_sent_us=209 last_change_after_state_us=16209
+09-27 18:56:14.118 Chiaki  : PLE823 state seq=208 left_x=3932 last_change_to_sent_us=211 first_change_to_sent_us=211 last_change_after_state_us=17443
+09-27 18:56:14.127 Chiaki  : PLE823 state seq=209 left_x=4915 last_change_to_sent_us=5633 first_change_to_sent_us=5633 last_change_after_state_us=3383
+09-27 18:56:14.182 Chiaki  : PLE823 state seq=210 left_x=4259 last_change_to_sent_us=219 first_change_to_sent_us=219 last_change_after_state_us=55244
+09-27 18:56:14.200 Chiaki  : PLE823 state seq=211 left_x=3276 last_change_to_sent_us=186 first_change_to_sent_us=186 last_change_after_state_us=17500
+09-27 18:56:14.217 Chiaki  : PLE823 state seq=212 left_x=1720 last_change_to_sent_us=225 first_change_to_sent_us=225 last_change_after_state_us=16493
+09-27 18:56:14.234 Chiaki  : PLE823 state seq=213 left_x=409 last_change_to_sent_us=374 first_change_to_sent_us=374 last_change_after_state_us=16536
+09-27 18:56:14.243 Chiaki  : PLE823 state seq=214 left_x=0 last_change_to_sent_us=5651 first_change_to_sent_us=5651 last_change_after_state_us=2810
+09-27 18:56:14.443 Chiaki  : PLE823 state seq=215 left_x=0 keepalive
+09-27 18:56:14.645 Chiaki  : PLE823 state seq=216 left_x=0 keepalive
+09-27 18:56:14.845 Chiaki  : PLE823 state seq=217 left_x=0 keepalive
+09-27 18:56:14.854 Chiaki  : PLE823 state seq=218 left_x=655 last_change_to_sent_us=4517 first_change_to_sent_us=4517 last_change_after_state_us=4213
+09-27 18:56:14.868 Chiaki  : PLE823 state seq=219 left_x=1310 last_change_to_sent_us=385 first_change_to_sent_us=385 last_change_after_state_us=13434
+09-27 18:56:14.884 Chiaki  : PLE823 state seq=220 left_x=2621 last_change_to_sent_us=408 first_change_to_sent_us=408 last_change_after_state_us=15510
+09-27 18:56:14.902 Chiaki  : PLE823 state seq=221 left_x=4013 last_change_to_sent_us=1131 first_change_to_sent_us=1131 last_change_after_state_us=16500
+09-27 18:56:14.910 Chiaki  : PLE823 state seq=222 left_x=4915 last_change_to_sent_us=5456 first_change_to_sent_us=5456 last_change_after_state_us=2871
+09-27 18:56:14.967 Chiaki  : PLE823 state seq=223 left_x=4259 last_change_to_sent_us=264 first_change_to_sent_us=264 last_change_after_state_us=56265
+09-27 18:56:14.983 Chiaki  : PLE823 state seq=224 left_x=3030 last_change_to_sent_us=545 first_change_to_sent_us=545 last_change_after_state_us=15191
+09-27 18:56:15.002 Chiaki  : PLE823 state seq=225 left_x=1720 last_change_to_sent_us=650 first_change_to_sent_us=650 last_change_after_state_us=18026
+09-27 18:56:15.019 Chiaki  : PLE823 state seq=226 left_x=163 last_change_to_sent_us=543 first_change_to_sent_us=543 last_change_after_state_us=16194
+09-27 18:56:15.028 Chiaki  : PLE823 state seq=227 left_x=0 last_change_to_sent_us=5935 first_change_to_sent_us=5935 last_change_after_state_us=2581
+09-27 18:56:15.228 Chiaki  : PLE823 state seq=228 left_x=0 keepalive
+09-27 18:56:15.429 Chiaki  : PLE823 state seq=229 left_x=0 keepalive
+09-27 18:56:15.616 Chiaki  : PLE823 state seq=230 left_x=655 last_change_to_sent_us=177 first_change_to_sent_us=177 last_change_after_state_us=186982
+09-27 18:56:15.633 Chiaki  : PLE823 state seq=231 left_x=1310 last_change_to_sent_us=279 first_change_to_sent_us=279 last_change_after_state_us=16592
+09-27 18:56:15.651 Chiaki  : PLE823 state seq=232 left_x=2375 last_change_to_sent_us=502 first_change_to_sent_us=502 last_change_after_state_us=17760
+09-27 18:56:15.667 Chiaki  : PLE823 state seq=233 left_x=3850 last_change_to_sent_us=335 first_change_to_sent_us=335 last_change_after_state_us=14906
+09-27 18:56:15.675 Chiaki  : PLE823 state seq=234 left_x=4915 last_change_to_sent_us=5534 first_change_to_sent_us=5534 last_change_after_state_us=2806
+09-27 18:56:15.750 Chiaki  : PLE823 state seq=235 left_x=4177 last_change_to_sent_us=228 first_change_to_sent_us=228 last_change_after_state_us=74603
+09-27 18:56:15.768 Chiaki  : PLE823 state seq=236 left_x=3440 last_change_to_sent_us=421 first_change_to_sent_us=421 last_change_after_state_us=16867
+09-27 18:56:15.785 Chiaki  : PLE823 state seq=237 left_x=2047 last_change_to_sent_us=218 first_change_to_sent_us=218 last_change_after_state_us=17481
+09-27 18:56:15.801 Chiaki  : PLE823 state seq=238 left_x=491 last_change_to_sent_us=271 first_change_to_sent_us=271 last_change_after_state_us=15133
+09-27 18:56:15.810 Chiaki  : PLE823 state seq=239 left_x=0 last_change_to_sent_us=5334 first_change_to_sent_us=5334 last_change_after_state_us=3344
+09-27 18:56:16.010 Chiaki  : PLE823 state seq=240 left_x=0 keepalive
+09-27 18:56:16.211 Chiaki  : PLE823 state seq=241 left_x=0 keepalive
+09-27 18:56:16.400 Chiaki  : PLE823 state seq=242 left_x=655 last_change_to_sent_us=418 first_change_to_sent_us=418 last_change_after_state_us=188147
+09-27 18:56:16.417 Chiaki  : PLE823 state seq=243 left_x=1392 last_change_to_sent_us=664 first_change_to_sent_us=664 last_change_after_state_us=15243
+09-27 18:56:16.434 Chiaki  : PLE823 state seq=244 left_x=2457 last_change_to_sent_us=370 first_change_to_sent_us=370 last_change_after_state_us=16710
+09-27 18:56:16.451 Chiaki  : PLE823 state seq=245 left_x=3850 last_change_to_sent_us=354 first_change_to_sent_us=354 last_change_after_state_us=16922
+09-27 18:56:16.459 Chiaki  : PLE823 state seq=246 left_x=4915 last_change_to_sent_us=5489 first_change_to_sent_us=5489 last_change_after_state_us=2514
+09-27 18:56:16.533 Chiaki  : PLE823 state seq=247 left_x=4177 last_change_to_sent_us=206 first_change_to_sent_us=206 last_change_after_state_us=73750
+09-27 18:56:16.550 Chiaki  : PLE823 state seq=248 left_x=3604 last_change_to_sent_us=262 first_change_to_sent_us=262 last_change_after_state_us=16235
+09-27 18:56:16.567 Chiaki  : PLE823 state seq=249 left_x=2539 last_change_to_sent_us=396 first_change_to_sent_us=396 last_change_after_state_us=16968
+09-27 18:56:16.584 Chiaki  : PLE823 state seq=250 left_x=1064 last_change_to_sent_us=279 first_change_to_sent_us=279 last_change_after_state_us=16183
+09-27 18:56:16.592 Chiaki  : PLE823 state seq=251 left_x=0 last_change_to_sent_us=4648 first_change_to_sent_us=4648 last_change_after_state_us=3316
+09-27 18:56:16.792 Chiaki  : PLE823 state seq=252 left_x=0 keepalive
+09-27 18:56:16.994 Chiaki  : PLE823 state seq=253 left_x=0 keepalive
+09-27 18:56:17.194 Chiaki  : PLE823 state seq=254 left_x=0 keepalive
+09-27 18:56:17.217 Chiaki  : PLE823 state seq=255 left_x=655 last_change_to_sent_us=492 first_change_to_sent_us=492 last_change_after_state_us=21921
+09-27 18:56:17.235 Chiaki  : PLE823 state seq=256 left_x=1802 last_change_to_sent_us=419 first_change_to_sent_us=419 last_change_after_state_us=17232
+09-27 18:56:17.253 Chiaki  : PLE823 state seq=257 left_x=3276 last_change_to_sent_us=2642 first_change_to_sent_us=2642 last_change_after_state_us=15005
+09-27 18:56:17.269 Chiaki  : PLE823 state seq=258 left_x=4505 last_change_to_sent_us=351 first_change_to_sent_us=351 last_change_after_state_us=15784
+09-27 18:56:17.277 Chiaki  : PLE823 state seq=259 left_x=4915 last_change_to_sent_us=4718 first_change_to_sent_us=4718 last_change_after_state_us=3451
+09-27 18:56:17.367 Chiaki  : PLE823 state seq=260 left_x=4259 last_change_to_sent_us=268 first_change_to_sent_us=268 last_change_after_state_us=88746
+09-27 18:56:17.384 Chiaki  : PLE823 state seq=261 left_x=3030 last_change_to_sent_us=267 first_change_to_sent_us=267 last_change_after_state_us=16515
+09-27 18:56:17.401 Chiaki  : PLE823 state seq=262 left_x=1638 last_change_to_sent_us=228 first_change_to_sent_us=228 last_change_after_state_us=16867
+09-27 18:56:17.419 Chiaki  : PLE823 state seq=263 left_x=245 last_change_to_sent_us=302 first_change_to_sent_us=302 last_change_after_state_us=17821
+09-27 18:56:17.428 Chiaki  : PLE823 state seq=264 left_x=0 last_change_to_sent_us=5467 first_change_to_sent_us=5467 last_change_after_state_us=3268
+09-27 18:56:17.628 Chiaki  : PLE823 state seq=265 left_x=0 keepalive
+09-27 18:56:17.829 Chiaki  : PLE823 state seq=266 left_x=0 keepalive
+09-27 18:56:18.029 Chiaki  : PLE823 state seq=267 left_x=0 keepalive
+09-27 18:56:18.051 Chiaki  : PLE823 state seq=268 left_x=655 last_change_to_sent_us=276 first_change_to_sent_us=276 last_change_after_state_us=20703
+09-27 18:56:18.068 Chiaki  : PLE823 state seq=269 left_x=1884 last_change_to_sent_us=569 first_change_to_sent_us=569 last_change_after_state_us=16749
+09-27 18:56:18.084 Chiaki  : PLE823 state seq=270 left_x=3276 last_change_to_sent_us=309 first_change_to_sent_us=309 last_change_after_state_us=15653
+09-27 18:56:18.102 Chiaki  : PLE823 state seq=271 left_x=4669 last_change_to_sent_us=327 first_change_to_sent_us=327 last_change_after_state_us=16914
+09-27 18:56:18.110 Chiaki  : PLE823 state seq=272 left_x=4915 last_change_to_sent_us=5611 first_change_to_sent_us=5611 last_change_after_state_us=2852
+09-27 18:56:18.184 Chiaki  : PLE823 state seq=273 left_x=4177 last_change_to_sent_us=493 first_change_to_sent_us=493 last_change_after_state_us=72837
+09-27 18:56:18.200 Chiaki  : PLE823 state seq=274 left_x=3604 last_change_to_sent_us=245 first_change_to_sent_us=245 last_change_after_state_us=16159
+09-27 18:56:18.217 Chiaki  : PLE823 state seq=275 left_x=2293 last_change_to_sent_us=274 first_change_to_sent_us=274 last_change_after_state_us=16700
+09-27 18:56:18.234 Chiaki  : PLE823 state seq=276 left_x=983 last_change_to_sent_us=265 first_change_to_sent_us=265 last_change_after_state_us=16410
+09-27 18:56:18.242 Chiaki  : PLE823 state seq=277 left_x=0 last_change_to_sent_us=5759 first_change_to_sent_us=5759 last_change_after_state_us=2117
+09-27 18:56:18.443 Chiaki  : PLE823 state seq=278 left_x=0 keepalive
+09-27 18:56:18.644 Chiaki  : PLE823 state seq=279 left_x=0 keepalive
+09-27 18:56:18.845 Chiaki  : PLE823 state seq=280 left_x=0 keepalive
+09-27 18:56:18.868 Chiaki  : PLE823 state seq=281 left_x=737 last_change_to_sent_us=616 first_change_to_sent_us=616 last_change_after_state_us=21844
+09-27 18:56:18.884 Chiaki  : PLE823 state seq=282 left_x=2211 last_change_to_sent_us=435 first_change_to_sent_us=435 last_change_after_state_us=15671
+09-27 18:56:18.901 Chiaki  : PLE823 state seq=283 left_x=3604 last_change_to_sent_us=258 first_change_to_sent_us=258 last_change_after_state_us=16405
+09-27 18:56:18.910 Chiaki  : PLE823 state seq=284 left_x=4915 last_change_to_sent_us=6592 first_change_to_sent_us=6592 last_change_after_state_us=2418
+09-27 18:56:18.983 Chiaki  : PLE823 state seq=285 left_x=4259 last_change_to_sent_us=300 first_change_to_sent_us=300 last_change_after_state_us=72559
+09-27 18:56:19.002 Chiaki  : PLE823 state seq=286 left_x=3522 last_change_to_sent_us=970 first_change_to_sent_us=970 last_change_after_state_us=17117
+09-27 18:56:19.017 Chiaki  : PLE823 state seq=287 left_x=2293 last_change_to_sent_us=443 first_change_to_sent_us=443 last_change_after_state_us=14819
+09-27 18:56:19.034 Chiaki  : PLE823 state seq=288 left_x=983 last_change_to_sent_us=434 first_change_to_sent_us=434 last_change_after_state_us=16519
+09-27 18:56:19.043 Chiaki  : PLE823 state seq=289 left_x=0 last_change_to_sent_us=5505 first_change_to_sent_us=5505 last_change_after_state_us=2716
+09-27 18:56:19.244 Chiaki  : PLE823 state seq=290 left_x=0 keepalive
+09-27 18:56:19.445 Chiaki  : PLE823 state seq=291 left_x=0 keepalive
+09-27 18:56:19.645 Chiaki  : PLE823 state seq=292 left_x=0 keepalive
+09-27 18:56:19.653 Chiaki  : PLE823 state seq=293 left_x=655 last_change_to_sent_us=3391 first_change_to_sent_us=3391 last_change_after_state_us=4519
+09-27 18:56:19.668 Chiaki  : PLE823 state seq=294 left_x=1392 last_change_to_sent_us=328 first_change_to_sent_us=328 last_change_after_state_us=13904
+09-27 18:56:19.685 Chiaki  : PLE823 state seq=295 left_x=2457 last_change_to_sent_us=285 first_change_to_sent_us=285 last_change_after_state_us=16490
+09-27 18:56:19.701 Chiaki  : PLE823 state seq=296 left_x=3850 last_change_to_sent_us=559 first_change_to_sent_us=559 last_change_after_state_us=15350
+09-27 18:56:19.710 Chiaki  : PLE823 state seq=297 left_x=4915 last_change_to_sent_us=5801 first_change_to_sent_us=5801 last_change_after_state_us=2822
+09-27 18:56:19.801 Chiaki  : PLE823 state seq=298 left_x=4259 last_change_to_sent_us=433 first_change_to_sent_us=433 last_change_after_state_us=90662
+09-27 18:56:19.818 Chiaki  : PLE823 state seq=299 left_x=2621 last_change_to_sent_us=461 first_change_to_sent_us=461 last_change_after_state_us=16515
+09-27 18:56:19.834 Chiaki  : PLE823 state seq=300 left_x=1228 last_change_to_sent_us=401 first_change_to_sent_us=401 last_change_after_state_us=15729
+09-27 18:56:19.843 Chiaki  : PLE823 state seq=301 left_x=0 last_change_to_sent_us=5882 first_change_to_sent_us=5882 last_change_after_state_us=2619
+09-27 18:56:20.044 Chiaki  : PLE823 state seq=302 left_x=0 keepalive
+09-27 18:56:20.245 Chiaki  : PLE823 state seq=303 left_x=0 keepalive
+09-27 18:56:20.445 Chiaki  : PLE823 state seq=304 left_x=0 keepalive
+09-27 18:56:20.467 Chiaki  : PLE823 state seq=305 left_x=655 last_change_to_sent_us=641 first_change_to_sent_us=641 last_change_after_state_us=21171
+09-27 18:56:20.484 Chiaki  : PLE823 state seq=306 left_x=2047 last_change_to_sent_us=458 first_change_to_sent_us=458 last_change_after_state_us=15973
+09-27 18:56:20.500 Chiaki  : PLE823 state seq=307 left_x=3440 last_change_to_sent_us=365 first_change_to_sent_us=365 last_change_after_state_us=16196
+09-27 18:56:20.518 Chiaki  : PLE823 state seq=308 left_x=4833 last_change_to_sent_us=353 first_change_to_sent_us=353 last_change_after_state_us=16972
+09-27 18:56:20.526 Chiaki  : PLE823 state seq=309 left_x=4915 last_change_to_sent_us=5326 first_change_to_sent_us=5326 last_change_after_state_us=2590
+09-27 18:56:20.617 Chiaki  : PLE823 state seq=310 left_x=4259 last_change_to_sent_us=298 first_change_to_sent_us=298 last_change_after_state_us=90771
+09-27 18:56:20.633 Chiaki  : PLE823 state seq=311 left_x=2621 last_change_to_sent_us=304 first_change_to_sent_us=304 last_change_after_state_us=15766
+09-27 18:56:20.651 Chiaki  : PLE823 state seq=312 left_x=1228 last_change_to_sent_us=336 first_change_to_sent_us=336 last_change_after_state_us=16798
+09-27 18:56:20.660 Chiaki  : PLE823 state seq=313 left_x=0 last_change_to_sent_us=5362 first_change_to_sent_us=5362 last_change_after_state_us=3644
+09-27 18:56:20.860 Chiaki  : PLE823 state seq=314 left_x=0 keepalive
+09-27 18:56:21.061 Chiaki  : PLE823 state seq=315 left_x=0 keepalive
+09-27 18:56:21.262 Chiaki  : PLE823 state seq=316 left_x=0 keepalive
+09-27 18:56:21.284 Chiaki  : PLE823 state seq=317 left_x=737 last_change_to_sent_us=288 first_change_to_sent_us=288 last_change_after_state_us=21377
+09-27 18:56:21.300 Chiaki  : PLE823 state seq=318 left_x=1310 last_change_to_sent_us=358 first_change_to_sent_us=358 last_change_after_state_us=16091
+09-27 18:56:21.317 Chiaki  : PLE823 state seq=319 left_x=2539 last_change_to_sent_us=259 first_change_to_sent_us=259 last_change_after_state_us=16443
+09-27 18:56:21.333 Chiaki  : PLE823 state seq=320 left_x=3932 last_change_to_sent_us=212 first_change_to_sent_us=212 last_change_after_state_us=15505
+09-27 18:56:21.342 Chiaki  : PLE823 state seq=321 left_x=4915 last_change_to_sent_us=6334 first_change_to_sent_us=6334 last_change_after_state_us=2069
+09-27 18:56:21.417 Chiaki  : PLE823 state seq=322 left_x=4259 last_change_to_sent_us=362 first_change_to_sent_us=362 last_change_after_state_us=75155
+09-27 18:56:21.434 Chiaki  : PLE823 state seq=323 left_x=3604 last_change_to_sent_us=267 first_change_to_sent_us=267 last_change_after_state_us=16296
+09-27 18:56:21.450 Chiaki  : PLE823 state seq=324 left_x=2293 last_change_to_sent_us=253 first_change_to_sent_us=253 last_change_after_state_us=15954
+09-27 18:56:21.467 Chiaki  : PLE823 state seq=325 left_x=983 last_change_to_sent_us=278 first_change_to_sent_us=278 last_change_after_state_us=16817
+09-27 18:56:21.476 Chiaki  : PLE823 state seq=326 left_x=0 last_change_to_sent_us=5406 first_change_to_sent_us=5406 last_change_after_state_us=2613
+09-27 18:56:21.676 Chiaki  : PLE823 state seq=327 left_x=0 keepalive
+09-27 18:56:21.876 Chiaki  : PLE823 state seq=328 left_x=0 keepalive
+09-27 18:56:22.067 Chiaki  : PLE823 state seq=329 left_x=737 last_change_to_sent_us=646 first_change_to_sent_us=646 last_change_after_state_us=190002
+09-27 18:56:22.084 Chiaki  : PLE823 state seq=330 left_x=1392 last_change_to_sent_us=283 first_change_to_sent_us=283 last_change_after_state_us=16082
+09-27 18:56:22.101 Chiaki  : PLE823 state seq=331 left_x=2703 last_change_to_sent_us=249 first_change_to_sent_us=249 last_change_after_state_us=16742
+09-27 18:56:22.117 Chiaki  : PLE823 state seq=332 left_x=4095 last_change_to_sent_us=263 first_change_to_sent_us=263 last_change_after_state_us=16292
+09-27 18:56:22.125 Chiaki  : PLE823 state seq=333 left_x=4915 last_change_to_sent_us=4534 first_change_to_sent_us=4534 last_change_after_state_us=3243
+09-27 18:56:22.199 Chiaki  : PLE823 state seq=334 left_x=4259 last_change_to_sent_us=194 first_change_to_sent_us=194 last_change_after_state_us=73690
+09-27 18:56:22.216 Chiaki  : PLE823 state seq=335 left_x=3522 last_change_to_sent_us=208 first_change_to_sent_us=208 last_change_after_state_us=16811
+09-27 18:56:22.233 Chiaki  : PLE823 state seq=336 left_x=2293 last_change_to_sent_us=229 first_change_to_sent_us=229 last_change_after_state_us=16305
+09-27 18:56:22.250 Chiaki  : PLE823 state seq=337 left_x=901 last_change_to_sent_us=225 first_change_to_sent_us=225 last_change_after_state_us=16838
+09-27 18:56:22.258 Chiaki  : PLE823 state seq=338 left_x=0 last_change_to_sent_us=5307 first_change_to_sent_us=5307 last_change_after_state_us=2592
+09-27 18:56:22.459 Chiaki  : PLE823 state seq=339 left_x=0 keepalive
+09-27 18:56:22.659 Chiaki  : PLE823 state seq=340 left_x=0 keepalive
+09-27 18:56:22.860 Chiaki  : PLE823 state seq=341 left_x=0 keepalive
+09-27 18:56:22.883 Chiaki  : PLE823 state seq=342 left_x=737 last_change_to_sent_us=198 first_change_to_sent_us=198 last_change_after_state_us=23035
+09-27 18:56:22.900 Chiaki  : PLE823 state seq=343 left_x=1802 last_change_to_sent_us=226 first_change_to_sent_us=226 last_change_after_state_us=16857
+09-27 18:56:22.917 Chiaki  : PLE823 state seq=344 left_x=3194 last_change_to_sent_us=250 first_change_to_sent_us=250 last_change_after_state_us=16224
+09-27 18:56:22.933 Chiaki  : PLE823 state seq=345 left_x=4587 last_change_to_sent_us=223 first_change_to_sent_us=223 last_change_after_state_us=16321
+09-27 18:56:22.942 Chiaki  : PLE823 state seq=346 left_x=4915 last_change_to_sent_us=5286 first_change_to_sent_us=5286 last_change_after_state_us=3032
+09-27 18:56:23.017 Chiaki  : PLE823 state seq=347 left_x=4259 last_change_to_sent_us=230 first_change_to_sent_us=230 last_change_after_state_us=74616
+09-27 18:56:23.033 Chiaki  : PLE823 state seq=348 left_x=3604 last_change_to_sent_us=262 first_change_to_sent_us=262 last_change_after_state_us=16408
+09-27 18:56:23.050 Chiaki  : PLE823 state seq=349 left_x=2293 last_change_to_sent_us=189 first_change_to_sent_us=189 last_change_after_state_us=16204
+09-27 18:56:23.067 Chiaki  : PLE823 state seq=350 left_x=901 last_change_to_sent_us=538 first_change_to_sent_us=538 last_change_after_state_us=16823
+09-27 18:56:23.075 Chiaki  : PLE823 state seq=351 left_x=0 last_change_to_sent_us=5339 first_change_to_sent_us=5339 last_change_after_state_us=2446
+09-27 18:56:23.275 Chiaki  : PLE823 state seq=352 left_x=0 keepalive
+09-27 18:56:23.476 Chiaki  : PLE823 state seq=353 left_x=0 keepalive
+09-27 18:56:23.676 Chiaki  : PLE823 state seq=354 left_x=0 keepalive
+09-27 18:56:23.686 Chiaki  : PLE823 state seq=355 left_x=737 last_change_to_sent_us=2409 first_change_to_sent_us=2409 last_change_after_state_us=6604
+09-27 18:56:23.701 Chiaki  : PLE823 state seq=356 left_x=1310 last_change_to_sent_us=544 first_change_to_sent_us=544 last_change_after_state_us=14367
+09-27 18:56:23.718 Chiaki  : PLE823 state seq=357 left_x=2457 last_change_to_sent_us=984 first_change_to_sent_us=984 last_change_after_state_us=16354
+09-27 18:56:23.735 Chiaki  : PLE823 state seq=358 left_x=3850 last_change_to_sent_us=798 first_change_to_sent_us=798 last_change_after_state_us=15707
+09-27 18:56:23.744 Chiaki  : PLE823 state seq=359 left_x=4915 last_change_to_sent_us=5523 first_change_to_sent_us=5523 last_change_after_state_us=2806
+09-27 18:56:23.816 Chiaki  : PLE823 state seq=360 left_x=4259 last_change_to_sent_us=340 first_change_to_sent_us=340 last_change_after_state_us=72224
+09-27 18:56:23.834 Chiaki  : PLE823 state seq=361 left_x=3604 last_change_to_sent_us=322 first_change_to_sent_us=322 last_change_after_state_us=17121
+09-27 18:56:23.850 Chiaki  : PLE823 state seq=362 left_x=2539 last_change_to_sent_us=359 first_change_to_sent_us=359 last_change_after_state_us=15936
+09-27 18:56:23.868 Chiaki  : PLE823 state seq=363 left_x=1228 last_change_to_sent_us=431 first_change_to_sent_us=431 last_change_after_state_us=16737
+09-27 18:56:23.876 Chiaki  : PLE823 state seq=364 left_x=0 last_change_to_sent_us=6487 first_change_to_sent_us=6487 last_change_after_state_us=2071
+09-27 18:56:24.077 Chiaki  : PLE823 state seq=365 left_x=0 keepalive
+09-27 18:56:24.278 Chiaki  : PLE823 state seq=366 left_x=0 keepalive
+09-27 18:56:24.478 Chiaki  : PLE823 state seq=367 left_x=0 keepalive
+09-27 18:56:24.501 Chiaki  : PLE823 state seq=368 left_x=655 last_change_to_sent_us=386 first_change_to_sent_us=386 last_change_after_state_us=22407
+09-27 18:56:24.517 Chiaki  : PLE823 state seq=369 left_x=1966 last_change_to_sent_us=220 first_change_to_sent_us=220 last_change_after_state_us=15472
+09-27 18:56:24.534 Chiaki  : PLE823 state seq=370 left_x=3276 last_change_to_sent_us=266 first_change_to_sent_us=266 last_change_after_state_us=16910
+09-27 18:56:24.551 Chiaki  : PLE823 state seq=371 left_x=4669 last_change_to_sent_us=667 first_change_to_sent_us=667 last_change_after_state_us=16251
+09-27 18:56:24.559 Chiaki  : PLE823 state seq=372 left_x=4915 last_change_to_sent_us=5376 first_change_to_sent_us=5376 last_change_after_state_us=2550
+09-27 18:56:24.651 Chiaki  : PLE823 state seq=373 left_x=4259 last_change_to_sent_us=388 first_change_to_sent_us=388 last_change_after_state_us=91765
+09-27 18:56:24.667 Chiaki  : PLE823 state seq=374 left_x=2539 last_change_to_sent_us=337 first_change_to_sent_us=337 last_change_after_state_us=15745
+09-27 18:56:24.684 Chiaki  : PLE823 state seq=375 left_x=1146 last_change_to_sent_us=227 first_change_to_sent_us=227 last_change_after_state_us=16442
+09-27 18:56:24.692 Chiaki  : PLE823 state seq=376 left_x=0 last_change_to_sent_us=5614 first_change_to_sent_us=5614 last_change_after_state_us=2396
+09-27 18:56:24.893 Chiaki  : PLE823 state seq=377 left_x=0 keepalive
+09-27 18:56:25.094 Chiaki  : PLE823 state seq=378 left_x=0 keepalive
+09-27 18:56:25.295 Chiaki  : PLE823 state seq=379 left_x=0 keepalive
+09-27 18:56:25.303 Chiaki  : PLE823 state seq=380 left_x=737 last_change_to_sent_us=3581 first_change_to_sent_us=3581 last_change_after_state_us=5077
+09-27 18:56:25.318 Chiaki  : PLE823 state seq=381 left_x=1310 last_change_to_sent_us=278 first_change_to_sent_us=278 last_change_after_state_us=13976
+09-27 18:56:25.334 Chiaki  : PLE823 state seq=382 left_x=2621 last_change_to_sent_us=266 first_change_to_sent_us=266 last_change_after_state_us=16077
+09-27 18:56:25.351 Chiaki  : PLE823 state seq=383 left_x=3932 last_change_to_sent_us=293 first_change_to_sent_us=293 last_change_after_state_us=16566
+09-27 18:56:25.359 Chiaki  : PLE823 state seq=384 left_x=4915 last_change_to_sent_us=5344 first_change_to_sent_us=5344 last_change_after_state_us=2574
+09-27 18:56:25.433 Chiaki  : PLE823 state seq=385 left_x=4259 last_change_to_sent_us=274 first_change_to_sent_us=274 last_change_after_state_us=73925
+09-27 18:56:25.450 Chiaki  : PLE823 state seq=386 left_x=3522 last_change_to_sent_us=249 first_change_to_sent_us=249 last_change_after_state_us=16537
+09-27 18:56:25.468 Chiaki  : PLE823 state seq=387 left_x=2621 last_change_to_sent_us=266 first_change_to_sent_us=266 last_change_after_state_us=17637
+09-27 18:56:25.484 Chiaki  : PLE823 state seq=388 left_x=1146 last_change_to_sent_us=246 first_change_to_sent_us=246 last_change_after_state_us=15359
+09-27 18:56:25.493 Chiaki  : PLE823 state seq=389 left_x=0 last_change_to_sent_us=3384 first_change_to_sent_us=3384 last_change_after_state_us=4996
+09-27 18:56:25.693 Chiaki  : PLE823 state seq=390 left_x=0 keepalive
+09-27 18:56:25.894 Chiaki  : PLE823 state seq=391 left_x=0 keepalive
+09-27 18:56:26.094 Chiaki  : PLE823 state seq=392 left_x=0 keepalive
+09-27 18:56:26.117 Chiaki  : PLE823 state seq=393 left_x=655 last_change_to_sent_us=361 first_change_to_sent_us=361 last_change_after_state_us=22633
+09-27 18:56:26.134 Chiaki  : PLE823 state seq=394 left_x=1638 last_change_to_sent_us=393 first_change_to_sent_us=393 last_change_after_state_us=15905
+09-27 18:56:26.151 Chiaki  : PLE823 state seq=395 left_x=3030 last_change_to_sent_us=435 first_change_to_sent_us=435 last_change_after_state_us=16745
+09-27 18:56:26.169 Chiaki  : PLE823 state seq=396 left_x=4423 last_change_to_sent_us=293 first_change_to_sent_us=293 last_change_after_state_us=17335
+09-27 18:56:26.178 Chiaki  : PLE823 state seq=397 left_x=4915 last_change_to_sent_us=3377 first_change_to_sent_us=3377 last_change_after_state_us=5531
+09-27 18:56:26.267 Chiaki  : PLE823 state seq=398 left_x=4259 last_change_to_sent_us=232 first_change_to_sent_us=232 last_change_after_state_us=88735
+09-27 18:56:26.285 Chiaki  : PLE823 state seq=399 left_x=2949 last_change_to_sent_us=377 first_change_to_sent_us=377 last_change_after_state_us=17494
+09-27 18:56:26.301 Chiaki  : PLE823 state seq=400 left_x=1474 last_change_to_sent_us=359 first_change_to_sent_us=359 last_change_after_state_us=15942
+09-27 18:56:26.317 Chiaki  : PLE823 state seq=401 left_x=81 last_change_to_sent_us=218 first_change_to_sent_us=218 last_change_after_state_us=15875
+09-27 18:56:26.326 Chiaki  : PLE823 state seq=402 left_x=0 last_change_to_sent_us=5368 first_change_to_sent_us=5368 last_change_after_state_us=3080
+09-27 18:56:26.526 Chiaki  : PLE823 state seq=403 left_x=0 keepalive
+09-27 18:56:26.727 Chiaki  : PLE823 state seq=404 left_x=0 keepalive
+09-27 18:56:26.928 Chiaki  : PLE823 state seq=405 left_x=0 keepalive
+09-27 18:56:26.951 Chiaki  : PLE823 state seq=406 left_x=655 last_change_to_sent_us=567 first_change_to_sent_us=567 last_change_after_state_us=22245
+09-27 18:56:26.968 Chiaki  : PLE823 state seq=407 left_x=1638 last_change_to_sent_us=293 first_change_to_sent_us=293 last_change_after_state_us=16327
+09-27 18:56:26.985 Chiaki  : PLE823 state seq=408 left_x=3030 last_change_to_sent_us=441 first_change_to_sent_us=441 last_change_after_state_us=16784
+09-27 18:56:27.002 Chiaki  : PLE823 state seq=409 left_x=4423 last_change_to_sent_us=333 first_change_to_sent_us=333 last_change_after_state_us=16611
+09-27 18:56:27.011 Chiaki  : PLE823 state seq=410 left_x=4915 last_change_to_sent_us=5995 first_change_to_sent_us=5995 last_change_after_state_us=2619
+09-27 18:56:27.101 Chiaki  : PLE823 state seq=411 left_x=4177 last_change_to_sent_us=349 first_change_to_sent_us=349 last_change_after_state_us=89742
+09-27 18:56:27.117 Chiaki  : PLE823 state seq=412 left_x=2785 last_change_to_sent_us=338 first_change_to_sent_us=338 last_change_after_state_us=15912
+09-27 18:56:27.134 Chiaki  : PLE823 state seq=413 left_x=1474 last_change_to_sent_us=377 first_change_to_sent_us=377 last_change_after_state_us=16033
+09-27 18:56:27.151 Chiaki  : PLE823 state seq=414 left_x=81 last_change_to_sent_us=864 first_change_to_sent_us=864 last_change_after_state_us=15910
+09-27 18:56:27.160 Chiaki  : PLE823 state seq=415 left_x=0 last_change_to_sent_us=7896 first_change_to_sent_us=7896 last_change_after_state_us=1241
+09-27 18:56:27.361 Chiaki  : PLE823 state seq=416 left_x=0 keepalive
+09-27 18:56:27.561 Chiaki  : PLE823 state seq=417 left_x=0 keepalive
+09-27 18:56:27.762 Chiaki  : PLE823 state seq=418 left_x=0 keepalive
+09-27 18:56:27.784 Chiaki  : PLE823 state seq=419 left_x=655 last_change_to_sent_us=260 first_change_to_sent_us=260 last_change_after_state_us=22092
+09-27 18:56:27.801 Chiaki  : PLE823 state seq=420 left_x=1966 last_change_to_sent_us=648 first_change_to_sent_us=648 last_change_after_state_us=16480
+09-27 18:56:27.820 Chiaki  : PLE823 state seq=421 left_x=3276 last_change_to_sent_us=2581 first_change_to_sent_us=2581 last_change_after_state_us=15374
+09-27 18:56:27.835 Chiaki  : PLE823 state seq=422 left_x=4587 last_change_to_sent_us=868 first_change_to_sent_us=868 last_change_after_state_us=14724
+09-27 18:56:27.844 Chiaki  : PLE823 state seq=423 left_x=4915 last_change_to_sent_us=6426 first_change_to_sent_us=6426 last_change_after_state_us=1573
+09-27 18:56:27.918 Chiaki  : PLE823 state seq=424 left_x=4259 last_change_to_sent_us=456 first_change_to_sent_us=456 last_change_after_state_us=73458
+09-27 18:56:27.935 Chiaki  : PLE823 state seq=425 left_x=3604 last_change_to_sent_us=343 first_change_to_sent_us=343 last_change_after_state_us=16570
+09-27 18:56:27.951 Chiaki  : PLE823 state seq=426 left_x=2457 last_change_to_sent_us=726 first_change_to_sent_us=726 last_change_after_state_us=15502
+09-27 18:56:27.969 Chiaki  : PLE823 state seq=427 left_x=1146 last_change_to_sent_us=1433 first_change_to_sent_us=1433 last_change_after_state_us=16408
+09-27 18:56:27.978 Chiaki  : PLE823 state seq=428 left_x=0 last_change_to_sent_us=7984 first_change_to_sent_us=7984 last_change_after_state_us=1341
+09-27 18:56:28.180 Chiaki  : PLE823 state seq=429 left_x=0 keepalive
+09-27 18:56:28.381 Chiaki  : PLE823 state seq=430 left_x=0 keepalive
+09-27 18:56:28.550 Chiaki  : PLE823 state seq=431 left_x=737 last_change_to_sent_us=352 first_change_to_sent_us=352 last_change_after_state_us=168790
+09-27 18:56:28.567 Chiaki  : PLE823 state seq=432 left_x=1638 last_change_to_sent_us=356 first_change_to_sent_us=356 last_change_after_state_us=16229
+09-27 18:56:28.584 Chiaki  : PLE823 state seq=433 left_x=3030 last_change_to_sent_us=255 first_change_to_sent_us=255 last_change_after_state_us=16475
+09-27 18:56:28.602 Chiaki  : PLE823 state seq=434 left_x=4505 last_change_to_sent_us=509 first_change_to_sent_us=509 last_change_after_state_us=17448
+09-27 18:56:28.610 Chiaki  : PLE823 state seq=435 left_x=4915 last_change_to_sent_us=5793 first_change_to_sent_us=5793 last_change_after_state_us=2694
+09-27 18:56:28.683 Chiaki  : PLE823 state seq=436 left_x=4259 last_change_to_sent_us=194 first_change_to_sent_us=194 last_change_after_state_us=72611
+09-27 18:56:28.701 Chiaki  : PLE823 state seq=437 left_x=3604 last_change_to_sent_us=325 first_change_to_sent_us=325 last_change_after_state_us=16841
+09-27 18:56:28.717 Chiaki  : PLE823 state seq=438 left_x=2375 last_change_to_sent_us=418 first_change_to_sent_us=418 last_change_after_state_us=16431
+09-27 18:56:28.734 Chiaki  : PLE823 state seq=439 left_x=983 last_change_to_sent_us=219 first_change_to_sent_us=219 last_change_after_state_us=16238
+09-27 18:56:28.743 Chiaki  : PLE823 state seq=440 left_x=0 last_change_to_sent_us=6649 first_change_to_sent_us=6649 last_change_after_state_us=2160
+09-27 18:56:28.944 Chiaki  : PLE823 state seq=441 left_x=0 keepalive
+09-27 18:56:29.145 Chiaki  : PLE823 state seq=442 left_x=0 keepalive
+09-27 18:56:29.333 Chiaki  : PLE823 state seq=443 left_x=655 last_change_to_sent_us=162 first_change_to_sent_us=162 last_change_after_state_us=188480
+09-27 18:56:29.350 Chiaki  : PLE823 state seq=444 left_x=1556 last_change_to_sent_us=182 first_change_to_sent_us=182 last_change_after_state_us=16257
+09-27 18:56:29.367 Chiaki  : PLE823 state seq=445 left_x=2867 last_change_to_sent_us=162 first_change_to_sent_us=162 last_change_after_state_us=16689
+09-27 18:56:29.384 Chiaki  : PLE823 state seq=446 left_x=4259 last_change_to_sent_us=256 first_change_to_sent_us=256 last_change_after_state_us=16410
+09-27 18:56:29.393 Chiaki  : PLE823 state seq=447 left_x=4915 last_change_to_sent_us=6648 first_change_to_sent_us=6648 last_change_after_state_us=2744
+09-27 18:56:29.467 Chiaki  : PLE823 state seq=448 left_x=4177 last_change_to_sent_us=270 first_change_to_sent_us=270 last_change_after_state_us=73465
+09-27 18:56:29.484 Chiaki  : PLE823 state seq=449 left_x=3440 last_change_to_sent_us=334 first_change_to_sent_us=334 last_change_after_state_us=16667
+09-27 18:56:29.501 Chiaki  : PLE823 state seq=450 left_x=2047 last_change_to_sent_us=195 first_change_to_sent_us=195 last_change_after_state_us=17108
+09-27 18:56:29.518 Chiaki  : PLE823 state seq=451 left_x=573 last_change_to_sent_us=255 first_change_to_sent_us=255 last_change_after_state_us=15865
+09-27 18:56:29.526 Chiaki  : PLE823 state seq=452 left_x=0 last_change_to_sent_us=6284 first_change_to_sent_us=6284 last_change_after_state_us=2263
+09-27 18:56:29.727 Chiaki  : PLE823 state seq=453 left_x=0 keepalive
+09-27 18:56:29.928 Chiaki  : PLE823 state seq=454 left_x=0 keepalive
+09-27 18:56:30.128 Chiaki  : PLE823 state seq=455 left_x=0 keepalive
+09-27 18:56:30.136 Chiaki  : PLE823 state seq=456 left_x=655 last_change_to_sent_us=3389 first_change_to_sent_us=3389 last_change_after_state_us=4514
+09-27 18:56:30.151 Chiaki  : PLE823 state seq=457 left_x=1392 last_change_to_sent_us=838 first_change_to_sent_us=838 last_change_after_state_us=13695
+09-27 18:56:30.168 Chiaki  : PLE823 state seq=458 left_x=2375 last_change_to_sent_us=299 first_change_to_sent_us=299 last_change_after_state_us=16515
+09-27 18:56:30.185 Chiaki  : PLE823 state seq=459 left_x=3768 last_change_to_sent_us=599 first_change_to_sent_us=599 last_change_after_state_us=16240
+09-27 18:56:30.193 Chiaki  : PLE823 state seq=460 left_x=4915 last_change_to_sent_us=4512 first_change_to_sent_us=4512 last_change_after_state_us=3585
+09-27 18:56:30.267 Chiaki  : PLE823 state seq=461 left_x=4177 last_change_to_sent_us=635 first_change_to_sent_us=635 last_change_after_state_us=73190
+09-27 18:56:30.284 Chiaki  : PLE823 state seq=462 left_x=3604 last_change_to_sent_us=324 first_change_to_sent_us=324 last_change_after_state_us=16269
+09-27 18:56:30.301 Chiaki  : PLE823 state seq=463 left_x=2293 last_change_to_sent_us=368 first_change_to_sent_us=368 last_change_after_state_us=16769
+09-27 18:56:30.318 Chiaki  : PLE823 state seq=464 left_x=819 last_change_to_sent_us=390 first_change_to_sent_us=390 last_change_after_state_us=16509
+09-27 18:56:30.328 Chiaki  : PLE823 state seq=465 left_x=0 last_change_to_sent_us=6633 first_change_to_sent_us=6633 last_change_after_state_us=2561
+09-27 18:56:30.528 Chiaki  : PLE823 state seq=466 left_x=0 keepalive
+09-27 18:56:30.729 Chiaki  : PLE823 state seq=467 left_x=0 keepalive
+09-27 18:56:30.929 Chiaki  : PLE823 state seq=468 left_x=0 keepalive
+09-27 18:56:30.950 Chiaki  : PLE823 state seq=469 left_x=655 last_change_to_sent_us=294 first_change_to_sent_us=294 last_change_after_state_us=20575
+09-27 18:56:30.967 Chiaki  : PLE823 state seq=470 left_x=1966 last_change_to_sent_us=255 first_change_to_sent_us=255 last_change_after_state_us=16590
+09-27 18:56:30.984 Chiaki  : PLE823 state seq=471 left_x=3358 last_change_to_sent_us=231 first_change_to_sent_us=231 last_change_after_state_us=16518
+09-27 18:56:31.000 Chiaki  : PLE823 state seq=472 left_x=4751 last_change_to_sent_us=235 first_change_to_sent_us=235 last_change_after_state_us=16500
+09-27 18:56:31.009 Chiaki  : PLE823 state seq=473 left_x=4915 last_change_to_sent_us=5558 first_change_to_sent_us=5558 last_change_after_state_us=2481
+09-27 18:56:31.083 Chiaki  : PLE823 state seq=474 left_x=4259 last_change_to_sent_us=170 first_change_to_sent_us=170 last_change_after_state_us=73777
+09-27 18:56:31.100 Chiaki  : PLE823 state seq=475 left_x=3604 last_change_to_sent_us=208 first_change_to_sent_us=208 last_change_after_state_us=17651
+09-27 18:56:31.117 Chiaki  : PLE823 state seq=476 left_x=2375 last_change_to_sent_us=243 first_change_to_sent_us=243 last_change_after_state_us=16327
+09-27 18:56:31.135 Chiaki  : PLE823 state seq=477 left_x=983 last_change_to_sent_us=227 first_change_to_sent_us=227 last_change_after_state_us=17034
+09-27 18:56:31.143 Chiaki  : PLE823 state seq=478 left_x=0 last_change_to_sent_us=6520 first_change_to_sent_us=6520 last_change_after_state_us=2125
+09-27 18:56:31.344 Chiaki  : PLE823 state seq=479 left_x=0 keepalive
+09-27 18:56:31.544 Chiaki  : PLE823 state seq=480 left_x=0 keepalive
+09-27 18:56:31.745 Chiaki  : PLE823 state seq=481 left_x=0 keepalive
+09-27 18:56:31.767 Chiaki  : PLE823 state seq=482 left_x=655 last_change_to_sent_us=291 first_change_to_sent_us=291 last_change_after_state_us=22268
+09-27 18:56:31.785 Chiaki  : PLE823 state seq=483 left_x=2293 last_change_to_sent_us=388 first_change_to_sent_us=388 last_change_after_state_us=16810
+09-27 18:56:31.802 Chiaki  : PLE823 state seq=484 left_x=3768 last_change_to_sent_us=744 first_change_to_sent_us=744 last_change_after_state_us=16248
+09-27 18:56:31.811 Chiaki  : PLE823 state seq=485 left_x=4915 last_change_to_sent_us=6731 first_change_to_sent_us=6731 last_change_after_state_us=2439
+09-27 18:56:31.883 Chiaki  : PLE823 state seq=486 left_x=4259 last_change_to_sent_us=334 first_change_to_sent_us=334 last_change_after_state_us=71796
+09-27 18:56:31.900 Chiaki  : PLE823 state seq=487 left_x=3604 last_change_to_sent_us=304 first_change_to_sent_us=304 last_change_after_state_us=16649
+09-27 18:56:31.918 Chiaki  : PLE823 state seq=488 left_x=2457 last_change_to_sent_us=349 first_change_to_sent_us=349 last_change_after_state_us=16780
+09-27 18:56:31.935 Chiaki  : PLE823 state seq=489 left_x=983 last_change_to_sent_us=358 first_change_to_sent_us=358 last_change_after_state_us=16400
+09-27 18:56:31.943 Chiaki  : PLE823 state seq=490 left_x=0 last_change_to_sent_us=5458 first_change_to_sent_us=5458 last_change_after_state_us=2398
+09-27 18:56:32.144 Chiaki  : PLE823 state seq=491 left_x=0 keepalive
+09-27 18:56:32.345 Chiaki  : PLE823 state seq=492 left_x=0 keepalive
+09-27 18:56:32.546 Chiaki  : PLE823 state seq=493 left_x=0 keepalive
+09-27 18:56:32.555 Chiaki  : PLE823 state seq=494 left_x=655 last_change_to_sent_us=4066 first_change_to_sent_us=4066 last_change_after_state_us=4946
+09-27 18:56:32.566 Chiaki  : PLE823 state seq=495 left_x=2047 last_change_to_sent_us=185 first_change_to_sent_us=185 last_change_after_state_us=11215
+09-27 18:56:32.584 Chiaki  : PLE823 state seq=496 left_x=3358 last_change_to_sent_us=221 first_change_to_sent_us=221 last_change_after_state_us=17259
+09-27 18:56:32.602 Chiaki  : PLE823 state seq=497 left_x=4833 last_change_to_sent_us=612 first_change_to_sent_us=612 last_change_after_state_us=17142
+09-27 18:56:32.611 Chiaki  : PLE823 state seq=498 left_x=4915 last_change_to_sent_us=5424 first_change_to_sent_us=5424 last_change_after_state_us=3356
+09-27 18:56:32.701 Chiaki  : PLE823 state seq=499 left_x=4259 last_change_to_sent_us=268 first_change_to_sent_us=268 last_change_after_state_us=89889
+09-27 18:56:32.718 Chiaki  : PLE823 state seq=500 left_x=2785 last_change_to_sent_us=239 first_change_to_sent_us=239 last_change_after_state_us=16482
+09-27 18:56:32.735 Chiaki  : PLE823 state seq=501 left_x=1392 last_change_to_sent_us=238 first_change_to_sent_us=238 last_change_after_state_us=16328
+09-27 18:56:32.743 Chiaki  : PLE823 state seq=502 left_x=0 last_change_to_sent_us=5363 first_change_to_sent_us=5363 last_change_after_state_us=2890
+09-27 18:56:32.943 Chiaki  : PLE823 state seq=503 left_x=0 keepalive
+09-27 18:56:33.144 Chiaki  : PLE823 state seq=504 left_x=0 keepalive
+09-27 18:56:33.345 Chiaki  : PLE823 state seq=505 left_x=0 keepalive
+09-27 18:56:33.368 Chiaki  : PLE823 state seq=506 left_x=655 last_change_to_sent_us=404 first_change_to_sent_us=404 last_change_after_state_us=22391
+09-27 18:56:33.385 Chiaki  : PLE823 state seq=507 left_x=2129 last_change_to_sent_us=295 first_change_to_sent_us=295 last_change_after_state_us=16630
+09-27 18:56:33.402 Chiaki  : PLE823 state seq=508 left_x=3522 last_change_to_sent_us=257 first_change_to_sent_us=257 last_change_after_state_us=16152
+09-27 18:56:33.411 Chiaki  : PLE823 state seq=509 left_x=4915 last_change_to_sent_us=6315 first_change_to_sent_us=6315 last_change_after_state_us=2550
+09-27 18:56:33.484 Chiaki  : PLE823 state seq=510 left_x=4177 last_change_to_sent_us=282 first_change_to_sent_us=282 last_change_after_state_us=73445
+09-27 18:56:33.501 Chiaki  : PLE823 state seq=511 left_x=3604 last_change_to_sent_us=229 first_change_to_sent_us=229 last_change_after_state_us=16066
+09-27 18:56:33.518 Chiaki  : PLE823 state seq=512 left_x=2457 last_change_to_sent_us=217 first_change_to_sent_us=217 last_change_after_state_us=17124
+09-27 18:56:33.534 Chiaki  : PLE823 state seq=513 left_x=983 last_change_to_sent_us=313 first_change_to_sent_us=313 last_change_after_state_us=15143
+09-27 18:56:33.543 Chiaki  : PLE823 state seq=514 left_x=0 last_change_to_sent_us=6312 first_change_to_sent_us=6312 last_change_after_state_us=2472
+09-27 18:56:33.743 Chiaki  : PLE823 state seq=515 left_x=0 keepalive
+09-27 18:56:33.944 Chiaki  : PLE823 state seq=516 left_x=0 keepalive
+09-27 18:56:34.144 Chiaki  : PLE823 state seq=517 left_x=0 keepalive
+09-27 18:56:34.153 Chiaki  : PLE823 state seq=518 left_x=655 last_change_to_sent_us=3570 first_change_to_sent_us=3570 last_change_after_state_us=5285
+09-27 18:56:34.168 Chiaki  : PLE823 state seq=519 left_x=1884 last_change_to_sent_us=332 first_change_to_sent_us=332 last_change_after_state_us=13805
+09-27 18:56:34.185 Chiaki  : PLE823 state seq=520 left_x=2457 last_change_to_sent_us=292 first_change_to_sent_us=292 last_change_after_state_us=16935
+09-27 18:56:34.201 Chiaki  : PLE823 state seq=521 left_x=3850 last_change_to_sent_us=211 first_change_to_sent_us=211 last_change_after_state_us=15593
+09-27 18:56:34.210 Chiaki  : PLE823 state seq=522 left_x=4915 last_change_to_sent_us=6352 first_change_to_sent_us=6352 last_change_after_state_us=2507
+09-27 18:56:34.267 Chiaki  : PLE823 state seq=523 left_x=4259 last_change_to_sent_us=249 first_change_to_sent_us=249 last_change_after_state_us=56677
+09-27 18:56:34.285 Chiaki  : PLE823 state seq=524 left_x=3440 last_change_to_sent_us=515 first_change_to_sent_us=515 last_change_after_state_us=17420
+09-27 18:56:34.301 Chiaki  : PLE823 state seq=525 left_x=1966 last_change_to_sent_us=363 first_change_to_sent_us=363 last_change_after_state_us=16038
+09-27 18:56:34.318 Chiaki  : PLE823 state seq=526 left_x=573 last_change_to_sent_us=368 first_change_to_sent_us=368 last_change_after_state_us=15950
+09-27 18:56:34.326 Chiaki  : PLE823 state seq=527 left_x=0 last_change_to_sent_us=5767 first_change_to_sent_us=5767 last_change_after_state_us=2870
+09-27 18:56:34.527 Chiaki  : PLE823 state seq=528 left_x=0 keepalive
+09-27 18:56:34.728 Chiaki  : PLE823 state seq=529 left_x=0 keepalive
+09-27 18:56:34.929 Chiaki  : PLE823 state seq=530 left_x=0 keepalive
+09-27 18:56:34.952 Chiaki  : PLE823 state seq=531 left_x=737 last_change_to_sent_us=367 first_change_to_sent_us=367 last_change_after_state_us=22262
+09-27 18:56:34.968 Chiaki  : PLE823 state seq=532 left_x=2293 last_change_to_sent_us=303 first_change_to_sent_us=303 last_change_after_state_us=15555
+09-27 18:56:34.985 Chiaki  : PLE823 state seq=533 left_x=3604 last_change_to_sent_us=387 first_change_to_sent_us=387 last_change_after_state_us=16817
+09-27 18:56:34.994 Chiaki  : PLE823 state seq=534 left_x=4915 last_change_to_sent_us=6450 first_change_to_sent_us=6450 last_change_after_state_us=2143
+09-27 18:56:35.070 Chiaki  : PLE823 state seq=535 left_x=4177 last_change_to_sent_us=260 first_change_to_sent_us=260 last_change_after_state_us=76242
+09-27 18:56:35.084 Chiaki  : PLE823 state seq=536 left_x=3030 last_change_to_sent_us=250 first_change_to_sent_us=250 last_change_after_state_us=13609
+09-27 18:56:35.102 Chiaki  : PLE823 state seq=537 left_x=1884 last_change_to_sent_us=332 first_change_to_sent_us=332 last_change_after_state_us=17120
+09-27 18:56:35.118 Chiaki  : PLE823 state seq=538 left_x=327 last_change_to_sent_us=284 first_change_to_sent_us=284 last_change_after_state_us=15328
+09-27 18:56:35.126 Chiaki  : PLE823 state seq=539 left_x=0 last_change_to_sent_us=5356 first_change_to_sent_us=5356 last_change_after_state_us=2700
+09-27 18:56:35.326 Chiaki  : PLE823 state seq=540 left_x=0 keepalive
+09-27 18:56:35.527 Chiaki  : PLE823 state seq=541 left_x=0 keepalive
+09-27 18:56:35.728 Chiaki  : PLE823 state seq=542 left_x=0 keepalive
+09-27 18:56:35.752 Chiaki  : PLE823 state seq=543 left_x=655 last_change_to_sent_us=302 first_change_to_sent_us=302 last_change_after_state_us=23358
+09-27 18:56:35.768 Chiaki  : PLE823 state seq=544 left_x=1802 last_change_to_sent_us=261 first_change_to_sent_us=261 last_change_after_state_us=15622
+09-27 18:56:35.784 Chiaki  : PLE823 state seq=545 left_x=3112 last_change_to_sent_us=372 first_change_to_sent_us=372 last_change_after_state_us=16046
+09-27 18:56:35.802 Chiaki  : PLE823 state seq=546 left_x=4423 last_change_to_sent_us=711 first_change_to_sent_us=711 last_change_after_state_us=16711
+09-27 18:56:35.810 Chiaki  : PLE823 state seq=547 left_x=4915 last_change_to_sent_us=6636 first_change_to_sent_us=6636 last_change_after_state_us=1751
+09-27 18:56:35.885 Chiaki  : PLE823 state seq=548 left_x=4259 last_change_to_sent_us=328 first_change_to_sent_us=328 last_change_after_state_us=73841
+09-27 18:56:35.901 Chiaki  : PLE823 state seq=549 left_x=3440 last_change_to_sent_us=247 first_change_to_sent_us=247 last_change_after_state_us=16128
+09-27 18:56:35.919 Chiaki  : PLE823 state seq=550 left_x=2129 last_change_to_sent_us=404 first_change_to_sent_us=404 last_change_after_state_us=17364
+09-27 18:56:35.935 Chiaki  : PLE823 state seq=551 left_x=655 last_change_to_sent_us=864 first_change_to_sent_us=864 last_change_after_state_us=15089
+09-27 18:56:35.943 Chiaki  : PLE823 state seq=552 left_x=0 last_change_to_sent_us=6311 first_change_to_sent_us=6311 last_change_after_state_us=1828
+09-27 18:56:36.144 Chiaki  : PLE823 state seq=553 left_x=0 keepalive
+09-27 18:56:36.345 Chiaki  : PLE823 state seq=554 left_x=0 keepalive
+09-27 18:56:36.516 PLE823  : stim done n=40
+09-27 18:56:36.546 Chiaki  : PLE823 state seq=555 left_x=0 keepalive
+09-27 18:56:36.747 Chiaki  : PLE823 state seq=556 left_x=0 keepalive
+09-27 18:56:36.948 Chiaki  : PLE823 state seq=557 left_x=0 keepalive
+09-27 18:56:37.149 Chiaki  : PLE823 state seq=558 left_x=0 keepalive
+09-27 18:56:37.349 Chiaki  : PLE823 state seq=559 left_x=0 keepalive
+09-27 18:56:37.550 Chiaki  : PLE823 state seq=560 left_x=0 keepalive
+09-27 18:56:37.750 Chiaki  : PLE823 state seq=561 left_x=0 keepalive
+09-27 18:56:37.951 Chiaki  : PLE823 state seq=562 left_x=0 keepalive
+09-27 18:56:38.151 Chiaki  : PLE823 state seq=563 left_x=0 keepalive
+09-27 18:56:38.353 Chiaki  : PLE823 state seq=564 left_x=0 keepalive
+09-27 18:56:38.554 Chiaki  : PLE823 state seq=565 left_x=0 keepalive
+09-27 18:56:38.754 Chiaki  : PLE823 state seq=566 left_x=0 keepalive
