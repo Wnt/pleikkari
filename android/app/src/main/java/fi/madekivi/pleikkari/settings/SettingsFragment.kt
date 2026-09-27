@@ -281,6 +281,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				summary = getString(R.string.go_vr_match_60hz_summary)
 				isChecked = preferences.goVrMatch60Hz
 			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrRoomHighGpuKey
+				title = getString(R.string.go_vr_room_high_gpu_title)
+				summary = getString(R.string.go_vr_room_high_gpu_summary)
+				isChecked = preferences.goVrRoomHighGpu
+			})
 		}
 
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_resolution_key))?.let {
