@@ -48,3 +48,13 @@ The run launched the app the way the Library does: MAIN/INFO `.stream.GoVrLibrar
 - Cancel on a sheet, Settings and the Oculus TV row. Activating the row leaves VR.
 - The real Go remote's trigger and touchpad click on a card, with a person holding the remote. The pointer states were driven by `debug.pleikkari.vr_pointer`.
 - A Bluetooth pad. The pad focus and A were driven through the debug broadcast, which goes through the same `menuKey` path as a pad key.
+
+## Session 2: the merged build (`ea27da6f`, after PLE-722, PLE-731 and PLE-732 landed)
+
+**Setup.** This session used the same Go, the same script (plus the Settings step, with the entry step's `am start -W` dropped) and PS5-466 awake. Capture: `build/captures/ple730/20260927T125200/`. Excerpts: `home-log-merged.txt`, `vrapi-per-second-merged.txt` and `screen-check-merged.txt`, where all 12 shots are `picture`.
+
+**Repeated from session 1, all the same:** the cards, the pad focus, the pointer on the card and on Play, the menu over Home, Play, the connecting sheet, `Home closed` 2.5 s after Play with 59 fps video after it, and the no-console sheet.
+
+**New in this session: Settings from Home.** With the pad, the focus walked from the card to the Oculus TV row, then to `Focus button 'Settings'`. A logged `Home: Settings`, `Menu opened (Home Settings)`, `Menu page SETTINGS`. The shot `shot-5c-settings` shows PLE-732's Settings sheet over Home. Back logged `Menu page MENU`, and a second Back logged `Menu closed (back)`, with Home shown again in `shot-5d-home-again`.
+
+**The head loop.** For the 45 s that Home or the menu was up, `LCnt=2` in every second and FPS was 72 in 44 of the 45 seconds. `Stale` was 1 in two seconds, 15:53:42 and 15:53:45, the seconds the menu opened over Home and closed again. After `Home closed`, `LCnt=1`, FPS was 72 and Stale was 0 except 2 in the first second.

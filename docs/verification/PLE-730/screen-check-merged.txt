@@ -1,0 +1,12 @@
+shot-1-cards.png: mean luma 8.7, max 195, 14.5 % of the frame lit: picture
+shot-2-pad-focus.png: mean luma 9.0, max 195, 14.5 % of the frame lit: picture
+shot-3-pointer-card.png: mean luma 9.1, max 213, 14.7 % of the frame lit: picture
+shot-4-pointer-play.png: mean luma 9.1, max 213, 14.7 % of the frame lit: picture
+shot-5b-settings-focus.png: mean luma 8.8, max 195, 14.5 % of the frame lit: picture
+shot-5c-settings.png: mean luma 10.0, max 216, 14.6 % of the frame lit: picture
+shot-5d-home-again.png: mean luma 8.7, max 195, 14.5 % of the frame lit: picture
+shot-5-menu-over-home.png: mean luma 10.2, max 217, 14.6 % of the frame lit: picture
+shot-6-status-sheet.png: mean luma 7.4, max 139, 14.5 % of the frame lit: picture
+shot-7-stream.png: mean luma 13.3, max 245, 14.2 % of the frame lit: picture
+shot-8-no-console.png: mean luma 8.4, max 195, 14.5 % of the frame lit: picture
+shot-9-no-console-focus.png: mean luma 8.4, max 195, 14.5 % of the frame lit: picture

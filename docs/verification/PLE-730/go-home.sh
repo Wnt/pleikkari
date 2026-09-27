@@ -11,7 +11,8 @@
 #             its own) and vr_full_pose=1 (the panel in front of a Go on a table). Screencaps: the
 #             cards; the pad's focus (PLE-739's debug broadcast, whose touchpad thirds VR Home maps to
 #             the D-pad and A); the debug pointer on a card and on its Play pill; Back opening the menu
-#             over Home, and Back again. With LIVE=1 (the default unless build/dispatch/PS5-HOLD
+#             over Home, and Back again; Settings from Home (PLE-732's sheet) and Back twice to Home
+#             (SETTINGS=0 skips it). With LIVE=1 (the default unless build/dispatch/PS5-HOLD
 #             exists): A plays the focused card, screencaps of the status sheet and of the stream once
 #             `GoVrUi: Home closed` shows, then force-stop (never BACK)
 #  noconsole  debug.pleikkari.go_entry_no_console=1 (PLE-739): the no-console sheet
@@ -94,8 +95,9 @@ EOF
 	write_prefs "$OUT/prefs-run.xml" || return 3
 	say "prefs: snapshot + stream_feedback_stats_log, stream_go_vr_enabled, stream_go_vr_ui = true; last_console_mac: $(grep -c last_console_mac "$OUT/prefs-run.xml")"
 	mark_since
-	a shell "run-as $PKG am start --user 0 -W -n $PKG/.stream.StreamVrActivity" 2>&1 | tr -d '\r' >> "$LOG"
-	sleep 3
+	# No -W: StreamVrActivity with no extras finishes in onCreate, and -W then waited 2 minutes.
+	a shell "run-as $PKG am start --user 0 -n $PKG/.stream.StreamVrActivity" 2>&1 | tr -d '\r' >> "$LOG"
+	sleep 4
 	a shell am force-stop $PKG
 	dump_log
 	a shell dumpsys package $PKG | tr -d '\r' | grep -A3 -E 'enabledComponents|disabledComponents' > "$OUT/components.txt"
@@ -154,6 +156,18 @@ step_home() {
 	key back           # the menu over Home
 	shot 5-menu-over-home
 	key back           # Home again
+	# Home's Settings (PLE-732's sheet): with one console the pad goes card, Oculus TV row, Settings.
+	if [ "${SETTINGS:-1}" = 1 ]; then
+		key right
+		key right
+		key right
+		shot 5b-settings-focus
+		key centre     # A on Settings: the Settings page on the menu panel
+		shot 5c-settings
+		key back       # Settings to the menu
+		key back       # the menu closed: Home again
+		shot 5d-home-again
+	fi
 	dump_log
 	if [ "$LIVE" = 1 ] && fits 90; then
 		key right      # the menu reset the pad's focus: on the last-played card again
@@ -192,11 +206,11 @@ step_noconsole() {
 
 say "PLE-730 start, LIVE=$LIVE; $(( DEADLINE - $(date +%s) ))s before the deadline; serial $(a shell getprop ro.serialno | tr -d '\r'); $(a shell 'dumpsys power | grep mWakefulness=' | tr -d '\r ')"
 a shell getprop ro.serialno | tr -d '\r' > "$OUT/serial.txt"
-fits 300 || { say "deferred: under 300 s left for setup, install, Home and restore"; exit 9; }
+fits 240 || { say "deferred: under 240 s left for setup, install, Home and restore"; exit 9; }
 golive setup ensure "$APK" || { say "setup/ensure failed"; exit 3; }
 if step_entry; then
-	if fits 170; then step_home || say "home failed rc=$?"; else say "home deferred: no time left"; fi
-	if fits 80; then step_noconsole || say "noconsole failed rc=$?"; else say "noconsole deferred: no time left"; fi
+	if fits 150; then step_home || say "home failed rc=$?"; else say "home deferred: no time left"; fi
+	if fits 60; then step_noconsole || say "noconsole failed rc=$?"; else say "noconsole deferred: no time left"; fi
 else
 	say "entry failed rc=$?"
 fi

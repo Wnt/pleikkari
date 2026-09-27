@@ -1,0 +1,88 @@
+09-27 15:53:23.170 21274 21274 I GoVrEntry: Library VR launch, referrer none
+09-27 15:53:23.368 21274 21294 I GoVrUi  : Stats overlay off
+09-27 15:53:23.382 21274 21294 I GoVrUi  : Home: 'Looking for your PlayStation…'
+09-27 15:53:23.508 21274 21274 I GoVrEntry: Picked PS5-466: the last used of 1 linked console(s); in-VR chooser first, no connect until one is chosen
+09-27 15:53:23.519 21274 21294 I GoVrUi  : Home: 1 console card(s)
+09-27 15:53:24.048 21274 21295 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+09-27 15:53:24.055 21274 21295 I GoVrUi  : Panel 0: 800x448 texels, 50.0 x 28.0 degrees, gaze-anchored cylinder layer
+09-27 15:53:24.057 21274 21295 I GoVrUi  : Panel 1: 400x112 texels, 25.0 x 7.0 degrees, picture-anchored cylinder layer
+09-27 15:53:24.058 21274 21294 I GoVrUi  : Panels attached: menu true, stats true
+09-27 15:53:24.105 21274 21295 I GoVrUi  : Panel 0 placed: head yaw -0, pitch -86 degrees, radius 2.00 m, full pose
+09-27 15:53:29.064 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 338 submitted frames showed video, 0 frame signals
+09-27 15:53:32.443 21274 21274 I GoVrEntry: Debug input: right
+09-27 15:53:32.449 21274 21294 I GoVrUi  : Focus card 'PS5-466'
+09-27 15:53:32.455 21274 21294 I GoVrUi  : Redraws: 2 in 9.1 s, mean 11.19 ms (post 1.17), max 19.68 ms
+09-27 15:53:34.076 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:53:34.967 21274 21294 I GoVrUi  : Debug pointer at -12.0, 6.9 degrees
+09-27 15:53:34.981 21274 21294 I GoVrUi  : Hover card 'PS5-466'
+09-27 15:53:34.987 21274 21294 I GoVrUi  : Redraws: 1 in 2.5 s, mean 4.15 ms (post 0.59), max 4.15 ms
+09-27 15:53:37.487 21274 21294 I GoVrUi  : Debug pointer at 19.0, 6.9 degrees
+09-27 15:53:39.089 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:53:39.752 21274 21294 I GoVrUi  : Debug pointer off
+09-27 15:53:39.771 21274 21294 I GoVrUi  : Hover none
+09-27 15:53:39.777 21274 21294 I GoVrUi  : Redraws: 1 in 4.8 s, mean 5.75 ms (post 0.39), max 5.75 ms
+09-27 15:53:41.943 21274 21274 I GoVrEntry: Debug input: back
+09-27 15:53:41.960 21274 21294 I GoVrUi  : Menu opened (back)
+09-27 15:53:41.971 21274 21295 I GoVrUi  : Panel 0 placed: head yaw -1, pitch -86 degrees, radius 2.00 m, full pose
+09-27 15:53:41.995 21274 21294 I GoVrUi  : Redraws: 1 in 2.2 s, mean 30.87 ms (post 0.52), max 30.87 ms
+09-27 15:53:44.102 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:53:45.601 21274 21274 I GoVrEntry: Debug input: back
+09-27 15:53:45.609 21274 21294 I GoVrUi  : Menu closed (back)
+09-27 15:53:45.615 21274 21294 I GoVrUi  : Redraws: 1 in 3.6 s, mean 4.61 ms (post 0.60), max 4.61 ms
+09-27 15:53:47.937 21274 21274 I GoVrEntry: Debug input: right
+09-27 15:53:47.946 21274 21294 I GoVrUi  : Focus card 'PS5-466'
+09-27 15:53:47.950 21274 21294 I GoVrUi  : Redraws: 1 in 2.3 s, mean 3.35 ms (post 0.53), max 3.35 ms
+09-27 15:53:49.114 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:53:50.264 21274 21274 I GoVrEntry: Debug input: right
+09-27 15:53:50.270 21274 21294 I GoVrUi  : Focus button 'Link a console or change settings (Oculus TV screen)'
+09-27 15:53:50.279 21274 21294 I GoVrUi  : Redraws: 1 in 2.3 s, mean 3.98 ms (post 0.35), max 3.98 ms
+09-27 15:53:52.607 21274 21274 I GoVrEntry: Debug input: right
+09-27 15:53:52.610 21274 21294 I GoVrUi  : Focus button 'Settings'
+09-27 15:53:52.622 21274 21294 I GoVrUi  : Redraws: 1 in 2.3 s, mean 11.26 ms (post 2.73), max 11.26 ms
+09-27 15:53:54.127 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:53:56.334 21274 21274 I GoVrEntry: Debug input: centre
+09-27 15:53:56.341 21274 21294 I GoVrUi  : Activate button 'Settings' (pad)
+09-27 15:53:56.342 21274 21274 I GoVrEntry: Home: Settings
+09-27 15:53:56.346 21274 21294 I GoVrUi  : Redraws: 1 in 3.7 s, mean 2.75 ms (post 0.48), max 2.75 ms
+09-27 15:53:56.347 21274 21294 I GoVrUi  : Menu opened (Home Settings)
+09-27 15:53:56.355 21274 21295 I GoVrUi  : Panel 0 placed: head yaw -1, pitch -87 degrees, radius 2.00 m, full pose
+09-27 15:53:56.375 21274 21294 I GoVrUi  : Menu page SETTINGS
+09-27 15:53:59.139 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:54:00.214 21274 21274 I GoVrEntry: Debug input: back
+09-27 15:54:00.229 21274 21294 I GoVrUi  : Menu page MENU
+09-27 15:54:00.242 21274 21294 I GoVrUi  : Redraws: 3 in 3.9 s, mean 14.94 ms (post 1.62), max 18.37 ms
+09-27 15:54:02.640 21274 21274 I GoVrEntry: Debug input: back
+09-27 15:54:02.649 21274 21294 I GoVrUi  : Menu closed (back)
+09-27 15:54:02.654 21274 21294 I GoVrUi  : Redraws: 1 in 2.4 s, mean 4.78 ms (post 1.38), max 4.78 ms
+09-27 15:54:04.152 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:54:06.510 21274 21274 I GoVrEntry: Debug input: right
+09-27 15:54:06.520 21274 21294 I GoVrUi  : Focus card 'PS5-466'
+09-27 15:54:06.525 21274 21294 I GoVrUi  : Redraws: 1 in 3.9 s, mean 4.19 ms (post 0.85), max 4.19 ms
+09-27 15:54:08.890 21274 21274 I GoVrEntry: Debug input: centre
+09-27 15:54:08.900 21274 21294 I GoVrUi  : Activate card 'PS5-466' (pad)
+09-27 15:54:08.901 21274 21274 I GoVrEntry: Home: Play(id=c0:15:1b:3d:d8:bc)
+09-27 15:54:08.904 21274 21274 I GoVrEntry: Connecting to PS5-466 at 192.168.1.164 (awake)
+09-27 15:54:08.919 21274 21294 I GoVrUi  : Redraws: 1 in 2.4 s, mean 11.06 ms (post 0.92), max 11.06 ms
+09-27 15:54:08.976 21274 21294 I GoVrUi  : Home: 'Connecting to PS5-466…'
+09-27 15:54:09.164 21274 21295 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 15:54:10.004 21274 21294 I GoVrUi  : Redraws: 9 in 1.1 s, mean 2.59 ms (post 1.25), max 9.95 ms
+09-27 15:54:11.023 21274 21294 I GoVrUi  : Redraws: 8 in 1.0 s, mean 1.74 ms (post 0.51), max 2.14 ms
+09-27 15:54:11.409 21274 21294 I GoVrUi  : Home closed
+09-27 15:54:14.176 21274 21295 I GoCinema: Cinema video: 149 decoder frames latched in 5.0 s (29.7 fps), 177 of 360 submitted frames showed video, 150 frame signals
+09-27 15:54:19.189 21274 21295 I GoCinema: Cinema video: 298 decoder frames latched in 5.0 s (59.4 fps), 360 of 360 submitted frames showed video, 298 frame signals
+09-27 15:54:24.202 21274 21295 I GoCinema: Cinema video: 294 decoder frames latched in 5.0 s (58.7 fps), 360 of 360 submitted frames showed video, 294 frame signals
+09-27 15:54:34.618 21624 21624 I GoVrEntry: Library VR launch, referrer none
+09-27 15:54:34.767 21624 21644 I GoVrUi  : Stats overlay off
+09-27 15:54:34.772 21624 21644 I GoVrUi  : Home: 'Looking for your PlayStation…'
+09-27 15:54:34.839 21624 21624 I GoVrEntry: No PS5 linked (0 registered console(s)): pointing at linking on the Oculus TV screen
+09-27 15:54:34.841 21624 21644 I GoVrUi  : Home: 'No PlayStation 5 is linked to Pleikkari yet.'
+09-27 15:54:35.107 21624 21645 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+09-27 15:54:35.121 21624 21645 I GoVrUi  : Panel 0: 800x448 texels, 50.0 x 28.0 degrees, gaze-anchored cylinder layer
+09-27 15:54:35.123 21624 21645 I GoVrUi  : Panel 1: 400x112 texels, 25.0 x 7.0 degrees, picture-anchored cylinder layer
+09-27 15:54:35.124 21624 21644 I GoVrUi  : Panels attached: menu true, stats true
+09-27 15:54:35.186 21624 21645 I GoVrUi  : Panel 0 placed: head yaw -0, pitch -86 degrees, radius 2.00 m, full pose
+09-27 15:54:40.138 21624 21645 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 356 submitted frames showed video, 0 frame signals
+09-27 15:54:43.947 21624 21624 I GoVrEntry: Debug input: right
+09-27 15:54:43.954 21624 21644 I GoVrUi  : Focus button 'Oculus TV screen'
+09-27 15:54:43.957 21624 21644 I GoVrUi  : Redraws: 2 in 9.2 s, mean 12.88 ms (post 0.71), max 23.68 ms
+09-27 15:54:45.138 21624 21645 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 359 submitted frames showed video, 0 frame signals
