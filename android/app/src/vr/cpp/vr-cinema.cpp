@@ -639,20 +639,24 @@ struct Cinema {
             LOGI("Environment frame: gpu %.3f ms, %u draws, %u triangles", stats.gpu_ns / 1e6, stats.draw_calls, stats.triangles);
             environmentStatsFrame = frameIndex;
         }
+        // PLE-776: the reticle-layer switch draws the laser and reticle into their own layer, last.
+        ovrLayerProjection2 reticle;
+        const bool reticleOn = uiFrame && ui.reticleLayer(tracking, width, height, &reticle);
         glFlush();
         ovrLayer_Union2 panelLayers[pleikkari::VrUiMaxPanels];
         const int panelCount = panels ? ui.layers(tracking, panelLayers) : 0;
-        const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 1];
+        const ovrLayerHeader2 *layers[pleikkari::VrUiMaxPanels + 2];
         // PLE-761: the overlay switch submits the panels after the eye buffer instead of before it.
         const bool overlay = panels && ui.overlay();
         layers[overlay ? 0 : panelCount] = &layer.Header;
         for(int i = 0; i < panelCount; ++i) layers[(overlay ? 1 : 0) + i] = &panelLayers[i].Header;
+        if(reticleOn) layers[panelCount + 1] = &reticle.Header;
         if(uiFrame && uiOut) ui.output(uiOut);
         ovrSubmitFrameDescription2 frame{};
         frame.SwapInterval = 1;
         frame.FrameIndex = frameIndex;
         frame.DisplayTime = time;
-        frame.LayerCount = static_cast<uint32_t>(panelCount + 1);
+        frame.LayerCount = static_cast<uint32_t>(panelCount + 1 + (reticleOn ? 1 : 0));
         frame.Layers = layers;
         submitNs = monotonicNs();
         predictedDisplayNs = std::llround(time * 1e9);
@@ -719,13 +723,14 @@ extern "C" JNIEXPORT jobject JNICALL JNI_METHOD(createPanel)(JNIEnv *env, jobjec
 // PLE-698: {submit call, predicted display time} of the last draw, CLOCK_MONOTONIC ns.
 // PLE-761: debug builds only, before createPanel; see vr-ui-layers.h's VrUiDebug.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetUiLayers)(JNIEnv *, jobject, jlong h, jboolean quad, jboolean overlay,
-        jfloat texelScale, jboolean filterExpensive, jint maxPanels) {
+        jfloat texelScale, jboolean filterExpensive, jint maxPanels, jboolean reticleLayer) {
     pleikkari::VrUiDebug debug;
     debug.quad = quad;
     debug.overlay = overlay;
     debug.texelScale = std::clamp(static_cast<float>(texelScale), 0.5f, 2.0f);
     debug.filterExpensive = filterExpensive;
     debug.maxPanels = std::clamp(static_cast<int>(maxPanels), 1, pleikkari::VrUiMaxPanels);
+    debug.reticleLayer = reticleLayer;
     cinema(h)->ui.setDebug(debug);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(submitTiming)(JNIEnv *env, jobject, jlong h, jlongArray out) {
