@@ -161,7 +161,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 else (info?.feedbackStatsLogIntervalMs ?: 0) > 0
             try {
                 // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps. PLE-698: the
-                // preview's picture is 60 fps too, so it can time both panel rates.
+                // preview stands in for a 60 fps stream, so it can time both panel rates.
                 val streamFps = if(preview) 60 else info?.videoProfile?.maxFPS
                 val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && streamFps == 60) 60f else 72f
                 native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
