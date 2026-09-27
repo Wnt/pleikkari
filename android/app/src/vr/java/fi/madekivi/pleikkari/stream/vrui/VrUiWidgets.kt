@@ -236,8 +236,10 @@ class VrList(val viewport: Box, val children: List<Widget>)
  * [initialFocus]: where the pad's first move lands (PLE-730: Home's last-played card), else the first focusable.
  */
 class VrScreen(val width: Int, val height: Int, val title: String, val widgets: List<Widget>, val lists: List<VrList> = emptyList(),
-	val initialFocus: Widget? = null)
+	val initialFocus: Widget? = null, val titleAlert: Boolean = false)
 {
+	/** PLE-757: the title's horizontal offset in panel units; [VrUiHost] shakes an alert title once when shown. */
+	var titleShift = 0f
 	val all: List<Widget> get() = widgets + lists.flatMap { it.children }
 
 	/** The widget under a panel point: a list's children only inside its viewport. */

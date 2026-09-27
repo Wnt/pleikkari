@@ -69,7 +69,7 @@ class VrUiPainter(context: Context)
 		if(screen.title.isNotEmpty())
 		{
 			val pad = VrUi.deg(1f)
-			drawText(canvas, screen.title, titlePaint, text, pad, 0f, screen.width - 2 * pad, VrUi.HEADER_HEIGHT, center = false)
+			drawText(canvas, screen.title, titlePaint, if(screen.titleAlert) destructive else text, pad + screen.titleShift, 0f, screen.width - 2 * pad, VrUi.HEADER_HEIGHT, center = false)
 		}
 		screen.widgets.forEach { drawWidget(canvas, it, focus) }
 		screen.lists.forEach { drawList(canvas, it, focus) }
@@ -100,11 +100,25 @@ class VrUiPainter(context: Context)
 		}
 	}
 
+	/** PLE-781: the top [0] and bottom [1] fade shaders, rebuilt only when their geometry moves. */
+	private val fadeGradients = arrayOfNulls<LinearGradient>(2)
+	private val fadeTops = FloatArray(2)
+	private val fadeBottoms = FloatArray(2)
+
 	private fun drawFade(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, fadeDown: Boolean)
 	{
-		val solid = panel
-		val clear = panel and 0x00FFFFFF
-		fill.shader = LinearGradient(0f, top, 0f, bottom, if(fadeDown) solid else clear, if(fadeDown) clear else solid, Shader.TileMode.CLAMP)
+		val i = if(fadeDown) 0 else 1
+		var g = fadeGradients[i]
+		if(g == null || fadeTops[i] != top || fadeBottoms[i] != bottom)
+		{
+			val solid = panel
+			val clear = panel and 0x00FFFFFF
+			g = LinearGradient(0f, top, 0f, bottom, if(fadeDown) solid else clear, if(fadeDown) clear else solid, Shader.TileMode.CLAMP)
+			fadeGradients[i] = g
+			fadeTops[i] = top
+			fadeBottoms[i] = bottom
+		}
+		fill.shader = g
 		canvas.drawRect(left, top, right, bottom, fill)
 		fill.shader = null
 	}

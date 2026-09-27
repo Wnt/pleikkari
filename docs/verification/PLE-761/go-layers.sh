@@ -6,7 +6,7 @@
 #   ensure <apk>          install -r ours unless it is already installed
 #   variant <label> <spec>
 #                         the preview in the plain room with the VR menu and the stats overlay on and
-#                         vr_ui_layers=<spec> ("-" for none): screencap and a WINDOW s logcat window
+#                         vr_ui_layers=<spec> ("-" for none): screencap and a GO_WINDOW s logcat window
 #                         with the menu closed, then with it open (tag PLE722 marks, for PLE-722's windows.py)
 #   restore               the original APK and prefs back, props cleared, the app stopped
 # Run from the worktree:
@@ -20,7 +20,8 @@ G=192.168.1.202:5555
 PKG=fi.madekivi.pleikkari
 PREFS=shared_prefs/${PKG}_preferences.xml
 OUT=${1:?out dir}; shift
-WINDOW=${WINDOW:-15}
+# not WINDOW: GNU screen exports WINDOW=<window number> (0 in the dispatcher), which made every window 0 s (PLE-777)
+GO_WINDOW=${GO_WINDOW:-15}
 mkdir -p "$OUT"
 LOG="$OUT/session.txt"
 BACKUP=${BACKUP:-$OUT/backup}
@@ -99,7 +100,7 @@ step_variant() { # <label> <spec>
 	sleep 6
 	mark "$label closed start"
 	shot "$label-1-closed"
-	sleep "$WINDOW"
+	sleep "$GO_WINDOW"
 	mark "$label closed end"
 	a shell input keyevent KEYCODE_MENU
 	sleep 1.5
@@ -107,7 +108,7 @@ step_variant() { # <label> <spec>
 	sleep 0.8
 	shot "$label-2-open"
 	mark "$label open-idle start"
-	sleep "$WINDOW"
+	sleep "$GO_WINDOW"
 	mark "$label open-idle end"
 	dump "$OUT/$label-logcat.txt"
 	a shell am force-stop $PKG
@@ -140,7 +141,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	setup) shift; step_setup ;;
 	ensure) step_ensure "$2"; shift 2 ;;
-	variant) if fits $(( 2 * WINDOW + 60 )); then step_variant "$2" "$3" || say "variant $2 failed rc=$?"; else say "deferred variant $2"; fi; shift 3 ;;
+	variant) if fits $(( 2 * GO_WINDOW + 60 )); then step_variant "$2" "$3" || say "variant $2 failed rc=$?"; else say "deferred variant $2"; fi; shift 3 ;;
 	restore) shift; step_restore ;;
 	*) say "unknown step $1"; exit 2 ;;
 	esac

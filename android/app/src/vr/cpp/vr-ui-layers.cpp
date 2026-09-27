@@ -107,6 +107,7 @@ void VrUiLayers::destroy() {
         if(panel.chain) vrapi_DestroyTextureSwapChain(panel.chain);
         panel.chain = nullptr;
     }
+    destroyReticle();
     if(program) glDeleteProgram(program);
     if(stripVertices) glDeleteBuffers(1, &stripVertices);
     if(quadVertices) glDeleteBuffers(1, &quadVertices);
@@ -234,36 +235,109 @@ void VrUiLayers::drawEye(const ovrMatrix4f &view, const ovrMatrix4f &projection)
         glUniform1f(opacityLocation, panel.opacity);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, (StripSegments + 1) * 2);
     }
-    // 2. Laser and reticle over everything, straight alpha.
-    if(pointer) {
-        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        uniformMatrix(mvpLocation, ovrMatrix4f_Multiply(&projection, &view));
-        glBindBuffer(GL_ARRAY_BUFFER, quadVertices);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-        const PleikkariVrVec3 across = scale(normalize(cross(sub(rayEnd, rayStart), sub(eye, rayStart))), LaserWidthM);
-        glUniform1i(modeLocation, 1);
-        glUniform3f(aLocation, rayStart.x, rayStart.y, rayStart.z);
-        glUniform3f(bLocation, rayEnd.x, rayEnd.y, rayEnd.z);
-        glUniform3f(cLocation, across.x, across.y, across.z);
-        glUniform4f(colorLocation, 1.0f, 1.0f, 1.0f, LaserAlpha);
+    // 2. Laser and reticle over everything, straight alpha (PLE-776: in their own layer with the switch).
+    if(pointer && !debug.reticleLayer) drawPointer(view, projection);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDisable(GL_BLEND);
+    glBindVertexArray(0);
+}
+
+void VrUiLayers::drawPointer(const ovrMatrix4f &view, const ovrMatrix4f &projection) {
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    uniformMatrix(mvpLocation, ovrMatrix4f_Multiply(&projection, &view));
+    glBindBuffer(GL_ARRAY_BUFFER, quadVertices);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    const PleikkariVrVec3 across = scale(normalize(cross(sub(rayEnd, rayStart), sub(eye, rayStart))), LaserWidthM);
+    glUniform1i(modeLocation, 1);
+    glUniform3f(aLocation, rayStart.x, rayStart.y, rayStart.z);
+    glUniform3f(bLocation, rayEnd.x, rayEnd.y, rayEnd.z);
+    glUniform3f(cLocation, across.x, across.y, across.z);
+    glUniform4f(colorLocation, 1.0f, 1.0f, 1.0f, LaserAlpha);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    if(hit) {
+        const PleikkariVrVec3 toEye = sub(eye, hitAt.point);
+        const float half = length(toEye) * std::tan(reticleDegrees * 0.5f * 0.0174533f);
+        const PleikkariVrVec3 facing = normalize(toEye);
+        const PleikkariVrVec3 right = scale(normalize(cross({0.0f, 1.0f, 0.0f}, facing)), half);
+        const PleikkariVrVec3 up = scale(normalize(cross(facing, right)), half);
+        glUniform1i(modeLocation, 2);
+        glUniform3f(aLocation, hitAt.point.x, hitAt.point.y, hitAt.point.z);
+        glUniform3f(bLocation, right.x, right.y, right.z);
+        glUniform3f(cLocation, up.x, up.y, up.z);
+        glUniform4f(colorLocation, 0.93f, 0.92f, 0.94f, 1.0f);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        if(hit) {
-            const PleikkariVrVec3 toEye = sub(eye, hitAt.point);
-            const float half = length(toEye) * std::tan(reticleDegrees * 0.5f * 0.0174533f);
-            const PleikkariVrVec3 facing = normalize(toEye);
-            const PleikkariVrVec3 right = scale(normalize(cross({0.0f, 1.0f, 0.0f}, facing)), half);
-            const PleikkariVrVec3 up = scale(normalize(cross(facing, right)), half);
-            glUniform1i(modeLocation, 2);
-            glUniform3f(aLocation, hitAt.point.x, hitAt.point.y, hitAt.point.z);
-            glUniform3f(bLocation, right.x, right.y, right.z);
-            glUniform3f(cLocation, up.x, up.y, up.z);
-            glUniform4f(colorLocation, 0.93f, 0.92f, 0.94f, 1.0f);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+}
+
+bool VrUiLayers::reticleLayer(const ovrTracking2 &head, int width, int height, ovrLayerProjection2 *out) {
+    if(!debug.reticleLayer || !pointer || width <= 0 || height <= 0) return false;
+    if(width != reticleWidth || height != reticleHeight) {
+        destroyReticle();
+        for(ReticleEye &target : reticleEyes) {
+            target.chain = vrapi_CreateTextureSwapChain3(VRAPI_TEXTURE_TYPE_2D, GL_RGBA8, width, height, 1, 3);
+            if(!target.chain) { LOGE("Reticle layer: no swapchain"); destroyReticle(); debug.reticleLayer = false; return false; }
+            target.fbos.resize(vrapi_GetTextureSwapChainLength(target.chain));
+            glGenFramebuffers(static_cast<GLsizei>(target.fbos.size()), target.fbos.data());
+            for(size_t i = 0; i < target.fbos.size(); ++i) {
+                const GLuint tex = vrapi_GetTextureSwapChainHandle(target.chain, static_cast<int>(i));
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glBindFramebuffer(GL_FRAMEBUFFER, target.fbos[i]);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+            }
         }
+        glBindTexture(GL_TEXTURE_2D, 0);
+        reticleWidth = width; reticleHeight = height;
+        LOGI("Reticle layer: %dx%d per eye, submitted over the %s panels", width, height,
+            debug.overlay ? "overlay" : "underlay");
+    }
+    *out = vrapi_DefaultLayerProjection2();
+    // Drawn with straight alpha onto transparent black, the texels come out premultiplied.
+    out->Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
+    out->Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
+    out->Header.Flags |= VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION |
+                         VRAPI_FRAME_LAYER_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
+    out->HeadPose = head.HeadPose;
+    glUseProgram(program);
+    glBindVertexArray(vao);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_SCISSOR_TEST);
+    glEnable(GL_BLEND);
+    glEnableVertexAttribArray(0);
+    for(int e = 0; e < VRAPI_FRAME_LAYER_EYE_MAX; ++e) {
+        ReticleEye &target = reticleEyes[e];
+        glBindFramebuffer(GL_FRAMEBUFFER, target.fbos[target.index]);
+        glViewport(0, 0, width, height);
+        glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT);
+        drawPointer(head.Eye[e].ViewMatrix, head.Eye[e].ProjectionMatrix);
+        // A transparent border for timewarp's clamped out-of-range sampling.
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(0, 0, width, 1); glClear(GL_COLOR_BUFFER_BIT);
+        glScissor(0, height - 1, width, 1); glClear(GL_COLOR_BUFFER_BIT);
+        glScissor(0, 0, 1, height); glClear(GL_COLOR_BUFFER_BIT);
+        glScissor(width - 1, 0, 1, height); glClear(GL_COLOR_BUFFER_BIT);
+        glDisable(GL_SCISSOR_TEST);
+        out->Textures[e].ColorSwapChain = target.chain;
+        out->Textures[e].SwapChainIndex = target.index;
+        out->Textures[e].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection(&head.Eye[e].ProjectionMatrix);
+        target.index = (target.index + 1) % static_cast<int>(target.fbos.size());
     }
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glDisable(GL_BLEND);
     glBindVertexArray(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+void VrUiLayers::destroyReticle() {
+    for(ReticleEye &target : reticleEyes) {
+        if(!target.fbos.empty()) glDeleteFramebuffers(static_cast<GLsizei>(target.fbos.size()), target.fbos.data());
+        if(target.chain) vrapi_DestroyTextureSwapChain(target.chain);
+        target = ReticleEye{};
+    }
+    reticleWidth = reticleHeight = 0;
 }
 
 int VrUiLayers::layers(const ovrTracking2 &head, ovrLayer_Union2 *out) const {

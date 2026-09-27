@@ -19,8 +19,9 @@ class VrUiLayerDebugTest
 	@Test
 	fun parsesEverySwitch()
 	{
-		val debug = VrUiLayerDebug.parse("quad, overlay,tpd=24,filter,panels=1")
-		assertEquals(VrUiLayerDebug(quad = true, overlay = true, texelsPerDegree = 24f, filterExpensive = true, maxPanels = 1), debug)
+		val debug = VrUiLayerDebug.parse("quad, overlay,tpd=24,filter,panels=1,reticle")
+		assertEquals(VrUiLayerDebug(quad = true, overlay = true, texelsPerDegree = 24f, filterExpensive = true, maxPanels = 1,
+			reticleLayer = true), debug)
 		assertEquals(1.5f, debug.texelScale, 1e-6f)
 	}
 
