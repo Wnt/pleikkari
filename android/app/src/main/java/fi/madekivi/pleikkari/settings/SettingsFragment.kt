@@ -37,6 +37,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu
 		preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread
 		preferences.goVrLatchOnSignalKey -> preferences.goVrLatchOnSignal
+		preferences.goVrLateStartKey -> preferences.goVrLateStart
+		preferences.goVrWarmUpKey -> preferences.goVrWarmUp
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -88,6 +90,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu = value
 			preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread = value
 			preferences.goVrLatchOnSignalKey -> preferences.goVrLatchOnSignal = value
+			preferences.goVrLateStartKey -> preferences.goVrLateStart = value
+			preferences.goVrWarmUpKey -> preferences.goVrWarmUp = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
