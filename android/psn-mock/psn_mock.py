@@ -16,12 +16,23 @@ Like Sony, a completed sign-in leaves a session cookie in the browser, so openin
 the authorize page again redirects with a fresh code and no form (PLE-323: the
 app reopens the sign-in when the user leaves the tab without its code).
 POST /__mock/sessions/clear forgets every session, so a driver run starts signed out.
+
+PLE-321: the mock also plays the PSN side of a remote connection, so the app's
+candidate exchange runs without a console: the push server lookup, the push
+WebSocket, Remote Play session creation, the console wake command and the
+session messages. A mock console answers on the push socket in the order the
+app awaits: it joins, posts customData1 and OFFERs; it answers the app's OFFER
+with RESULT and the app's ACCEPT with its own ACCEPT, and once the app RESULTs
+that ACCEPT it OFFERs again for the data channel. Its candidates are
+documentation addresses (192.0.2.0/24, 198.51.100.0/24), so punching never
+succeeds; the exchange up to the punch is what this covers.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import struct
 import hashlib
 import html
 import json
@@ -48,6 +59,13 @@ DEBUG_CERT_SHA256 = "52717a10c7dd74c22c7d1ce10fd0254da2f65a23621bb82aa72157b1c53
 # PLE-568: the app became fi.madekivi.pleikkari; the old id stays listed so a build from a branch
 # that predates the rename still gets a verified app link.
 DEFAULT_PACKAGES = ("fi.madekivi.pleikkari.psnmock", "com.metallic.chiaki.psnmock")
+
+SESSIONS_PREFIX = "/api/sessionManager/v1/remotePlaySessions/"
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC11B85"
+SESSION_CREATED = "psn:sessionManager:sys:remotePlaySession:created"
+MEMBER_CREATED = "psn:sessionManager:sys:rps:members:created"
+CUSTOM_DATA = "psn:sessionManager:sys:rps:customData1:updated"
+SESSION_MESSAGE = "psn:sessionManager:sys:rps:sessionMessage:created"
 
 SCENARIOS = {
     "ok": "Signs in and lists one PS5",
@@ -213,6 +231,63 @@ class Code:
     used: bool = False
 
 
+class PushSocket:
+    """The server side of a push WebSocket: unmasked frames out, locked so threads do not interleave."""
+
+    def __init__(self, wfile):
+        self.wfile = wfile
+        self.lock = threading.Lock()
+
+    def send_frame(self, opcode: int, payload: bytes) -> None:
+        size = len(payload)
+        if size < 126:
+            head = struct.pack("!BB", 0x80 | opcode, size)
+        elif size < 1 << 16:
+            head = struct.pack("!BBH", 0x80 | opcode, 126, size)
+        else:
+            head = struct.pack("!BBQ", 0x80 | opcode, 127, size)
+        with self.lock:
+            self.wfile.write(head + payload)
+            self.wfile.flush()
+
+    def send_json(self, value) -> bool:
+        try:
+            self.send_frame(0x1, json.dumps(value).encode())
+            return True
+        except OSError:
+            return False
+
+
+def read_ws_frame(rfile) -> tuple[int, bytes] | None:
+    """One client frame (clients always mask), or None at EOF."""
+    head = rfile.read(2)
+    if len(head) < 2:
+        return None
+    opcode, size = head[0] & 0x0F, head[1] & 0x7F
+    if size == 126:
+        size = struct.unpack("!H", rfile.read(2))[0]
+    elif size == 127:
+        size = struct.unpack("!Q", rfile.read(8))[0]
+    mask = rfile.read(4) if head[1] & 0x80 else bytes(4)
+    data = rfile.read(size)
+    return opcode, bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+
+
+def signal_payload(message: dict) -> str:
+    return "ver=1.0, type=text, body=" + json.dumps(message, separators=(",", ":"))
+
+
+@dataclass
+class RemoteSession:
+    account: str
+    account_id: str
+    console_duid: str = ""
+    channel: int = 0  # 0 control, 1 data, 2 both exchanged
+    console_req: int = 0
+    console_accept_req: int = 0
+    client_sid: int = 0
+
+
 @dataclass
 class State:
     hosts: dict[str, bool]  # host -> serves assetlinks.json
@@ -228,6 +303,28 @@ class State:
     sessions: dict[str, str] = field(default_factory=dict)  # session cookie -> account
     events: list[dict] = field(default_factory=list)
     echo: bool = True
+    pushes: dict[str, list[PushSocket]] = field(default_factory=dict)  # account -> open push sockets
+    remote_sessions: dict[str, RemoteSession] = field(default_factory=dict)  # sessionId -> session
+
+    def push(self, account: str, data_type: str, data: dict) -> int:
+        """Sends a notification to every push socket of the account; returns how many took it."""
+        with self.lock:
+            sockets = list(self.pushes.get(account, []))
+        notification = {"dataType": data_type, "body": {"data": data}}
+        return sum(socket.send_json(notification) for socket in sockets)
+
+    def console_says(self, session_id: str, session: RemoteSession, message: dict) -> None:
+        delivered = self.push(session.account, SESSION_MESSAGE, {
+            "sessionId": session_id,
+            "sessionMessage": {"payload": signal_payload(message),
+                               "from": {"deviceUniqueId": session.console_duid, "platform": "PS5"}},
+        })
+        self.event("console_signal", action=message["action"], reqId=message["reqId"], channel=session.channel, delivered=delivered)
+
+    def console_offer(self, session_id: str, session: RemoteSession) -> None:
+        session.console_req += 1
+        self.console_says(session_id, session, {"action": "OFFER", "reqId": session.console_req, "error": 0,
+                                                "connRequest": console_conn_request(session)})
 
     def __post_init__(self) -> None:
         if self.credentials_file and self.credentials_file.exists():
@@ -331,6 +428,21 @@ async function signInWithPasskey() {
   } catch (e) { status('Passkey sign-in failed: ' + e.message); }
 }
 """
+
+
+def console_conn_request(session: RemoteSession) -> dict:
+    port = 9296 + session.channel
+    return {
+        "sid": 0x10000 + session.channel, "peerSid": session.client_sid,
+        "skey": base64.b64encode(os.urandom(16)).decode(), "natType": 2,
+        "candidate": [
+            {"type": "LOCAL", "addr": "192.0.2.64", "mappedAddr": "0.0.0.0", "port": port, "mappedPort": 0},
+            {"type": "STATIC", "addr": "198.51.100.64", "mappedAddr": "0.0.0.0", "port": port, "mappedPort": 0},
+        ],
+        "defaultRouteMacAddr": "02:00:00:00:00:64",
+        "localPeerAddr": {"accountId": session.account_id, "platform": "PROSPERO"},
+        "localHashedId": base64.b64encode(hashlib.sha256(session.console_duid.encode()).digest()[:16]).decode(),
+    }
 
 
 def authorize_page(txn: str, host: str, error: str = "") -> str:
@@ -465,6 +577,10 @@ def make_handler(state: State):
                 return self.send_html(HTTPStatus.OK, "<!doctype html><html><head><title></title></head><body></body></html>")
             if url.path == "/api/cloudAssistedNavigation/v2/users/me/clients":
                 return self.clients()
+            if url.path == "/np/serveraddr":
+                return self.push_server()
+            if url.path == "/np/pushNotification":
+                return self.push_socket()
             if url.path == "/__mock/events":
                 since = int(parse_qs(url.query).get("since", ["0"])[0])
                 with state.lock:
@@ -492,7 +608,24 @@ def make_handler(state: State):
             route = routes.get(url.path)
             if route:
                 return route()
+            if url.path == "/api/sessionManager/v1/remotePlaySessions":
+                return self.create_remote_session()
+            if url.path == "/api/cloudAssistedNavigation/v2/users/me/commands":
+                return self.console_command()
+            parts = url.path.split("/")
+            if len(parts) == 7 and url.path.startswith(SESSIONS_PREFIX) and parts[6] == "sessionMessage":
+                return self.session_message(parts[5])
             state.event("not_mocked", method="POST", path=url.path)
+            return self.send_json(HTTPStatus.NOT_IMPLEMENTED, {"error": "not mocked", "path": url.path})
+
+        def do_DELETE(self):
+            url = urlsplit(self.path)
+            if not self.known_host():
+                return
+            parts = url.path.split("/")
+            if len(parts) == 8 and url.path.startswith(SESSIONS_PREFIX) and parts[6:] == ["members", "me"]:
+                return self.leave_remote_session(parts[5])
+            state.event("not_mocked", method="DELETE", path=url.path)
             return self.send_json(HTTPStatus.NOT_IMPLEMENTED, {"error": "not mocked", "path": url.path})
 
         def assetlinks(self):
@@ -654,6 +787,137 @@ def make_handler(state: State):
                  "device": {"name": "Remote play disabled", "enabledFeatures": []}},
             ]
             return self.send_json(HTTPStatus.OK, {"clients": clients, "totalResults": len(clients)})
+
+        # remote connection (PLE-321)
+        def push_server(self):
+            if self.bearer_account() is None:
+                return
+            return self.send_json(HTTPStatus.OK, {"fqdn": self.host, "keepAliveStatus": {"type": 3}})
+
+        def push_socket(self):
+            account = self.bearer_account()
+            if account is None:
+                return
+            key = self.headers.get("Sec-WebSocket-Key", "")
+            if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+                return self.send_json(HTTPStatus.BAD_REQUEST, {"error": "websocket upgrade required"})
+            accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
+            head = ["HTTP/1.1 101 Switching Protocols", "Upgrade: websocket", "Connection: Upgrade", f"Sec-WebSocket-Accept: {accept}"]
+            if self.headers.get("Sec-WebSocket-Protocol"):
+                head.append("Sec-WebSocket-Protocol: np-pushpacket")
+            self.wfile.write(("\r\n".join(head) + "\r\n\r\n").encode())
+            self.wfile.flush()
+            self.close_connection = True
+            socket = PushSocket(self.wfile)
+            with state.lock:
+                state.pushes.setdefault(account, []).append(socket)
+            state.event("push_open", account=account)
+            try:
+                while (frame := read_ws_frame(self.rfile)) is not None:
+                    opcode, payload = frame
+                    if opcode == 0x8:
+                        socket.send_frame(0x8, payload[:2])
+                        break
+                    if opcode == 0x9:
+                        socket.send_frame(0xA, payload)
+            except OSError:
+                pass
+            finally:
+                with state.lock:
+                    state.pushes[account].remove(socket)
+                state.event("push_closed", account=account)
+
+        def create_remote_session(self):
+            account = self.bearer_account()
+            if account is None:
+                return
+            try:
+                member = self.json_body()["remotePlaySessions"][0]["members"][0]
+                push_contexts = [p["pushContextId"] for p in member["pushContexts"]]
+            except (KeyError, IndexError, TypeError):
+                state.event("remote_session_rejected", account=account)
+                return self.send_json(HTTPStatus.BAD_REQUEST, {"error": {"code": 2289154, "message": "bad session request"}})
+            session_id = "mock-" + secrets.token_hex(8)
+            session = RemoteSession(account=account, account_id=user_id_of(account))
+            client = {"accountId": session.account_id, "deviceUniqueId": "mock-client", "platform": "REMOTE_PLAY"}
+            with state.lock:
+                state.remote_sessions[session_id] = session
+            state.event("remote_session_created", account=account, session=session_id, push_contexts=len(push_contexts))
+            self.send_json(HTTPStatus.OK, {"remotePlaySessions": [{"sessionId": session_id, "members": [client]}]})
+            state.push(account, SESSION_CREATED, {"sessionId": session_id})
+            state.push(account, MEMBER_CREATED, {"sessionId": session_id, "members": [client]})
+
+        def console_command(self):
+            account = self.bearer_account()
+            if account is None:
+                return
+            detail = self.json_body().get("commandDetail", {})
+            try:
+                params = json.loads(detail["parameters"]["initialParams"])
+                session_id = str(params["sessionId"])
+            except (KeyError, TypeError, ValueError):
+                params, session_id = {}, ""
+            with state.lock:
+                session = state.remote_sessions.get(session_id)
+            if session is None or session.account != account:
+                state.event("console_command_rejected", account=account)
+                return self.send_json(HTTPStatus.BAD_REQUEST, {"error": {"code": 2289155, "message": "unknown session"}})
+            session.console_duid = str(detail.get("duid", ""))
+            state.event("console_woken", account=account, session=session_id, duid=session.console_duid,
+                        has_data=bool(params.get("data1")) and bool(params.get("data2")))
+            self.send(HTTPStatus.NO_CONTENT, b"", "application/json")
+            state.push(account, MEMBER_CREATED, {"sessionId": session_id, "members": [
+                {"accountId": session.account_id, "deviceUniqueId": session.console_duid, "platform": "PS5"}]})
+            # customData1 is the base64 of the base64 of 16 bytes, as the console posts it.
+            inner = base64.b64encode(os.urandom(16))
+            state.push(account, CUSTOM_DATA, {"sessionId": session_id, "customData1": base64.b64encode(inner).decode()})
+            state.console_offer(session_id, session)
+
+        def session_message(self, session_id: str):
+            account = self.bearer_account()
+            if account is None:
+                return
+            with state.lock:
+                session = state.remote_sessions.get(session_id)
+            if session is None or session.account != account:
+                return self.send_json(HTTPStatus.NOT_FOUND, {"error": {"code": 2289156, "message": "unknown session"}})
+            envelope = self.json_body()
+            try:
+                body = str(envelope["payload"]).split("body=", 1)[1]
+                message = json.loads(body.replace('"localPeerAddr":,', '"localPeerAddr":null,'))
+                action, req_id = str(message["action"]), int(message["reqId"])
+            except (IndexError, KeyError, TypeError, ValueError):
+                state.event("client_signal_invalid", session=session_id)
+                return self.send_json(HTTPStatus.BAD_REQUEST, {"error": {"code": 2289157, "message": "bad payload"}})
+            conn_request = message.get("connRequest") or {}
+            to = (envelope.get("to") or [{}])[0]
+            state.event("client_signal", session=session_id, action=action, reqId=req_id, channel=session.channel,
+                        candidates=len(conn_request.get("candidate", [])),
+                        to_console=to.get("deviceUniqueId") == session.console_duid.lower())
+            self.send(HTTPStatus.NO_CONTENT, b"", "application/json")
+            if action == "OFFER":
+                session.client_sid = int(conn_request.get("sid", 0))
+                state.console_says(session_id, session, {"action": "RESULT", "reqId": req_id, "error": 0, "connRequest": {}})
+            elif action == "ACCEPT":
+                session.console_req += 1
+                session.console_accept_req = session.console_req
+                state.console_says(session_id, session, {"action": "ACCEPT", "reqId": session.console_req, "error": 0,
+                                                         "connRequest": console_conn_request(session)})
+            elif action == "RESULT" and session.console_accept_req and req_id == session.console_accept_req:
+                session.console_accept_req = 0
+                state.event("channel_exchanged", session=session_id, channel=session.channel)
+                session.channel += 1
+                if session.channel == 1:
+                    state.console_offer(session_id, session)
+
+        def leave_remote_session(self, session_id: str):
+            account = self.bearer_account()
+            if account is None:
+                return
+            with state.lock:
+                session = state.remote_sessions.pop(session_id, None)
+            state.event("remote_session_left", account=account, session=session_id, known=session is not None)
+            return self.send(HTTPStatus.NO_CONTENT, b"", "application/json")
 
         # passkeys
         def json_body(self) -> dict:

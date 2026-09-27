@@ -9,6 +9,7 @@ import hashlib
 import http.client
 import json
 import re
+import socket
 import threading
 import time
 import unittest
@@ -263,6 +264,89 @@ class MockServerTest(unittest.TestCase):
         # A passkey is bound to its host, as WebAuthn binds it to the relying party.
         _, options = post("/webauthn/login/options", {"txn": self.authorize(NOLINK)}, NOLINK)
         self.assertEqual(post("/webauthn/login", {"txn": txn, **authenticator.get(options["challenge"], f"https://{NOLINK}")}, NOLINK)[0], 400)
+
+    def test_remote_session_candidate_exchange(self):
+        """PLE-321: the push socket, session and OFFER/RESULT/ACCEPT order PsnRemoteController awaits."""
+        _, token = self.exchange(self.sign_in("ok+remote@mock")["code"])
+        bearer = {"Authorization": "Bearer " + token["access_token"], "Content-Type": "application/json"}
+        duid = self.list_consoles(token["access_token"])[1]["clients"][0]["duid"]
+
+        def call(method, path, body=None):
+            response, data = self.request(method, path, body=json.dumps(body) if body is not None else None, headers=bearer)
+            return response.status, json.loads(data) if data else None
+
+        status, address = call("GET", "/np/serveraddr?version=2.1")
+        self.assertEqual((status, address["fqdn"]), (200, VERIFIED))
+
+        sock = socket.create_connection(("127.0.0.1", self.server.server_address[1]), timeout=5)
+        self.addCleanup(sock.close)
+        key = base64.b64encode(b"0123456789abcdef").decode()
+        sock.sendall((f"GET /np/pushNotification HTTP/1.1\r\nHost: {VERIFIED}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                      f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: np-pushpacket\r\n"
+                      f"Authorization: {bearer['Authorization']}\r\n\r\n").encode())
+        stream = sock.makefile("rb")
+        head = b""
+        while not head.endswith(b"\r\n\r\n"):
+            head += stream.read(1)
+        self.assertIn(b" 101 ", head.split(b"\r\n")[0])
+        expected = base64.b64encode(hashlib.sha1((key + psn_mock.WS_GUID).encode()).digest())
+        self.assertIn(b"Sec-WebSocket-Accept: " + expected, head)
+
+        def notification():
+            opcode, payload = psn_mock.read_ws_frame(stream)
+            self.assertEqual(opcode, 1)
+            return json.loads(payload)
+
+        def signal():
+            value = notification()
+            self.assertEqual(value["dataType"], psn_mock.SESSION_MESSAGE)
+            return json.loads(value["body"]["data"]["sessionMessage"]["payload"].split("body=", 1)[1])
+
+        status, created = call("POST", "/api/sessionManager/v1/remotePlaySessions", {"remotePlaySessions": [{"members": [
+            {"accountId": "me", "deviceUniqueId": "me", "platform": "me", "pushContexts": [{"pushContextId": "ctx"}]}]}]})
+        self.assertEqual(status, 200)
+        session = created["remotePlaySessions"][0]
+        account_id = session["members"][0]["accountId"]
+        self.assertEqual([notification()["dataType"] for _ in range(2)], [psn_mock.SESSION_CREATED, psn_mock.MEMBER_CREATED])
+
+        params = json.dumps({"accountId": int(account_id), "roomId": 0, "sessionId": session["sessionId"],
+                             "clientType": "Windows", "data1": "AA==", "data2": "AA=="})
+        status, _ = call("POST", "/api/cloudAssistedNavigation/v2/users/me/commands", {"commandDetail": {
+            "commandType": "remotePlay", "duid": duid, "messageDestination": "SQS",
+            "parameters": {"initialParams": params}, "platform": "PS5"}})
+        self.assertEqual(status, 204)
+        joined = notification()
+        self.assertEqual(joined["body"]["data"]["members"][0]["deviceUniqueId"], duid)
+        custom = notification()["body"]["data"]["customData1"]
+        self.assertEqual(len(base64.b64decode(base64.b64decode(custom))), 16)
+
+        def send(action, req_id, conn_request=None):
+            body = json.dumps({"action": action, "reqId": req_id, "error": 0, "connRequest": conn_request or {}})
+            status, _ = call("POST", f"/api/sessionManager/v1/remotePlaySessions/{session['sessionId']}/sessionMessage", {
+                "channel": "remote_play:1", "payload": "ver=1.0, type=text, body=" + body,
+                "to": [{"accountId": account_id, "deviceUniqueId": duid, "platform": "PS5"}]})
+            self.assertEqual(status, 204)
+
+        ours = {"sid": 7, "peerSid": 0, "skey": "AA==", "natType": 2, "candidate": [
+            {"type": "LOCAL", "addr": "10.0.0.2", "mappedAddr": "0.0.0.0", "port": 5000, "mappedPort": 0}]}
+        for offer_req, accept_req in ((2, 3), (5, 6)):  # control, then data channel
+            offer = signal()
+            self.assertEqual(offer["action"], "OFFER")
+            self.assertEqual(len(offer["connRequest"]["candidate"]), 2)
+            send("RESULT", offer["reqId"])
+            send("OFFER", offer_req, ours)
+            self.assertEqual(signal(), {"action": "RESULT", "reqId": offer_req, "error": 0, "connRequest": {}})
+            send("ACCEPT", accept_req, ours)
+            accept = signal()
+            self.assertEqual((accept["action"], accept["connRequest"]["peerSid"]), ("ACCEPT", 7))
+            send("RESULT", accept["reqId"])
+
+        self.assertEqual(call("DELETE", f"/api/sessionManager/v1/remotePlaySessions/{session['sessionId']}/members/me")[0], 204)
+        _, data = self.request("GET", "/__mock/events")
+        kinds = [e["event"] for e in json.loads(data)["events"]]
+        self.assertEqual(kinds.count("channel_exchanged"), 2)
+        self.assertNotIn("not_mocked", kinds)
+        self.assertNotIn(token["access_token"], data.decode())
 
     def test_events_never_carry_codes_or_tokens(self):
         code = self.sign_in("ok")["code"]

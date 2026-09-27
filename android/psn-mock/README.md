@@ -56,9 +56,18 @@ These are the same paths as Sony's, so the app only swaps the host (`PsnServiceE
 | `POST /2.0/oauth/token` | code exchange and refresh. Needs the app's Basic client auth; codes are single-use and bound to their `redirect_uri` |
 | `GET /2.0/oauth/token/{access}` | token info with `user_id`; the token response itself has none, like Sony's |
 | `GET /api/cloudAssistedNavigation/v2/users/me/clients` | the console list: one PS5 with `remotePlay`, and one without it (filtered out) |
+| `GET /np/serveraddr` | the push server lookup; answers with the mock's own host (PLE-321) |
+| `GET /np/pushNotification` (WebSocket) | the push socket. Every notification below goes to the account's open sockets |
+| `POST /api/sessionManager/v1/remotePlaySessions` | session creation; pushes `remotePlaySession:created` and the client's `members:created` |
+| `POST /api/cloudAssistedNavigation/v2/users/me/commands` | the console wake. A mock console joins (`members:created` with the duid), posts `customData1` and OFFERs |
+| `POST /api/sessionManager/v1/remotePlaySessions/{id}/sessionMessage` | signalling. The console RESULTs the app's OFFER, answers its ACCEPT with an ACCEPT, and after the app RESULTs that, OFFERs again for the data channel |
+| `DELETE /api/sessionManager/v1/remotePlaySessions/{id}/members/me` | leaving the session |
 | `GET /__mock/events?since=N` | what happened, for tests. Account names only |
 
-Anything else returns `501 not mocked`, including the push WebSocket lookup, sessions and wake commands.
+Anything else returns `501 not mocked`. The console's candidates are documentation addresses
+(192.0.2.64, 198.51.100.64), so the UDP punch after the exchange always times out: the mock proves
+the signalling order, not a connection. Whether the forwarder in front passes a WebSocket upgrade
+has not been tried.
 
 ## Scenarios
 
