@@ -1,0 +1,16 @@
+== fix removed (969e5f24) (unfixed-state.txt)
+state packets during the sweeps: 417 (seq 53-469, 0 gaps), 339 carrying a stick change, 78 keepalives
+stick back at centre (left_x=0), change -> sent: n=40 p50 197.9 / p95 199.2 / max 199.4 ms
+far end of the sweep (left_x=4915) sent: 0 of 40 sweeps; change -> sent: n=0
+last change queued inside the 8 ms minimum: 40 packets; last change -> sent: n=40 p50 197.9 / p95 199.2 / max 199.4 ms
+oldest pending change -> sent, every change packet: n=339 p50 0.4 / p95 197.9 / max 199.4 ms
+  of which over 20 ms: 80
+
+== with the fix (1a32be5d) (fixed-state.txt)
+state packets during the sweeps: 500 (seq 55-554, 0 gaps), 387 carrying a stick change, 113 keepalives
+stick back at centre (left_x=0), change -> sent: n=40 p50 5.6 / p95 6.6 / max 8.0 ms
+far end of the sweep (left_x=4915) sent: 40 of 40 sweeps; change -> sent: n=40 p50 5.6 / p95 6.7 / max 6.7 ms
+last change queued inside the 8 ms minimum: 93 packets; last change -> sent: n=93 p50 5.5 / p95 6.6 / max 8.0 ms
+oldest pending change -> sent, every change packet: n=387 p50 0.4 / p95 6.4 / max 8.0 ms
+  of which over 20 ms: 0
+
