@@ -33,6 +33,7 @@ set(CHIAKI_UNIT_SOURCES
 				video_decoder_codec_header.c
 				vr_screen_placement.c
 				vr_frame_pacing.c
+				vr_ui_panel.c
 				networkstats.c
 				session_mtu_fallback.c
 				../android/app/src/main/cpp/video-decoder-operating-rate.c
@@ -45,6 +46,7 @@ set(CHIAKI_UNIT_SOURCES
 				../android/app/src/main/cpp/video-presenter-timing.c
 				../android/app/src/main/cpp/vr-screen-placement.c
 				../android/app/src/main/cpp/vr-frame-pacing.c
+				../android/app/src/main/cpp/vr-ui-panel.c
 				../android/app/src/main/cpp/video-frame-latency.c
 				regist.c)
 
@@ -62,6 +64,11 @@ add_test(NAME unit COMMAND chiaki-unit)
 target_include_directories(chiaki-unit PRIVATE "${CMAKE_BINARY_DIR}/lib/protobuf")
 
 target_link_libraries(chiaki-unit chiaki-lib munit)
+
+# PLE-722: vr-ui-panel.c's trigonometry.
+if(UNIX)
+	target_link_libraries(chiaki-unit m)
+endif()
 
 if(CHIAKI_ENABLE_FFMPEG_DECODER)
 	target_link_libraries(chiaki-unit FFMPEG::avcodec FFMPEG::avutil)
