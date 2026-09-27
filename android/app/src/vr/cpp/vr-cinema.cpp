@@ -109,6 +109,10 @@ struct Cinema {
     int width = 0, height = 0;
     long long frameIndex = 0;
     bool recenterPending = true;
+    // PLE-702: the runtime recentres LOCAL space itself: as it handles the mount event in the
+    // first frame's submit, and on a long press of the Oculus button. The screen sits in that
+    // space, so it is placed again after each; otherwise it stays wherever the old space put it.
+    int runtimeRecenters = -1;
     // PLE-675: debug builds only. Recentre along the full head orientation (pitch and roll
     // too), so a Go lying on a table still has the screen in view for a display-0 screencap.
     bool fullPoseRecentre = false;
@@ -328,6 +332,13 @@ struct Cinema {
         ++frameIndex;
         double time = vrapi_GetPredictedDisplayTime(vr, frameIndex);
         ovrTracking2 tracking = vrapi_GetPredictedTracking2(vr, time);
+        // PLE-702: about 1 us a read on the Go. The count rises between frames 1 and 2 of every
+        // session, so the first placement alone could leave the screen out of view.
+        const int recenters = vrapi_GetSystemStatusInt(&java, VRAPI_SYS_STATUS_RECENTER_COUNT);
+        if(recenters != runtimeRecenters) {
+            if(runtimeRecenters >= 0) recenterPending = true;
+            runtimeRecenters = recenters;
+        }
         if(recenterPending) {
             // Move the screen to the current horizontal gaze without resetting the tracking space.
             const auto &q = tracking.HeadPose.Pose.Orientation;
@@ -336,6 +347,11 @@ struct Cinema {
             const auto &p = tracking.HeadPose.Pose.Position;
             screen.M[0][3] = p.x; screen.M[1][3] = p.y; screen.M[2][3] = p.z;
             recenterPending = false;
+            // A pitch near +-90 is a Go lying on a table: its view is the room's floor or sky,
+            // near-black in the void, while the screen sits level at the yaw (PLE-702).
+            const float pitch = std::asin(std::clamp(2.0f * (q.w*q.x - q.y*q.z), -1.0f, 1.0f));
+            LOGI("Screen placed at frame %lld: head yaw %.0f, pitch %.0f degrees, runtime recentres %d%s",
+                frameIndex, yaw * 57.2958f, pitch * 57.2958f, recenters, fullPoseRecentre ? ", full pose" : "");
         }
         auto layer = vrapi_DefaultLayerProjection2();
         layer.HeadPose = tracking.HeadPose;
