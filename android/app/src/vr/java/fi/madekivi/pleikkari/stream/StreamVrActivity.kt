@@ -19,6 +19,7 @@ import fi.madekivi.pleikkari.BuildConfig
 import fi.madekivi.pleikkari.R
 import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
+import fi.madekivi.pleikkari.lib.CinemaFrameLatency
 import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.remote.PsnDevice
 import fi.madekivi.pleikkari.session.*
@@ -153,6 +154,9 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             var texture: SurfaceTexture? = null
             var decoder: Surface? = null
             var listenerThread: HandlerThread? = null
+            // PLE-698: per-frame latency (arrival, decode, latch, submit, predicted photon) for the
+            // stats log's "Cinema latency" line; measurement, so only with that setting on.
+            val frameLatency = !preview && (info?.feedbackStatsLogIntervalMs ?: 0) > 0
             try {
                 // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
                 val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
@@ -190,6 +194,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 consumer.setOnFrameAvailableListener({ available.incrementAndGet(); frameReady.set(true) }, listenerHandler)
                 val output = Surface(consumer)
                 decoder = output
+                if(frameLatency) CinemaFrameLatency.enable(true)
                 val picture = if(preview) PreviewPicture(output) else null
                 if(picture != null)
                     Log.i("GoCinema", "Debug preview: no console; synthetic ${PREVIEW_WIDTH}x$PREVIEW_HEIGHT picture at 60 fps, environment ${environment.environment.value}")
@@ -210,6 +215,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 var latched = 0
                 var submitted = 0
                 var shown = 0
+                var latchedNs = 0L
+                val submitTiming = LongArray(2)
                 while(running.get()) {
                     val input = VrCinemaNative.input(native)
                     if(input and MENU != 0) menu = !menu
@@ -224,6 +231,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val newFrame = frameReady.getAndSet(false)
                     if(newFrame) {
                         consumer.updateTexImage()
+                        latchedNs = System.nanoTime()
                         consumer.getTransformMatrix(transform)
                         hasFrame = true
                         latched++
@@ -243,6 +251,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                     }
                     submitted++
                     if(video) shown++
+                    if(newFrame && frameLatency) {
+                        if(video) VrCinemaNative.submitTiming(native, submitTiming)
+                        CinemaFrameLatency.latched(consumer.timestamp, latchedNs,
+                            if(video) submitTiming[0] else 0L, if(video) submitTiming[1] else 0L)
+                    }
                     val nowNs = System.nanoTime()
                     if(nowNs - windowStartNs >= VIDEO_STATS_WINDOW_NS) {
                         val seconds = (nowNs - windowStartNs) / 1e9
@@ -263,6 +276,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // An error may reach here while the decoder still holds the output. The main
                 // thread stops it before signalling detached; never free a live producer's target.
                 detached.await()
+                if(frameLatency) CinemaFrameLatency.enable(false)
                 listenerThread?.quitSafely()
                 decoder?.release()
                 texture?.release()
@@ -362,6 +376,8 @@ internal object VrCinemaNative {
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
     external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
+    /** PLE-698: the last draw's {vrapi_SubmitFrame2 call, predicted display time}, CLOCK_MONOTONIC ns. */
+    external fun submitTiming(handle: Long, out: LongArray)
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
     external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,

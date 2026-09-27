@@ -193,6 +193,13 @@ static void release_frame_locked(AndroidChiakiVideoPresenter *presenter,
 		const AndroidChiakiVideoPresenterFrame *frame, bool render, int64_t release_time_ns)
 {
 	media_status_t result;
+	// PLE-698: before the release, so the cinema can never latch the buffer ahead of this record.
+	// The framework stamps the buffer with the release time, or else with the PTS in ns.
+	if(render && presenter->frame_latency && frame->info.size != 0)
+		android_chiaki_video_frame_latency_record_decoded(presenter->frame_latency,
+				release_time_ns > 0 ? release_time_ns : frame->info.presentationTimeUs * 1000LL,
+				frame->input_metadata_valid ? (int64_t)frame->frame_ready_time_us * 1000LL : 0,
+				frame->arrival_ns);
 	if(render && release_time_ns > 0)
 		result = AMediaCodec_releaseOutputBufferAtTime(presenter->codec, frame->index, release_time_ns);
 	else
@@ -804,6 +811,12 @@ void android_chiaki_video_presenter_set_performance_hint_callbacks(AndroidChiaki
 	presenter->performance_hint_report_cb = report_cb;
 	presenter->performance_hint_thread_stop_cb = stop_cb;
 	presenter->performance_hint_cb_user = user;
+}
+
+void android_chiaki_video_presenter_set_frame_latency(AndroidChiakiVideoPresenter *presenter,
+		AndroidChiakiVideoFrameLatency *frame_latency)
+{
+	presenter->frame_latency = frame_latency;
 }
 
 ChiakiErrorCode android_chiaki_video_presenter_start(AndroidChiakiVideoPresenter *presenter, AMediaCodec *codec,

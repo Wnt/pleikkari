@@ -87,6 +87,13 @@
 /chiaki/video_presenter/recovery_action
 /chiaki/video_presenter/recovery_shift_ns
 /chiaki/video_presenter/period_seed_and_update
+/chiaki/video_frame_latency/stages_of_one_frame
+/chiaki/video_frame_latency/replaced_before_latch
+/chiaki/video_frame_latency/hidden_and_unknown_arrival
+/chiaki/video_frame_latency/disabled_and_reenabled
+/chiaki/video_frame_latency/pending_overflow_counts_replaced
+/chiaki/video_frame_latency/percentiles_nearest_rank
+/chiaki/video_frame_latency/format_line
 /chiaki/video_decoder_operating_rate/precedence
 /chiaki/video_decoder_codec_header/start_codes
 /chiaki/video_decoder_codec_header/h264_types

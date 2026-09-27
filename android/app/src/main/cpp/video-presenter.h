@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "video-presenter-cadence.h"
+#include "video-frame-latency.h"
 
 #define ANDROID_CHIAKI_VIDEO_PRESENTER_QUEUE_CAPACITY 5
 #define ANDROID_CHIAKI_VIDEO_PRESENTER_JITTER_WINDOW 300
@@ -197,6 +198,8 @@ typedef struct android_chiaki_video_presenter_t
 	AndroidChiakiPerformanceHintReportCallback performance_hint_report_cb;
 	AndroidChiakiPerformanceHintThreadCallback performance_hint_thread_stop_cb;
 	void *performance_hint_cb_user;
+	// PLE-698: the Go cinema's per-frame latency; NULL unless the stats log is on.
+	AndroidChiakiVideoFrameLatency *frame_latency;
 } AndroidChiakiVideoPresenter;
 
 ChiakiErrorCode android_chiaki_video_presenter_init(AndroidChiakiVideoPresenter *presenter, ChiakiLog *log,
@@ -208,6 +211,9 @@ void android_chiaki_video_presenter_set_performance_hint_callbacks(AndroidChiaki
 		AndroidChiakiPerformanceHintThreadCallback start_cb,
 		AndroidChiakiPerformanceHintReportCallback report_cb,
 		AndroidChiakiPerformanceHintThreadCallback stop_cb, void *user);
+/** PLE-698: set before the presenter starts; every frame rendered to the surface is recorded there. */
+void android_chiaki_video_presenter_set_frame_latency(AndroidChiakiVideoPresenter *presenter,
+		AndroidChiakiVideoFrameLatency *frame_latency);
 ChiakiErrorCode android_chiaki_video_presenter_start(AndroidChiakiVideoPresenter *presenter, AMediaCodec *codec,
 		unsigned int stream_fps, double refresh_hz, int64_t app_vsync_offset_ns);
 void android_chiaki_video_presenter_request_stop(AndroidChiakiVideoPresenter *presenter);
