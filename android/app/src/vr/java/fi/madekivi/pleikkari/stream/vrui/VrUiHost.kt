@@ -67,6 +67,8 @@ class VrUiHost(
 	@Volatile private var interactive = false
 	@Volatile private var pointerOverride: FloatArray? = null
 	@Volatile var radius = 2f
+	/** PLE-761: the panel textures' texels per toolkit texel (VrUiLayerDebug.texelScale); set before [attach]. */
+	@Volatile var texelScale = 1f
 	@Volatile var statsAnchor = 0f to 0f
 	private val placeRequest = AtomicBoolean(false)
 	private val recentreRequest = AtomicBoolean(false)
@@ -510,6 +512,8 @@ class VrUiHost(
 			val canvas = surface.lockHardwareCanvas()
 			try
 			{
+				if(texelScale != 1f)
+					canvas.scale(texelScale, texelScale)
 				paint(canvas)
 			}
 			finally

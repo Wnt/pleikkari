@@ -20,6 +20,9 @@ void main() {
         // Footprint: a = (arc, height over radius, radius), in the panel's own frame.
         float theta = (corner.x - 0.5) * a.x;
         p = vec3(a.z * sin(theta), (0.5 - corner.y) * a.y * a.z, -a.z * cos(theta));
+    } else if(mode == 3) {
+        // PLE-761: the flat quad's footprint, at the radius and as wide at its middle as the arc.
+        p = vec3((corner.x - 0.5) * 2.0 * a.z * tan(a.x * 0.5), (0.5 - corner.y) * a.y * a.z, -a.z);
     } else if(mode == 1) {
         p = mix(a, b, corner.x) + c * (corner.y - 0.5); // laser: start, end, width across
     } else {
@@ -38,7 +41,7 @@ uniform float opacity;
 in vec2 uv;
 out vec4 result;
 void main() {
-    if(mode == 0) {
+    if(mode == 0 || mode == 3) {
         // The same rounded rectangle the toolkit fills, as a signed distance in texels.
         vec2 p = uv * rect.xy - rect.xy * 0.5;
         vec2 q = abs(p) - (rect.xy * 0.5 - vec2(rect.z + rect.w));

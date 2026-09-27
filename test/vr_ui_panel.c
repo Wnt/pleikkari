@@ -164,6 +164,11 @@ static MunitResult test_place_relative(const MunitParameter params[], void *user
 	munit_assert_double_equal(middle.x, sin(30.0 * DEG) * cos(16.0 * DEG), 4);
 	munit_assert_double_equal(middle.y, sin(16.0 * DEG), 4);
 	munit_assert_double(middle.z, <, 0.0);
+	// PLE-761: 1.5x the texels at 1.5x the density is the same panel.
+	PleikkariVrPanel dense;
+	pleikkari_vr_panel_init_density(&dense, 480, 192, 2.0f, 1.5f * PLEIKKARI_VR_UI_TEXELS_PER_DEGREE);
+	munit_assert_double_equal(dense.arc_rad, panel.arc_rad, 5);
+	munit_assert_double_equal(dense.height_tan, panel.height_tan, 5);
 	return MUNIT_OK;
 }
 

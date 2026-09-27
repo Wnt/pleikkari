@@ -57,13 +57,19 @@ PleikkariVrVec3 pleikkari_vr_quat_rotate(PleikkariVrQuat q, PleikkariVrVec3 v)
 
 void pleikkari_vr_panel_init(PleikkariVrPanel *panel, int width_texels, int height_texels, float radius_m)
 {
+	pleikkari_vr_panel_init_density(panel, width_texels, height_texels, radius_m, PLEIKKARI_VR_UI_TEXELS_PER_DEGREE);
+}
+
+void pleikkari_vr_panel_init_density(PleikkariVrPanel *panel, int width_texels, int height_texels, float radius_m,
+		float texels_per_degree)
+{
 	panel->centre.x = panel->centre.y = panel->centre.z = 0.0f;
 	panel->orientation.x = panel->orientation.y = panel->orientation.z = 0.0f;
 	panel->orientation.w = 1.0f;
 	panel->radius_m = radius_m;
-	panel->arc_rad = (float)width_texels / PLEIKKARI_VR_UI_TEXELS_PER_DEGREE * DEG_TO_RAD;
+	panel->arc_rad = (float)width_texels / texels_per_degree * DEG_TO_RAD;
 	// One texel is as tall on the surface as it is wide: radius * one texel's angle.
-	panel->height_tan = (float)height_texels / PLEIKKARI_VR_UI_TEXELS_PER_DEGREE * DEG_TO_RAD;
+	panel->height_tan = (float)height_texels / texels_per_degree * DEG_TO_RAD;
 }
 
 float pleikkari_vr_panel_radius(float screen_distance_m)

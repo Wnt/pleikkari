@@ -41,6 +41,16 @@ enum : int {
 };
 enum : int { VrUiAnchorGaze = 0, VrUiAnchorPicture = 1 };
 
+// PLE-761: debug-build switches for PLE-735's layer measurement (`debug.pleikkari.vr_ui_layers`,
+// StreamVrActivity). The defaults are PLE-722's shipped panels.
+struct VrUiDebug {
+    bool quad = false;            // a flat projection-layer quad instead of the cylinder
+    bool overlay = false;         // panels over the eye buffer: no footprint, eye buffer ONE / ZERO
+    float texelScale = 1.0f;      // texture texels per PLEIKKARI_VR_UI_TEXELS_PER_DEGREE (1.5 = 24/degree)
+    bool filterExpensive = false; // VRAPI_FRAME_LAYER_FLAG_FILTER_EXPENSIVE on the panel layers
+    int maxPanels = 2;            // panel layers submitted at most (1: the menu only)
+};
+
 // The Go remote, read once a frame by the cinema's input().
 struct VrUiRemote {
     bool present = false;
@@ -60,6 +70,8 @@ enum : int { VrUiButtonTrigger = 1, VrUiButtonTouchpad = 2 };
 class VrUiLayers {
 public:
     bool init();
+    // Before createPanel.
+    void setDebug(const VrUiDebug &value) { debug = value; }
     // On the GL thread with its context current, before VrApi shuts down.
     void destroy();
     // A panel of width x height texels. inset and corner (texels) describe the rounded
@@ -71,11 +83,14 @@ public:
     void beginFrame(const VrUiControl &control, const ovrTracking2 &head, double displayTime,
                     const VrUiRemote &remote, const ovrTracking *remotePose,
                     bool screenPlaced, PleikkariVrVec3 screenCentre, PleikkariVrQuat screenOrientation, bool fullPose);
-    // Whether any panel layer goes out this frame (the projection layer then blends over it).
+    // Whether any panel layer goes out this frame (the projection layer then blends over it,
+    // unless the overlay switch puts the panels on top).
     bool active() const { return layerCount > 0; }
+    bool overlay() const { return debug.overlay; }
     void drawEye(const ovrMatrix4f &view, const ovrMatrix4f &projection);
-    // The frame's panel layers, back to front, to submit before the projection layer.
-    int layers(const ovrTracking2 &head, ovrLayerCylinder2 *out) const;
+    // The frame's panel layers, back to front, to submit before the projection layer (after it
+    // with the overlay switch).
+    int layers(const ovrTracking2 &head, ovrLayer_Union2 *out) const;
     void output(float out[VrUiOutCount]) const;
 
 private:
@@ -89,6 +104,7 @@ private:
         float opacity = 0;
     };
     Panel panels[VrUiMaxPanels];
+    VrUiDebug debug{};
     GLuint program = 0, vao = 0, stripVertices = 0, quadVertices = 0;
     GLint mvpLocation = -1, modeLocation = -1, aLocation = -1, bLocation = -1, cLocation = -1,
           colorLocation = -1, rectLocation = -1, opacityLocation = -1;
