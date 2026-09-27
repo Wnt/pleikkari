@@ -85,7 +85,26 @@ class Preferences(context: Context)
 	{
 		BALANCED("balanced", R.string.stream_quality_preset_balanced, Resolution.RES_1080P, FPS.FPS_60, Codec.CODEC_H265),
 		LOW_LATENCY("low_latency", R.string.stream_quality_preset_low_latency, Resolution.RES_1080P, FPS.FPS_60, Codec.CODEC_H265, bitrate = 10000),
-		DATA_SAVER("data_saver", R.string.stream_quality_preset_data_saver, Resolution.RES_540P, FPS.FPS_30, Codec.CODEC_H264)
+		DATA_SAVER("data_saver", R.string.stream_quality_preset_data_saver, Resolution.RES_540P, FPS.FPS_30, Codec.CODEC_H264);
+
+		/** PLE-835: true when every value this preset applies equals the given current value. */
+		fun matches(
+			resolution: Resolution,
+			fps: FPS,
+			codec: Codec,
+			bitrate: Int?,
+			decoderOperatingRateDefault: Boolean,
+			decoderOperatingRateAuto: Boolean,
+			decoderOperatingRate: Int,
+			decoderInputThreadEnabled: Boolean,
+			debandingEnabled: Boolean
+		) = resolution == this.resolution && fps == this.fps && codec == this.codec &&
+			bitrate == this.bitrate &&
+			decoderOperatingRateDefault == this.decoderOperatingRateDefault &&
+			decoderOperatingRateAuto == this.decoderOperatingRateAuto &&
+			decoderOperatingRate == this.decoderOperatingRate &&
+			decoderInputThreadEnabled == this.decoderInputThreadEnabled &&
+			debandingEnabled == this.debandingEnabled
 	}
 
 	companion object
@@ -712,6 +731,23 @@ class Preferences(context: Context)
 			StreamQualityPreset.values().firstOrNull { it.value == value }
 		} ?: streamQualityPresetDefault
 		private set(value) { sharedPreferences.edit().putString(streamQualityPresetKey, value.value).apply() }
+
+	/**
+	 * PLE-835: the preset whose values all equal the current settings, or null ("Custom") when an
+	 * edit in phone or Go Settings moved any of them away from every preset.
+	 */
+	val matchingStreamQualityPreset: StreamQualityPreset? get()
+	{
+		val resolution = resolution
+		val fps = fps
+		val codec = codec
+		val bitrate = bitrate
+		val matching = StreamQualityPreset.values().filter {
+			it.matches(resolution, fps, codec, bitrate, decoderOperatingRateDefault, decoderOperatingRateAuto,
+				decoderOperatingRate, decoderInputThreadEnabled, debandingEnabled)
+		}
+		return matching.firstOrNull { it == streamQualityPreset } ?: matching.firstOrNull()
+	}
 
 	/**
 	 * Applies only the choices represented by a named preset. Experimental pacing, network, input,

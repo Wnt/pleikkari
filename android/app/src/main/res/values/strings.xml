@@ -100,6 +100,7 @@
     <string name="preferences_registered_hosts_summary">Currently registered: %d</string>
     <string name="preferences_version_title">Version</string>
     <string name="stream_quality_title">Quality</string>
+    <string name="stream_quality_title_custom">Quality: Custom</string>
     <string name="stream_quality_preset_balanced">Balanced</string>
     <string name="stream_quality_preset_low_latency">Low latency</string>
     <string name="stream_quality_preset_data_saver">Data saver</string>
