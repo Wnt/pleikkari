@@ -462,6 +462,9 @@
     <string name="go_vr_home_cancel">Cancel</string>
     <string name="go_vr_home_retry">Try again</string>
     <string name="go_vr_home_consoles">Consoles</string>
+    <string name="go_vr_home_address">Set address</string>
+    <string name="go_vr_address_title">Console address</string>
+    <string name="go_vr_address_save">Save</string>
     <string name="go_vr_home_oculus_tv">Oculus TV screen</string>
     <string name="go_vr_home_finding_detail">It must be on, or in rest mode, on the same network as this headset.</string>
     <string name="go_vr_home_waking_detail">A PS5 takes about 20 seconds to wake.</string>

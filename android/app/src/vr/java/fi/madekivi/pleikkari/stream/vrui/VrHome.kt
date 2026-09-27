@@ -51,6 +51,8 @@ sealed class VrHomeAction
 	data object Cancel: VrHomeAction()
 	data object Retry: VrHomeAction()
 	data object Consoles: VrHomeAction()
+	/** PLE-733: the address pad for the not-found console's manual address. */
+	data object Address: VrHomeAction()
 	data object OculusTv: VrHomeAction()
 	data object Settings: VrHomeAction()
 	data object Exit: VrHomeAction()
