@@ -162,7 +162,9 @@ if(CHIAKI_GO_VR AND ANDROID_ABI STREQUAL "arm64-v8a")
     set_target_properties(vrapi PROPERTIES IMPORTED_LOCATION
         "${CHIAKI_GO_VR_SDK}/VrApi/Libs/Android/arm64-v8a/Release/libvrapi.so")
     # PLE-702: vr-screen-placement.c is plain C, unit-tested in chiaki-unit.
-    add_library(pleikkari-vr SHARED src/vr/cpp/vr-cinema.cpp src/main/cpp/vr-screen-placement.c)
+    # PLE-722: vr-ui-panel.c (the VR UI's panel geometry) is plain C too, tested the same way.
+    add_library(pleikkari-vr SHARED src/vr/cpp/vr-cinema.cpp src/vr/cpp/vr-ui-layers.cpp
+        src/main/cpp/vr-screen-placement.c src/main/cpp/vr-ui-panel.c)
     set_target_properties(pleikkari-vr PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
     # PLE-603: the environment renderer draws the room and the curved screen into the eye buffers.
     target_include_directories(pleikkari-vr PRIVATE "${CHIAKI_GO_VR_SDK}/VrApi/Include" src/main/cpp)

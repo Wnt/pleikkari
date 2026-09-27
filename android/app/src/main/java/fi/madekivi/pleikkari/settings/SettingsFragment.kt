@@ -31,6 +31,11 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 	override fun getBoolean(key: String?, defValue: Boolean) = when(key)
 	{
 		preferences.goVrEnabledKey -> preferences.goVrEnabled
+		// PLE-722: the Go-only switches below are added in code; without these they never stored a change.
+		preferences.goVrUiKey -> preferences.goVrUi
+		preferences.goVrMatch60HzKey -> preferences.goVrMatch60Hz
+		preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu
+		preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -77,6 +82,10 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		when(key)
 		{
 			preferences.goVrEnabledKey -> preferences.goVrEnabled = value
+			preferences.goVrUiKey -> preferences.goVrUi = value
+			preferences.goVrMatch60HzKey -> preferences.goVrMatch60Hz = value
+			preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu = value
+			preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
@@ -282,6 +291,12 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 					GoVrSupport.syncLibraryEntry(context, value as Boolean)
 					true
 				}
+			})
+			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
+				key = preferences.goVrUiKey
+				title = getString(R.string.go_vr_ui_title)
+				summary = getString(R.string.go_vr_ui_summary)
+				isChecked = preferences.goVrUi
 			})
 			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
 				key = preferences.goVrMatch60HzKey

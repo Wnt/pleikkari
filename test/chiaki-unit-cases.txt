@@ -105,3 +105,12 @@
 /chiaki/vr_screen_placement/table_then_worn
 /chiaki/vr_screen_placement/steep_request
 /chiaki/vr_screen_placement/full_pose_never_provisional
+/chiaki/vr_ui_panel/init
+/chiaki/vr_ui_panel/radius
+/chiaki/vr_ui_panel/centre_ray
+/chiaki/vr_ui_panel/direction_maps_to_texels
+/chiaki/vr_ui_panel/offset_origin
+/chiaki/vr_ui_panel/misses
+/chiaki/vr_ui_panel/place_at_gaze
+/chiaki/vr_ui_panel/place_relative
+/chiaki/vr_ui_panel/matrix
