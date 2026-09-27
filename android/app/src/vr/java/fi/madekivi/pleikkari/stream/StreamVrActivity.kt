@@ -586,6 +586,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val pacingSpec = if(BuildConfig.DEBUG) debugProperty(PACING_PROPERTY) else ""
                 VrCinemaNative.setPacing(native, if(Preferences(this@StreamVrActivity).goVrLateStart) 1 else 0,
                     frameLatency, pacingSpec, refreshHz)
+                // PLE-755: pay the first-draw cost before the first submit, not inside it.
+                if(Preferences(this@StreamVrActivity).goVrWarmUp) VrCinemaNative.warmUp(native)
                 val frameReady = AtomicBoolean(false)
                 // PLE-673: count every signal, so the window log separates frames the decoder
                 // delivered from frames the render loop latched.
@@ -887,6 +889,7 @@ internal object VrCinemaNative {
     external fun pace(handle: Long)
     /** PLE-715: mode 0 VrApi's release (default), 1 the late start; log the per-second pacing line. */
     external fun setPacing(handle: Long, mode: Int, log: Boolean, spec: String, refreshHz: Float)
+    external fun warmUp(handle: Long)
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
     /** PLE-722: [uiControl] null keeps the strip menu; otherwise VrUiHost's control slots in, its output slots in [uiOut]. */
