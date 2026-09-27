@@ -93,3 +93,8 @@
 /chiaki/video_decoder_codec_header/h265_types
 /chiaki/video_decoder_codec_header/h265_flag_changes_classification
 /chiaki/video_decoder_codec_header/boundary_cases
+/chiaki/vr_screen_placement/first_frame_and_request
+/chiaki/vr_screen_placement/runtime_recentre
+/chiaki/vr_screen_placement/table_then_worn
+/chiaki/vr_screen_placement/steep_request
+/chiaki/vr_screen_placement/full_pose_never_provisional

@@ -30,6 +30,7 @@ set(CHIAKI_UNIT_SOURCES
 				video_presenter.c
 				video_decoder_operating_rate.c
 				video_decoder_codec_header.c
+				vr_screen_placement.c
 				networkstats.c
 				session_mtu_fallback.c
 				../android/app/src/main/cpp/video-decoder-operating-rate.c
@@ -40,6 +41,7 @@ set(CHIAKI_UNIT_SOURCES
 				../android/app/src/main/cpp/video-presenter-cadence.c
 				../android/app/src/main/cpp/video-presenter-dejitter.c
 				../android/app/src/main/cpp/video-presenter-timing.c
+				../android/app/src/main/cpp/vr-screen-placement.c
 				regist.c)
 
 if(NOT CHIAKI_LIB_ENABLE_MBEDTLS)
