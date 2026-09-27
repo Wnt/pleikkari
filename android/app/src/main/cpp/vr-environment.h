@@ -24,6 +24,8 @@
 //     pleikkari_vr_environment_begin_frame(env, video, target, transform, new_frame)
 //   per eye, with the eye framebuffer bound and the viewport set:
 //     pleikkari_vr_environment_draw_eye(env, view, projection, video, target, transform, has_video)
+//   per frame, after both eyes and the caller's own passes, before glFlush (optional):
+//     pleikkari_vr_environment_end_frame(env)
 //   pleikkari_vr_environment_destroy(env)               on the same GL thread
 // draw_eye clears the framebuffer itself (colour and its own depth, scissored to the
 // viewport), so the caller's glClear before it becomes redundant. When the environment is PLAIN the output is the
@@ -72,8 +74,8 @@ typedef struct {
 } PleikkariVrEnvironmentConfig;
 
 typedef struct {
-	// GPU time of the last draw_eye pair plus begin_frame, when GL_EXT_disjoint_timer_query
-	// exists; 0 otherwise. Read one frame late so it never stalls the pipeline.
+	// GPU time from begin_frame to the second draw_eye, or to end_frame once the caller uses
+	// it (PLE-651), when GL_EXT_disjoint_timer_query exists; 0 otherwise. Read one frame late so it never stalls the pipeline.
 	uint64_t gpu_ns;
 	uint32_t draw_calls;
 	uint32_t triangles;
@@ -112,6 +114,12 @@ void pleikkari_vr_environment_begin_frame(PleikkariVrEnvironment *env, uint32_t 
 void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float view[16],
 		const float projection[16], uint32_t video_texture, const float video_transform[16],
 		int has_video);
+
+// Optional, once per frame after everything the caller draws into the eyes (PLE-651): ends
+// the GPU timer there, so gpu_ns covers the whole frame (the caller's overlays, border
+// clears and the eye framebuffers' MSAA resolves) instead of stopping after the second
+// draw_eye. Once called, draw_eye no longer ends the timer itself.
+void pleikkari_vr_environment_end_frame(PleikkariVrEnvironment *env);
 
 // Counters for the last completed frame.
 void pleikkari_vr_environment_stats(PleikkariVrEnvironment *env, PleikkariVrEnvironmentStats *stats);
