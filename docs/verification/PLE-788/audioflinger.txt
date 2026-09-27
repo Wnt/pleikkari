@@ -1,0 +1,1465 @@
+Start begin: 09-20 20:27:12.986
+Start end:   09-20 20:27:15.895
+Now:         09-27 18:59:14.854
+Notification Clients:
+   pid    uid  name
+  1450   1041  audioserver
+  1558   1013  media
+  1750   1000  android.uid.system
+  3348  10050  android.uid.systemui
+  3631   1002  android.uid.bluetooth
+  7006  10126  com.sec.android.app.camera
+ 15521  10157  com.sec.android.app.soundalive
+ 18534  10293  fi.madekivi.pleikkari
+ 22153  10349  com.oculus.twilight
+Global session refs:
+  session  cnt     pid    uid  name
+       -3    1    1450   1041  audioserver
+       -3    3   15521  10157  com.sec.android.app.soundalive
+mSystemReady=1
+CoreFx Setting Values:
+mUpscalerSetting=0
+mDsEnable=0
+mDsProfile=5
+mDsCbRegistered=0
+mDlbGameEnable=0
+mDlbContentProcEnabled=1
+mDlbActiveList:
+      pid    cbCnt    trackCnt
+mHtEnable=0, mHtDynamicEnable=0
+mAllSoundMute=0
+mMainMonoSetting=0
+mMonoAddSpk=0
+mCurMonoHalSetting=0
+mSoundBalanceSpk=0.000000
+mCurBalanceHalSetting=0.000000
+mOneUIversion=80000
+mAVSyncDelay=0
+mAVSyncDelayMusicShare=0
+mBtTypeHeadset=0
+mSupportAbsVol=0
+mVoiceChangerMode=-1
+Zero volume apps:
+Hardware status: 0
+Vibrator infos(size=1):
+  - AudioVibratorInfo{id: 0, resonantFrequency: nan, qFactor: nan, maxAmplitude: nan}
+Bluetooth latency modes are enabled
+
+ ## BEGIN thread dump 
+
+Output thread 0xb40000759f4d0510, name AudioOut_D, tid 1858, type 0 (MIXER):
+  I/O handle: 13
+  Standby: yes
+  Sample rate: 48000 Hz
+  HAL frame count: 960
+  HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  HAL buffer size: 3840 bytes
+  Channel count: 2
+  Channel mask: 0x00000003 (front-left, front-right)
+  Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  Processing frame size: 4 bytes
+  SystemReady: yes
+  SystemReadyCount: 3
+  Pending config events: none
+  Output devices: 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+  Input device: 0 (AUDIO_DEVICE_NONE)
+  Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+  Timestamp stats: n=0 disc=0 cold=0 nRdy=0 err=1 jitterMs(unavail) localSR(nan, nan) correctedJitterMs(unavail)
+  Timestamp corrected: no
+  Master volume: 1.000000
+  Master mute: off
+  Mixer channel Mask: 0x3 (front-left, front-right)
+  Normal frame count: 960
+  Total writes: 0
+  Delayed writes: 0
+  Blocked in write: no
+  Suspend count: 0
+  Fast track availMask=0xfe
+  Standby delay ns=3000000000
+  AudioStreamOut: 0xb4000072ab133f90 flags 0x2 (AUDIO_OUTPUT_FLAG_PRIMARY)
+  Frames written: 0
+  Suspended frames: 0
+  Hal stream dump:
+
+Audio Stream Out(2)::dump
+	output devices 2
+	output flgas: 2
+	output sample rate: 48000
+	output channel mask: 3
+	output format: 1
+	output audio usage: 0
+	output standby state: 0
+	output backend_mode: 2
+      Signal power history: (none)
+      Signal power history: (none)
+  EffectStages count : main 2
+   Has Extended Mono Balance Logic : 1
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    primary_output_normal			 -1301			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  a5acce				  7680		 3			 a5acce				 7680
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+   Extend Mono/Balance Logic, Depth : 0, MonoMixMode : 0 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	a5acce  a5acce   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -1301   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		a5acce     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		a5acce      0000960   48000   0x00000003   0x5
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    primary_output_normal_mono_tts			 -1302			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b76bec5				  7680		 3			 b76bec5				 7680
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+   Extend Mono/Balance Logic, Depth : 1, MonoMixMode : 5 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b76bec5  b76bec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -1302   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b76bec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b76bec5      0000960   48000   0x00000003   0x5
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    offload_output_normal			 -1303			 5			 48000			 0			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  0				  0		 3			 0				 0
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+----------------------------------
+  Thread throttle time (msecs): 0
+  AudioMixer tracks: 
+  Master mono: off
+  Master balance: 0.000000 (balance 0 channelCount 2 volumes: 1 1)
+  DualSpk mono: off
+  Current mono: off
+  No FastMixer
+Bluetooth latency modes are not enabled
+HAL does not support Bluetooth latency modes
+Supported latency modes: { }
+
+  Normal mixer raw underrun counters: partial=0 empty=0
+  0 Tracks
+  0 Effect Chains
+  Local log:
+                                                         Type     Id Active Client(pid/uid) Session Port Id S  Flags   Format Chn mask  SRate ST Usg CT  G db  L dB  R dB  VS dB  PortVol dB  PortMuted   Server FrmCnt  FrmRdy F Underruns  Flushed BitPerfect InternalMute    L Vol    R Vol Drain State CType   Latency
+   09-20 20:27:15.322 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+
+Output thread 0xb40000759e8d3510, name AudioOut_15, tid 1867, type 0 (MIXER):
+  I/O handle: 21
+  Standby: yes
+  Sample rate: 48000 Hz
+  HAL frame count: 960
+  HAL format: 0x4 (AUDIO_FORMAT_PCM_8_24_BIT)
+  HAL buffer size: 7680 bytes
+  Channel count: 2
+  Channel mask: 0x00000003 (front-left, front-right)
+  Processing format: 0x4 (AUDIO_FORMAT_PCM_8_24_BIT)
+  Processing frame size: 8 bytes
+  SystemReady: yes
+  SystemReadyCount: 3
+  Pending config events: none
+  Output devices: 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+  Input device: 0 (AUDIO_DEVICE_NONE)
+  Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+  Timestamp stats: n=14756 disc=64 cold=15 nRdy=0 err=5 rate=0.999989 jitterMs(ave=0.0047523 std=5.66428 min=-34.1419 max=17.9159) localSR(47945.7, 2.1558e-05) correctedJitterMs(ave=0.000810984 std=0.270715 min=-34.1419 max=12.6494)
+  Timestamp corrected: no
+  Last write occurred (msecs): 76963287
+  Master volume: 1.000000
+  Master mute: off
+  Mixer channel Mask: 0x3 (front-left, front-right)
+  Normal frame count: 960
+  Total writes: 12908
+  Delayed writes: 0
+  Blocked in write: no
+  Suspend count: 0
+  Fast track availMask=0xfe
+  Standby delay ns=3000000000
+  AudioStreamOut: 0xb4000072ab133e10 flags 0x8 (AUDIO_OUTPUT_FLAG_DEEP_BUFFER)
+  Frames written: 12391680
+  Suspended frames: 0
+  Hal stream dump:
+
+Audio Stream Out(8)::dump
+	output devices 2
+	output flgas: 8
+	output sample rate: 48000
+	output channel mask: 3
+	output format: 4
+	output audio usage: 0
+	output standby state: 0
+	output backend_mode: 2
+      Signal power history (resolution: 1000.0 ms):
+       09-26 20:54:17.621: [  -66.9  -63.1  -61.8  -67.0  -62.4  -62.6  -66.0  -63.7  -63.6  -65.1
+       09-26 20:54:27.621:    -62.7  -59.6  -63.4  -61.5  -60.0  -63.4  -59.5  -59.6  -62.8  -63.8
+       09-26 20:54:37.621:    -68.5  -58.4  -68.2  -60.1  -61.4  -62.5  -63.3  -65.3  -62.9  -63.4
+       09-26 20:54:47.621:    -63.6  -63.2  -64.4  -62.9  -63.6  -64.1  -63.7  -63.8  -65.8  -80.1 ] sum(3.0)
+      Signal power history (resolution: 50.0 ms):
+       09-26 20:54:47.442:    -65.6  -67.9  -72.6  -75.1  -76.9  -79.7  -81.8  -73.6  -64.1  -64.3
+       09-26 20:54:47.941:    -65.6  -65.1  -56.3  -57.7  -57.5  -60.8  -64.9  -66.7  -74.3  -80.7
+       09-26 20:54:48.442:    -85.9  -89.4  -77.5  -76.0  -78.6  -82.0  -83.2  -63.4  -61.9  -64.2
+       09-26 20:54:48.942:    -62.5  -63.5  -66.9  -69.0  -75.9  -81.5  -78.4  -63.4  -58.1  -61.9
+       09-26 20:54:49.441:    -60.9  -64.4  -58.9  -55.5  -56.5  -59.7  -61.7  -62.8  -65.7  -71.1
+       09-26 20:54:49.941:    -76.3  -78.7  -82.9  -88.5  -92.6  -93.5  -98.5  -69.4  -64.7  -63.2
+       09-26 20:54:50.442:    -66.1  -72.5  -76.3  -80.0  -83.7  -87.7  -93.1  -69.7  -61.7  -60.6
+       09-26 20:54:50.941:    -62.2  -63.6  -59.3  -56.1  -55.7  -62.4  -64.8  -68.0  -73.6  -76.5
+       09-26 20:54:51.441:    -77.9  -83.0  -82.6  -83.8  -80.7  -87.0  -95.9  -63.7  -58.4  -59.1
+       09-26 20:54:51.941:    -64.5  -66.0  -68.0  -68.1  -68.0  -72.2  -76.6  -66.8  -59.6  -61.4
+       09-26 20:54:52.441:    -62.8  -64.0  -62.4  -58.3  -55.6  -59.1  -62.1  -64.7  -67.1  -72.7
+       09-26 20:54:52.942:    -75.4  -69.8  -73.4  -66.3  -69.0  -84.1  -93.0  -74.3  -65.7  -65.2
+       09-26 20:54:53.441:    -65.8  -65.6  -67.0  -70.5  -74.5  -79.1  -81.5  -65.7  -60.6  -60.4
+       09-26 20:54:53.941:    -61.6  -64.7  -62.7  -61.1  -59.1  -60.4  -63.5  -66.1  -69.7  -72.9
+       09-26 20:54:54.441:    -68.5  -63.0  -65.3  -68.0  -66.8  -68.9  -65.9  -69.7  -62.7  -62.2
+       09-26 20:54:54.941:    -61.8  -61.7  -65.0  -70.9  -74.2  -77.6  -80.4  -69.4  -64.7  -63.0
+       09-26 20:54:55.441:    -61.9  -63.2  -58.2  -58.1  -58.6  -61.5  -65.6  -68.0  -69.9  -71.3
+       09-26 20:54:55.941:    -72.8  -71.6  -70.3  -69.6  -72.1  -74.0  -76.0  -71.4  -64.6  -63.9
+       09-26 20:54:56.441:    -66.3  -65.5  -66.5  -67.9  -70.5  -73.2  -84.1 -138.9 -138.4 -143.0 ] sum(-4.4)
+
+    -46.8 -|
+    -55.5 -|            ***                       *   ****                          ***             **        *    ***                            *                           ***
+    -64.3 -|**      ****   ***         ******    * ***    ***         ***       ****   ***         *  *****  * ****   ***    *    *****    ******* ***  ***** * *****     ****   ***          ******
+    -73.0 -|  ***  *          *    *         **              **      *   **    *          **               **            **** *  *     **             **     * *     **  *          **********      **
+    -81.8 -|     **            ** * ***        **              **          **               *****                              *         **                            **                             *
+    -90.5 -|                     *                               ***         **                  *                              *
+    -99.3 -|                                                        *                             *
+   -108.0 -|
+   -116.7 -|
+   -125.5 -|
+   -134.2 -|                                                                                                                                                                                            *
+   -143.0 -|                                                                                                                                                                                           * *
+   -151.7 -|
+   -160.5 -|
+           |______________________________________________________________________________________________________________________________________________________________________________________________
+
+
+  EffectStages count : main 3
+   Has Extended Mono Balance Logic : 1
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_suhq			 -2101			 5			 384000			 7680			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b239ec5				  61440		 3			 b239ec5				 61440
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+   Extend Mono/Balance Logic, Depth : 0, MonoMixMode : 0 
+    Converter Info - Count : 2
+    Dst Sample    Dst Format    Src Sample    Src Format
+    384000					 5				 192000				 5	
+    384000					 5				 48000				 5	
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_suhq_sub1			 -2104			 5			 384000			 7680			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b0f0ec5				  61440		 3			 b0f0ec5				 61440
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_uhq			 -2102			 5			 192000			 3840			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b493ec5				  30720		 3			 b493ec5				 30720
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+   Extend Mono/Balance Logic, Depth : 0, MonoMixMode : 0 
+    Converter Info - Count : 2
+    Dst Sample    Dst Format    Src Sample    Src Format
+    192000					 5				 384000				 5	
+    192000					 5				 48000				 5	
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_uhq_sub1			 -2105			 5			 192000			 3840			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b318ec5				  30720		 3			 b318ec5				 30720
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 2
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b318ec5  b318ec5   192000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX  -2105   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b318ec5     0003840  192000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b318ec5      0003840  192000   0x00000003   0x5
+		 D-Action| EN: 0, Profile: 5, Bypass: -1, ProcEN: -1, HT: -1, AuxGain: 0.000000
+	FxName		 Session Status Standby Lazy :
+	SoundAlivePlus  -2105   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b318ec5     0003840  192000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b318ec5      0003840  192000   0x00000003   0x5
+		 SA-Action| Preset: -1, BAND: 9, EQ:  0 0 0 0 0 0 0 0 0, Up: -1
+		 SA-Action| Adapt: 0, Gain:  0 0 0 0 0 0 0 0 0 0 0 0
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_uhq_sub1_game			 -2106			 5			 192000			 3840			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b2b6ec5				  30720		 3			 b2b6ec5				 30720
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b2b6ec5  b2b6ec5   192000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2106   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b2b6ec5     0003840  192000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2b6ec5      0003840  192000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_uhq_sub1_game_atmos			 -2107			 5			 192000			 3840			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b278ec5				  30720		 3			 b278ec5				 30720
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b278ec5  b278ec5   192000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2107   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b278ec5     0003840  192000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b278ec5      0003840  192000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal			 -2103			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b769ec5				  7680		 3			 b769ec5				 7680
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+   Extend Mono/Balance Logic, Depth : 0, MonoMixMode : 0 
+    Converter Info - Count : 2
+    Dst Sample    Dst Format    Src Sample    Src Format
+    48000					 5				 384000				 5	
+    48000					 5				 192000				 5	
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b769ec5  b769ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -2103   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b769ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b769ec5      0000960   48000   0x00000003   0x5
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_sub1			 -2108			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b766ec5				  7680		 3			 b766ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 3
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b766ec5  b766ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX  -2108   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b766ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b766ec5      0000960   48000   0x00000003   0x5
+		 D-Action| EN: 0, Profile: 5, Bypass: -1, ProcEN: -1, HT: -1, AuxGain: 0.000000
+	FxName		 Session Status Standby Lazy :
+	SoundAlivePlus  -2108   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b766ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b766ec5      0000960   48000   0x00000003   0x5
+		 SA-Action| Preset: -1, BAND: 9, EQ:  0 0 0 0 0 0 0 0 0, Up: -1
+		 SA-Action| Adapt: 0, Gain:  0 0 0 0 0 0 0 0 0 0 0 0
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -2108   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b766ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b766ec5      0000960   48000   0x00000003   0x5
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_sub1_game			 -2109			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b762ec5				  7680		 3			 b762ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b762ec5  b762ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2109   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b762ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b762ec5      0000960   48000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_sub1_game_atmos			 -2110			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b524ec5				  7680		 3			 b524ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b524ec5  b524ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2110   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b524ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b524ec5      0000960   48000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_sub1_game_atmos-multi			 -2111			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          c003f			  b231ec5				  30720		 3			 b4f0ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b231ec5  b4f0ec5   48000          8        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2111   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b231ec5     0000960   48000    0x000c003f   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b4f0ec5      0000960   48000   0x00000003   0x5
+		 DG-Action| EN: 1, Profile: 6, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_sub1_spatializer			 -2112			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          2d63f			  b0e4ec5				  46080		 3			 b4eeec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b0e4ec5  b4eeec5   48000          12        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_Spatializer_FX  -2112   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b0e4ec5     0000960   48000    0x0002d63f   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b4eeec5      0000960   48000   0x00000003   0x5
+		 DHT-Action| EN: 0, Profile: -1, HT: -1 AuxGain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_sub1_non-spatializer			 -2113			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b44fec5				  7680		 3			 b44fec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b44fec5  b44fec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX  -2113   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b44fec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b44fec5      0000960   48000   0x00000003   0x5
+		 D-Action| EN: 0, Profile: -1, Bypass: -1, ProcEN: 0, HT: -1, AuxGain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    media_output_normal_mono_tts			 -2114			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b44dec5				  7680		 3			 b44dec5				 7680
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+   Extend Mono/Balance Logic, Depth : 1, MonoMixMode : 5 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b44dec5  b44dec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -2114   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b44dec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b44dec5      0000960   48000   0x00000003   0x5
+----------------------------------
+  Thread throttle time (msecs): 224
+  AudioMixer tracks: 
+  Master mono: off
+  Master balance: 0.000000 (balance 0 channelCount 2 volumes: 1 1)
+  DualSpk mono: off
+  Current mono: off
+  No FastMixer
+Bluetooth latency modes are not enabled
+HAL does not support Bluetooth latency modes
+Supported latency modes: { }
+
+  Normal mixer raw underrun counters: partial=0 empty=0
+  0 Tracks
+  0 Effect Chains
+  Local log:
+                                                         Type     Id Active Client(pid/uid) Session Port Id S  Flags   Format Chn mask  SRate ST Usg CT  G db  L dB  R dB  VS dB  PortVol dB  PortMuted   Server FrmCnt  FrmRdy F Underruns  Flushed BitPerfect InternalMute    L Vol    R Vol Drain State CType   Latency
+   09-26 20:09:58.493 AT::remove    (0xb4000072bb135840)         766     no    3006/  10328   11961    2797 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00018000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   48.77 k 
+   09-26 20:09:58.493 removeTrack_l (0xb4000072bb135840)         766     no    3006/  10328   11961    2797 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00018000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   48.77 k 
+   09-26 20:09:58.552 AT::remove    (0xb4000072bb133fe0)         767     no    3006/  10328   11969    2798 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00018600  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   44.28 k 
+   09-26 20:09:58.552 removeTrack_l (0xb4000072bb133fe0)         767     no    3006/  10328   11969    2798 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00018600  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   44.28 k 
+   09-26 20:12:11.377 AT::add       (0xb4000072bb12b9d0)         769     no    3006/  10328   11985    2800 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:12:11.459 AT::add       (0xb4000072bb12ada0)         770     no    3006/  10328   11993    2801 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:12:12.885 CFG_EVENT_CREATE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+   09-26 20:12:12.946 CFG_EVENT_CREATE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+   09-26 20:12:13.247 AT::remove    (0xb4000072bb12b9d0)         769     no    3006/  10328   11985    2800 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00014A00  15392       0 f         0    13472      false        false 0.000000 0.000000     Y     2     0   49.32 k 
+   09-26 20:12:13.247 removeTrack_l (0xb4000072bb12b9d0)         769     no    3006/  10328   11985    2800 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00014A00  15392       0 f         0    13472      false        false 0.000000 0.000000     Y     2     0   49.32 k 
+   09-26 20:12:13.266 AT::remove    (0xb4000072bb12ada0)         770     no    3006/  10328   11993    2801 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00014640  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   45.47 k 
+   09-26 20:12:13.266 removeTrack_l (0xb4000072bb12ada0)         770     no    3006/  10328   11993    2801 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00014640  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   45.47 k 
+   09-26 20:12:14.387 removeTrack_l (0xb4000072bb137cd0)         768     no    3006/  10328   11977    2799 T  0x200 00000001 00000001  48000  3   e  0  -inf     0     0     0          -55      false 00000000   3848       0 I         0        0      false        false 1.000000 1.000000     Y     2     0       new 
+   09-26 20:26:15.410 AT::add       (0xb4000072bb126480)         772     no    3006/  10328   12009    2803 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392    4096 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:26:15.431 AT::add       (0xb4000072bb138900)         773     no    3006/  10328   12017    2804 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:26:16.890 CFG_EVENT_CREATE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+   09-26 20:26:16.949 CFG_EVENT_CREATE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+   09-26 20:26:17.149 AT::remove    (0xb4000072bb126480)         772     no    3006/  10328   12009    2803 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00013380  15392       0 f         0    15392      false        false 0.000000 0.000000     Y     2     0   48.86 k 
+   09-26 20:26:17.149 removeTrack_l (0xb4000072bb126480)         772     no    3006/  10328   12009    2803 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00013380  15392       0 f         0    15392      false        false 0.000000 0.000000     Y     2     0   48.86 k 
+   09-26 20:26:17.190 AT::remove    (0xb4000072bb138900)         773     no    3006/  10328   12017    2804 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00013B00  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   49.37 k 
+   09-26 20:26:17.190 removeTrack_l (0xb4000072bb138900)         773     no    3006/  10328   12017    2804 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00013B00  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   49.37 k 
+   09-26 20:26:17.807 removeTrack_l (0xb4000072bb12de60)         771     no    3006/  10328   12001    2802 T  0x200 00000001 00000001  48000  3   e  0  -inf     0     0     0          -55      false 00000000   3848       0 I         0        0      false        false 1.000000 1.000000     Y     2     0       new 
+   09-26 20:38:01.719 removeTrack_l (0xb4000072bb132780)         774     no    3006/  10328   12025    2805 T  0x000 00000001 00000001  48000  3   e  0  -inf     0     0     0          -55      false 00000000   3848       0 I         0        0      false        false 1.000000 1.000000     Y     2     0       new 
+   09-26 20:38:04.690 AT::add       (0xb4000072bb12b9d0)         775     no   10585/  10328   12041    2806 A  0x000 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  14176   10240 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:04.707 AT::add       (0xb4000072bb138900)         776     no   10585/  10328   12033    2807 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   14336 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:04.949 AT::remove    (0xb4000072bb12b9d0)         775     no   10585/  10328   12041    2806 P  0x400 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00001B90  14176   14176 A         0        0      false        false 0.000000 0.000000     Y     8     0  374.64 k 
+   09-26 20:38:04.949 AT::remove    (0xb4000072bb138900)         776     no   10585/  10328   12033    2807 P  0x400 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00001A40  15392   15392 A         0        0      false        false 0.000000 0.000000     Y     8     0  373.86 k 
+   09-26 20:38:21.400 removeTrack_l (0xb4000072bb12b9d0)         775     no   10585/  10328   12041    2806 T  0x600 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00001B90  14176       0 f         0    14176      false        false 0.000000 0.000000     Y     2     0   53.19 k 
+   09-26 20:38:21.412 removeTrack_l (0xb4000072bb138900)         776     no   10585/  10328   12033    2807 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00001A40  15392       0 f         0    15392      false        false 0.000000 0.000000     Y     2     0   53.19 k 
+   09-26 20:38:21.435 AT::add       (0xb4000072bb133fe0)         777     no   10585/  10328   12057    2808 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   15392 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:21.530 AT::add       (0xb4000072bb138900)         778     no   10585/  10328   12065    2809 A  0x000 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  14176   14176 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:21.638 AT::remove    (0xb4000072bb138900)         778     no   10585/  10328   12065    2809 P  0x400 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00000372  14176   14176 F         0        0      false        false 0.000000 0.000000     Y     8     0  381.33 k 
+   09-26 20:38:21.887 AT::add       (0xb4000072bb126480)         779     no   10585/  10328   12073    2810 A  0x000 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  14176   14176 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:24.787 removeTrack_l (0xb4000072bb138900)         778     no   10585/  10328   12065    2809 T  0x600 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00000372  14176       0 f         0    14176      false        false 0.000000 0.000000     Y     2     0   59.88 k 
+   09-26 20:38:29.704 AT::remove    (0xb4000072bb133fe0)         777     no   10585/  10328   12057    2808 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0005F800  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   57.04 k 
+   09-26 20:38:29.704 removeTrack_l (0xb4000072bb133fe0)         777     no   10585/  10328   12057    2808 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0005F800  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   57.04 k 
+   09-26 20:38:29.709 AT::add       (0xb4000072bb138900)         780     no   10585/  10328   12057    2811 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392    6144 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:30.023 AT::remove    (0xb4000072bb126480)         779     no   10585/  10328   12073    2810 T  0x600 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00056800  14176       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   57.06 k 
+   09-26 20:38:30.023 removeTrack_l (0xb4000072bb126480)         779     no   10585/  10328   12073    2810 T  0x600 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00056800  14176       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   57.06 k 
+   09-26 20:38:30.047 AT::add       (0xb4000072bb135840)         781     no   10585/  10328   12073    2812 A  0x000 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  14176    6144 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:38:37.960 AT::remove    (0xb4000072bb138900)         780     no   10585/  10328   12057    2811 S  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0005F800  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   58.69 k 
+   09-26 20:38:38.144 AT::remove    (0xb4000072bb135840)         781     no   10585/  10328   12073    2812 S  0x600 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00056000  14176       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   49.03 k 
+   09-26 20:38:41.207 removeTrack_l (0xb4000072bb138900)         780     no   10585/  10328   12057    2811 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0005F800  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   58.69 k 
+   09-26 20:38:41.235 removeTrack_l (0xb4000072bb135840)         781     no   10585/  10328   12073    2812 T  0x600 00000001 00000003  44100  3   e  0  -inf  -inf  -inf     0          -55      false 00056000  14176       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   49.03 k 
+   09-26 20:54:02.323 AT::add       (0xb4000072bb12b9d0)         782     no   10585/  10328   12081    2813 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   14336 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:08.244 AT::remove    (0xb4000072bb12b9d0)         782     no   10585/  10328   12081    2813 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00043F80  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.63 k 
+   09-26 20:54:08.244 removeTrack_l (0xb4000072bb12b9d0)         782     no   10585/  10328   12081    2813 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00043F80  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.63 k 
+   09-26 20:54:08.443 removeTrack_l (0xb4000072bb13a160)         783     no   10585/  10328   12081    2814 T  0x200 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392       0 f         0    15392      false        false 0.000000 0.000000     Y     2     0       new 
+   09-26 20:54:08.622 AT::add       (0xb4000072bb13a160)         784     no   10585/  10328   12081    2815 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   15392 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:08.765 AT::remove    (0xb4000072bb13a160)         784     no   10585/  10328   12081    2815 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000B40  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   46.94 k 
+   09-26 20:54:08.765 removeTrack_l (0xb4000072bb13a160)         784     no   10585/  10328   12081    2815 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000B40  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   46.94 k 
+   09-26 20:54:08.847 AT::add       (0xb4000072bb135840)         785     no   10585/  10328   12081    2816 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   15392 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:08.963 AT::remove    (0xb4000072bb135840)         785     no   10585/  10328   12081    2816 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000780  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.72 k 
+   09-26 20:54:08.963 removeTrack_l (0xb4000072bb135840)         785     no   10585/  10328   12081    2816 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000780  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.72 k 
+   09-26 20:54:09.038 AT::add       (0xb4000072bb133fe0)         786     no   10585/  10328   12081    2817 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   15392 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:09.115 AT::add       (0xb4000072bb138900)         787     no   10585/  10328   12081    2818 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392    5120 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:09.171 AT::remove    (0xb4000072bb133fe0)         786     no   10585/  10328   12081    2817 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 000003C0  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   51.59 k 
+   09-26 20:54:09.171 removeTrack_l (0xb4000072bb133fe0)         786     no   10585/  10328   12081    2817 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 000003C0  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   51.59 k 
+   09-26 20:54:10.283 AT::remove    (0xb4000072bb138900)         787     no   10585/  10328   12081    2818 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0000CA80  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.74 k 
+   09-26 20:54:10.283 removeTrack_l (0xb4000072bb138900)         787     no   10585/  10328   12081    2818 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0000CA80  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.74 k 
+   09-26 20:54:10.466 AT::add       (0xb4000072bb12b9d0)         788     no   10585/  10328   12081    2819 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   15392 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:10.924 AT::remove    (0xb4000072bb12b9d0)         788     no   10585/  10328   12081    2819 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00004740  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.44 k 
+   09-26 20:54:10.924 removeTrack_l (0xb4000072bb12b9d0)         788     no   10585/  10328   12081    2819 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00004740  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.44 k 
+   09-26 20:54:11.044 AT::add       (0xb4000072bb132780)         789     no   10585/  10328   12081    2820 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   12288 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:54:32.612 AT::remove    (0xb4000072bb132780)         789     no   10585/  10328   12081    2820 T  0x600 00000001 00000003  48000  3   e  0     0     0     0     0          -55      false 000FB7C0  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   44.46 k 
+   09-26 20:54:32.612 removeTrack_l (0xb4000072bb132780)         789     no   10585/  10328   12081    2820 T  0x600 00000001 00000003  48000  3   e  0     0     0     0     0          -55      false 000FB7C0  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   44.46 k 
+   09-26 20:54:32.741 AT::add       (0xb4000072bb135840)         790     no   10585/  10328   12081    2821 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:33.583 AT::remove    (0xb4000072bb135840)         790     no   10585/  10328   12081    2821 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008E80  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   47.32 k 
+   09-26 20:54:33.583 removeTrack_l (0xb4000072bb135840)         790     no   10585/  10328   12081    2821 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008E80  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   47.32 k 
+   09-26 20:54:33.674 AT::add       (0xb4000072bb126480)         791     no   10585/  10328   12081    2822 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:34.278 AT::remove    (0xb4000072bb126480)         791     no   10585/  10328   12081    2822 T  0x600 00000001 00000003  48000  3   e  0     0     0     0     0          -55      false 00006180  15392       0 f         0    15392      false        false 1.000000 1.000000     Y     2     0   49.38 k 
+   09-26 20:54:34.278 removeTrack_l (0xb4000072bb126480)         791     no   10585/  10328   12081    2822 T  0x600 00000001 00000003  48000  3   e  0     0     0     0     0          -55      false 00006180  15392       0 f         0    15392      false        false 1.000000 1.000000     Y     2     0   49.38 k 
+   09-26 20:54:34.331 AT::add       (0xb4000072bb138900)         792     no   10585/  10328   12081    2823 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:34.944 AT::remove    (0xb4000072bb138900)         792     no   10585/  10328   12081    2823 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00006540  15392       0 f         0    13472      false        false 1.000000 1.000000     Y     2     0   46.95 k 
+   09-26 20:54:34.945 removeTrack_l (0xb4000072bb138900)         792     no   10585/  10328   12081    2823 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00006540  15392       0 f         0    13472      false        false 1.000000 1.000000     Y     2     0   46.95 k 
+   09-26 20:54:35.093 AT::add       (0xb4000072bb133fe0)         793     no   10585/  10328   12081    2824 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392    3072 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:35.947 AT::remove    (0xb4000072bb133fe0)         793     no   10585/  10328   12081    2824 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008AC0  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   45.95 k 
+   09-26 20:54:35.947 removeTrack_l (0xb4000072bb133fe0)         793     no   10585/  10328   12081    2824 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008AC0  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   45.95 k 
+   09-26 20:54:36.096 AT::add       (0xb4000072bb13a160)         794     no   10585/  10328   12081    2825 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:36.904 AT::remove    (0xb4000072bb13a160)         794     no   10585/  10328   12081    2825 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008AC0  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   47.88 k 
+   09-26 20:54:36.904 removeTrack_l (0xb4000072bb13a160)         794     no   10585/  10328   12081    2825 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008AC0  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   47.88 k 
+   09-26 20:54:36.945 AT::add       (0xb4000072bb12ada0)         795     no   10585/  10328   12081    2826 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   10240 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:37.803 AT::remove    (0xb4000072bb12ada0)         795     no   10585/  10328   12081    2826 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008700  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   47.12 k 
+   09-26 20:54:37.803 removeTrack_l (0xb4000072bb12ada0)         795     no   10585/  10328   12081    2826 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00008700  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   47.12 k 
+   09-26 20:54:37.924 AT::add       (0xb4000072bb126480)         796     no   10585/  10328   12081    2827 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:38.504 AT::remove    (0xb4000072bb126480)         796     no   10585/  10328   12081    2827 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00005A00  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   48.51 k 
+   09-26 20:54:38.504 removeTrack_l (0xb4000072bb126480)         796     no   10585/  10328   12081    2827 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00005A00  15392       0 f         0    14432      false        false 1.000000 1.000000     Y     2     0   48.51 k 
+   09-26 20:54:38.577 AT::add       (0xb4000072bb135840)         797     no   10585/  10328   12081    2828 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:39.123 AT::remove    (0xb4000072bb135840)         797     no   10585/  10328   12081    2828 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00005640  15392       0 f         0    13472      false        false 1.000000 1.000000     Y     2     0   45.61 k 
+   09-26 20:54:39.124 removeTrack_l (0xb4000072bb135840)         797     no   10585/  10328   12081    2828 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00005640  15392       0 f         0    13472      false        false 1.000000 1.000000     Y     2     0   45.61 k 
+   09-26 20:54:39.202 AT::add       (0xb4000072bb137cd0)         798     no   10585/  10328   12081    2829 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392   15392 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:39.344 AT::remove    (0xb4000072bb137cd0)         798     no   10585/  10328   12081    2829 T  0x600 00000001 00000003  48000  3   e  0     0     0     0     0          -55      false 00000B40  15392       0 f         0    15392      false        false 1.000000 1.000000     Y     2     0   48.43 k 
+   09-26 20:54:39.345 removeTrack_l (0xb4000072bb137cd0)         798     no   10585/  10328   12081    2829 T  0x600 00000001 00000003  48000  3   e  0     0     0     0     0          -55      false 00000B40  15392       0 f         0    15392      false        false 1.000000 1.000000     Y     2     0   48.43 k 
+   09-26 20:54:39.465 AT::add       (0xb4000072bb12ada0)         799     no   10585/  10328   12081    2830 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392    5120 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:39.582 AT::remove    (0xb4000072bb12ada0)         799     no   10585/  10328   12081    2830 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 000003C0  15392       0 f         0     8256      false        false 1.000000 1.000000     Y     2     0   45.18 k 
+   09-26 20:54:39.583 removeTrack_l (0xb4000072bb12ada0)         799     no   10585/  10328   12081    2830 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 000003C0  15392       0 f         0     8256      false        false 1.000000 1.000000     Y     2     0   45.18 k 
+   09-26 20:54:39.701 AT::add       (0xb4000072bb13a160)         800     no   10585/  10328   12081    2831 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392    3072 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:39.823 AT::remove    (0xb4000072bb13a160)         800     no   10585/  10328   12081    2831 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 000003C0  15392       0 f         0     6208      false        false 1.000000 1.000000     Y     2     0   46.97 k 
+   09-26 20:54:39.823 removeTrack_l (0xb4000072bb13a160)         800     no   10585/  10328   12081    2831 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 000003C0  15392       0 f         0     6208      false        false 1.000000 1.000000     Y     2     0   46.97 k 
+   09-26 20:54:40.062 AT::add       (0xb4000072bb133fe0)         801     no   10585/  10328   12081    2832 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392    4096 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:54:40.188 AT::remove    (0xb4000072bb133fe0)         801     no   10585/  10328   12081    2832 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392       0 f         0     8192      false        false 1.000000 1.000000     Y     2     0   46.16 k 
+   09-26 20:54:40.190 removeTrack_l (0xb4000072bb133fe0)         801     no   10585/  10328   12081    2832 T  0x600 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392       0 f         0     8192      false        false 1.000000 1.000000     Y     2     0   46.16 k 
+   09-26 20:54:40.437 AT::add       (0xb4000072bb132780)         802     no   10585/  10328   12081    2833 A  0x000 00000001 00000003  48000  3   e  0  -inf     0     0     0          -55      false 00000000  15392    7168 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-26 20:55:38.686 AT::remove    (0xb4000072bb132780)         802     no   10585/  10328   12081    2833 I  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 002A9000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     0     0   26.10 k 
+   09-26 20:55:38.693 removeTrack_l (0xb4000072bb132780)         802     no   10585/  10328   12081    2833 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 002A9000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   26.10 k 
+   09-26 20:55:38.790 AT::add       (0xb4000072bb132780)         803     no   10585/  10328   12081    2834 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   10240 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:56:02.003 AT::remove    (0xb4000072bb132780)         803     no   10585/  10328   12081    2834 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0010EF00  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   49.12 k 
+   09-26 20:56:02.003 removeTrack_l (0xb4000072bb132780)         803     no   10585/  10328   12081    2834 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0010EF00  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   49.12 k 
+   09-26 20:56:03.569 AT::add       (0xb4000072bb12de60)         804     no   10585/  10328   12089    2835 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392    4096 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:56:06.162 AT::remove    (0xb4000072bb12de60)         804     no   10585/  10328   12089    2835 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0001D4C0  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.93 k 
+   09-26 20:56:06.163 removeTrack_l (0xb4000072bb12de60)         804     no   10585/  10328   12089    2835 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 0001D4C0  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   47.93 k 
+   09-26 20:56:09.520 AT::add       (0xb4000072bb129540)         805     no   10585/  10328   12097    2836 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   13312 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:56:11.041 AT::remove    (0xb4000072bb129540)         805     no   10585/  10328   12097    2836 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00010E00  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   48.27 k 
+   09-26 20:56:11.041 removeTrack_l (0xb4000072bb129540)         805     no   10585/  10328   12097    2836 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00010E00  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   48.27 k 
+   09-26 20:56:38.711 AT::add       (0xb4000072bb129540)         806     no   10585/  10328   12105    2837 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392   13312 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:57:36.950 AT::remove    (0xb4000072bb129540)         806     no   10585/  10328   12105    2837 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 002A9000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   26.45 k 
+   09-26 20:57:36.951 removeTrack_l (0xb4000072bb129540)         806     no   10585/  10328   12105    2837 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 002A9000  15392       0 f         0        0      false        false 0.000000 0.000000     Y     2     0   26.45 k 
+   09-26 20:57:37.033 AT::add       (0xb4000072bb12b9d0)         807     no   10585/  10328   12105    2838 A  0x000 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 00000000  15392    3072 f         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 20:57:54.484 AT::remove    (0xb4000072bb12b9d0)         807     no   10585/  10328   12105    2838 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 000CAF80  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   49.04 k 
+   09-26 20:57:54.484 removeTrack_l (0xb4000072bb12b9d0)         807     no   10585/  10328   12105    2838 T  0x600 00000001 00000003  48000  3   e  0  -inf  -inf  -inf     0          -55      false 000CAF80  15392       0 f         0    14432      false        false 0.000000 0.000000     Y     2     0   49.04 k 
+
+Output thread 0xb40000759d785510, name AudioOut_1D, tid 1885, type 0 (MIXER):
+  I/O handle: 29
+  Standby: yes
+  Sample rate: 48000 Hz
+  HAL frame count: 192
+  HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  HAL buffer size: 768 bytes
+  Channel count: 2
+  Channel mask: 0x00000003 (front-left, front-right)
+  Processing format: 0x5 (AUDIO_FORMAT_PCM_FLOAT)
+  Processing frame size: 8 bytes
+  SystemReady: yes
+  SystemReadyCount: 3
+  Pending config events: none
+  Output devices: 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+  Input device: 0 (AUDIO_DEVICE_NONE)
+  Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+  Timestamp stats: n=4061 disc=37 cold=1 nRdy=0 err=35 rate=1.00001 jitterMs(ave=-2.26258e-05 std=0.0966407 min=-2.3034 max=2.32543) localSR(48000.2, 1.96024e-09) correctedJitterMs(ave=3.45692e-05 std=0.0160571 min=-0.115898 max=0.617096)
+  Timestamp corrected: no
+  Last write occurred (msecs): 52236904
+  Master volume: 1.000000
+  Master mute: off
+  Mixer channel Mask: 0x3 (front-left, front-right)
+  Normal frame count: 960
+  Total writes: 2251
+  Delayed writes: 0
+  Blocked in write: no
+  Suspend count: 0
+  Fast track availMask=0xfe
+  Standby delay ns=3000000000
+  AudioStreamOut: 0xb4000072ab134a70 flags 0x4 (AUDIO_OUTPUT_FLAG_FAST)
+  Frames written: 2160960
+  Suspended frames: 0
+  PipeSink frames written: 2160960
+  Hal stream dump:
+
+Audio Stream Out(4)::dump
+	output devices 2
+	output flgas: 4
+	output sample rate: 48000
+	output channel mask: 3
+	output format: 1
+	output audio usage: 0
+	output standby state: 0
+	output backend_mode: 2
+      Signal power history: (none)
+      Signal power history: (none)
+  EffectStages count : main 1
+   Has Extended Mono Balance Logic : 0
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    low_output_normal			 -2901			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b44bec5				  7680		 3			 b44bec5				 7680
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    low_output_normal_sub1			 -2902			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b2f1ec5				  7680		 3			 b2f1ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 2
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b2f1ec5  b2f1ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX  -2902   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b2f1ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2f1ec5      0000960   48000   0x00000003   0x5
+		 D-Action| EN: 0, Profile: 5, Bypass: -1, ProcEN: -1, HT: -1, AuxGain: 0.000000
+	FxName		 Session Status Standby Lazy :
+	SoundAlivePlus  -2902   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b2f1ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2f1ec5      0000960   48000   0x00000003   0x5
+		 SA-Action| Preset: -1, BAND: 9, EQ:  0 0 0 0 0 0 0 0 0, Up: -1
+		 SA-Action| Adapt: 0, Gain:  0 0 0 0 0 0 0 0 0 0 0 0
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    low_output_normal_sub1_game			 -2903			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b2efec5				  7680		 3			 b2efec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b2efec5  b2efec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2903   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b2efec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2efec5      0000960   48000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    low_output_normal_sub1_game_atmos			 -2904			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b2b4ec5				  7680		 3			 b2b4ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b2b4ec5  b2b4ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2904   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b2b4ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2b4ec5      0000960   48000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: 0.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    low_output_normal_sub1_game_atmos-multi			 -2905			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          c003f			  b096ec5				  30720		 3			 b2b2ec5				 7680
+   IndicateVolumeOnIntegEffect : 1 , ControlVolumeOnIntegEffect: 1 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b096ec5  b2b2ec5   48000          8        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -2905   000     1     1
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b096ec5     0000960   48000    0x000c003f   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2b2ec5      0000960   48000   0x00000003   0x5
+		 DG-Action| EN: 1, Profile: 6, Gain: 0.000000
+----------------------------------
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	0  0   48000          2        2            1
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -2901   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b765ec5     0000192   48000    0x00000003   0x1   16777216     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b765ec5      0000192   48000   0x00000003   0x1
+  Thread throttle time (msecs): 1
+  AudioMixer tracks: 
+  Master mono: off
+  Master balance: 0.000000 (0.000000)
+  DualSpk mono: off
+  Current mono: off
+  FastMixer thread 0xb40000759d60d980 tid=1869  FastMixer command=COLD_IDLE writeSequence=22654 framesWritten=2174784
+            numTracks=1 writeErrors=0 underruns=10 overruns=119
+            sampleRate=48000 frameCount=192 measuredWarmup=23.5 ms, warmupCycles=7
+            mixPeriod=4.00 ms latency=16.00 ms
+  EffectStages count : main 1
+   Has Extended Mono Balance Logic : 0
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    fastmixer_output_normal			 -29001			 5			 48000			 192			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b523ec5				  1536		 3			 b523ec5				 1536
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    fastmixer_output_normal_sub1			 -29002			 5			 48000			 192			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b44aec5				  1536		 3			 b44aec5				 1536
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b44aec5  b44aec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX  -29002   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b44aec5     0000192   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b44aec5      0000192   48000   0x00000003   0x5
+		 D-Action| EN: 0, Profile: 5, Bypass: -1, ProcEN: -1, HT: -1, AuxGain: -1.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    fastmixer_output_normal_sub1_game			 -29003			 5			 48000			 192			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b2b1ec5				  1536		 3			 b2b1ec5				 1536
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b2b1ec5  b2b1ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -29003   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b2b1ec5     0000192   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b2b1ec5      0000192   48000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: -1.000000
+----------------------------------
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    fastmixer_output_normal_sub1_game_atmos			 -29004			 5			 48000			 192			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          3			  b274ec5				  1536		 3			 b274ec5				 1536
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b274ec5  b274ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	Dolby_FX_GAME  -29004   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b274ec5     0000192   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b274ec5      0000192   48000   0x00000003   0x5
+		 DG-Action| EN: 0, Profile: 5, Gain: -1.000000
+----------------------------------
+  FastMixer Timestamp stats: n=11242 disc=10 cold=0 nRdy=0 err=0 rate=1.00001 jitterMs(ave=-6.52538e-05 std=0.0936159 min=-2.33199 max=2.30488) localSR(48000.5, 1.5961e-08) correctedJitterMs(ave=-4.24384e-05 std=0.00934609 min=-0.302643 max=0.235586)
+  Simple moving statistics over last 3.4 seconds:
+    wall clock time in ms per mix cycle:
+      mean=3.86 min=0.59 max=10.59 stddev=0.82
+    raw CPU load in us per mix cycle:
+      mean=563 min=0 max=2360 stddev=127
+  Fast tracks: sMaxFastTracks=8 activeMask=0x1
+  Index Active Full Partial Empty  Recent Ready    Written
+      0    yes 1010       0     0    full  1152    2159808
+      1     no  380       4    69   empty     0      15040
+      2     no  396       4    62   empty     0      19136
+      3     no    2       0    13   empty     0        384
+      4     no    2       0    12   empty     0        384
+      5     no    2       0    13   empty     0        384
+      6     no    2       0    14   empty     0        384
+      7     no    2       0    13   empty     0        384
+Bluetooth latency modes are not enabled
+HAL does not support Bluetooth latency modes
+Supported latency modes: { }
+
+  Normal mixer raw underrun counters: partial=0 empty=0
+  0 Tracks
+  0 Effect Chains
+  Local log:
+                                                         Type     Id Active Client(pid/uid) Session Port Id S  Flags   Format Chn mask  SRate ST Usg CT  G db  L dB  R dB  VS dB  PortVol dB  PortMuted   Server FrmCnt  FrmRdy F Underruns  Flushed BitPerfect InternalMute    L Vol    R Vol Drain State CType   Latency
+   09-20 20:27:15.692 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+   09-22 07:42:41.880 AT::add       (0xb4000072bb12ada0) F1 S    204     no    3348/  10050    2673     618 A  0x000 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00000000   4800    4800 F         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-22 07:42:42.245 AT::remove    (0xb4000072bb12ada0) F1 S    204     no    3348/  10050    2673     618 P  0x600 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00000F00   4800     960 F         0        0      false        false 0.000000 0.000000     Y     8     0   16.00 t 
+   09-22 07:42:42.381 AT::add       (0xb4000072bb1370a0)         205     no    3348/  10050    2681     619 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  24000       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new stv_charger_connection
+   09-22 07:42:43.982 AT::remove    (0xb4000072bb1370a0)         205     no    3348/  10050    2681     619 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00010FE0  24000       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   93.16 k stv_charger_connection
+   09-22 07:42:43.985 removeTrack_l (0xb4000072bb1370a0)         205     no    3348/  10050    2681     619 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00010FE0  24000       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   93.16 k stv_charger_connection
+   09-22 07:42:44.495 removeTrack_l (0xb4000072bb12ada0) F1 S    204     no    3348/  10050    2673     618 T  0x600 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00000F00   4800     960 f         0        0      false        false 0.000000 0.000000     Y     2     0   16.00 t 
+   09-22 07:42:46.868 threadLoop_standby: framesWritten:227520  suspendedFrames:0  monoPipeWritten:227520  monoPipeLeft:1536
+   09-22 07:42:46.868 threadLoop_standby: BOOTTIME offset 0: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 227520  time: 126958297433241), ([2]  position: 225024  time: 126958306167148), ([3]  position: 226560  time: 126958277372265), ([4]  position: 224448  time: 126958294147655)
+   09-22 10:50:58.237 AT::add       (0xb4000072bb1333b0) F1      730     no   24781/   2000   11129    2716 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.287 AT::add       (0xb4000072bb12ea90) F2      731     no   24781/   2000   11169    2717 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.334 AT::add       (0xb4000072bb12ada0) F3      732     no   24781/   2000   11209    2718 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.353 AT::remove    (0xb4000072bb1333b0) F1      730     no   24781/   2000   11129    2716 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.373 AT::remove    (0xb4000072bb12ea90) F2      731     no   24781/   2000   11169    2717 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0       new 
+   09-22 10:50:58.378 AT::add       (0xb4000072bb12b9d0) F4      733     no   24781/   2000   11249    2719 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.414 AT::remove    (0xb4000072bb12ada0) F3      732     no   24781/   2000   11209    2718 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.416 AT::add       (0xb4000072bb125850) F5      734     no   24781/   2000   11289    2720 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.451 AT::remove    (0xb4000072bb12b9d0) F4      733     no   24781/   2000   11249    2719 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.456 AT::add       (0xb4000072bb135840) F6      735     no   24781/   2000   11329    2721 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.493 AT::remove    (0xb4000072bb125850) F5      734     no   24781/   2000   11289    2720 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.501 AT::add       (0xb4000072bb126480) F7      736     no   24781/   2000   11369    2722 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.534 AT::remove    (0xb4000072bb135840) F6      735     no   24781/   2000   11329    2721 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.545 AT::add       (0xb4000072bb12a170)         737     no   24781/   2000   11409    2723 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.576 AT::remove    (0xb4000072bb126480) F7      736     no   24781/   2000   11369    2722 S  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.590 AT::add       (0xb4000072bb13a160)         738     no   24781/   2000   11449    2724 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.650 AT::add       (0xb4000072bb129540)         739     no   24781/   2000   11489    2725 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.650 AT::remove    (0xb4000072bb12a170)         737     no   24781/   2000   11409    2723 S  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   56.04 k 
+   09-22 10:50:58.718 AT::add       (0xb4000072bb1302f0)         740     no   24781/   2000   11529    2726 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.756 AT::add       (0xb4000072bb128910)         741     no   24781/   2000   11569    2727 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.771 AT::remove    (0xb4000072bb129540)         739     no   24781/   2000   11489    2725 S  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   62.05 k 
+   09-22 10:50:58.806 AT::add       (0xb4000072bb133fe0)         742     no   24781/   2000   11609    2728 A  0x000 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new 
+   09-22 10:50:58.829 AT::remove    (0xb4000072bb1302f0)         740     no   24781/   2000   11529    2726 S  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   49.00 k 
+   09-22 10:50:58.837 removeTrack_l (0xb4000072bb1333b0) F1      730     no   24781/   2000   11129    2716 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.837 removeTrack_l (0xb4000072bb135840) F6      735     no   24781/   2000   11329    2721 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.841 removeTrack_l (0xb4000072bb1302f0)         740     no   24781/   2000   11529    2726 T  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   49.00 k 
+   09-22 10:50:58.843 removeTrack_l (0xb4000072bb12ea90) F2      731     no   24781/   2000   11169    2717 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000000    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0       new 
+   09-22 10:50:58.848 removeTrack_l (0xb4000072bb126480) F7      736     no   24781/   2000   11369    2722 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.850 removeTrack_l (0xb4000072bb12ada0) F3      732     no   24781/   2000   11209    2718 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.852 removeTrack_l (0xb4000072bb12b9d0) F4      733     no   24781/   2000   11249    2719 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.853 removeTrack_l (0xb4000072bb12a170)         737     no   24781/   2000   11409    2723 T  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   56.04 k 
+   09-22 10:50:58.853 removeTrack_l (0xb4000072bb125850) F5      734     no   24781/   2000   11289    2720 T  0x600 00000001 00000003  48000  3   1  2   -55     0     0     0          -55      false 00000180    384r      0 f         0        0      false        false 1.000000 1.000000     Y     2     0   unavail 
+   09-22 10:50:58.853 removeTrack_l (0xb4000072bb129540)         739     no   24781/   2000   11489    2725 T  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   62.05 k 
+   09-22 10:50:58.872 AT::remove    (0xb4000072bb128910)         741     no   24781/   2000   11569    2727 T  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   51.21 k 
+   09-22 10:50:58.872 removeTrack_l (0xb4000072bb128910)         741     no   24781/   2000   11569    2727 T  0x600 00000001 00000003  48000  3   1  2     0     0     0     0          -55      false 00000780   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   51.21 k 
+   09-22 10:50:58.909 AT::remove    (0xb4000072bb133fe0)         742     no   24781/   2000   11609    2728 T  0x400 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   55.51 k 
+   09-22 10:50:58.909 removeTrack_l (0xb4000072bb133fe0)         742     no   24781/   2000   11609    2728 T  0x400 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   55.51 k 
+   09-22 10:50:58.909 AT::remove    (0xb4000072bb13a160)         738     no   24781/   2000   11449    2724 T  0x401 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920     960 f      5772        0      false        false 1.000000 1.000000     Y     2     0   75.51 k 
+   09-22 10:50:58.909 removeTrack_l (0xb4000072bb13a160)         738     no   24781/   2000   11449    2724 T  0x401 00000001 00000003  48000  3   1  2  -inf     0     0     0          -55      false 00000000   1920     960 f      5772        0      false        false 1.000000 1.000000     Y     2     0   75.51 k 
+   09-22 10:51:01.799 threadLoop_standby: framesWritten:396480  suspendedFrames:0  monoPipeWritten:396480  monoPipeLeft:960
+   09-22 10:51:01.799 threadLoop_standby: BOOTTIME offset 0: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 396480  time: 138253220828124), ([2]  position: 394560  time: 138253235187030), ([3]  position: 396480  time: 138253220828124), ([4]  position: 394176  time: 138253227186484)
+   09-24 18:01:10.445 AT::add       (0xb4000072bb137cd0) F1 S    758     no    3348/  10050   11865    2789 A  0x000 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00000000   4800    4800 F         0*       0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-24 18:01:10.617 AT::remove    (0xb4000072bb137cd0) F1 S    758     no    3348/  10050   11865    2789 P  0x600 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00001140   4800     384 F         0        0      false        false 0.000000 0.000000     Y     8     0   16.00 t 
+   09-24 18:01:10.941 AT::add       (0xb4000072bb126480)         759     no    3348/  10050   11873    2790 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  24000       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new stv_charger_connection
+   09-24 18:01:12.552 AT::remove    (0xb4000072bb126480)         759     no    3348/  10050   11873    2790 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00010FE0  24000       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   91.70 k stv_charger_connection
+   09-24 18:01:12.552 removeTrack_l (0xb4000072bb126480)         759     no    3348/  10050   11873    2790 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00010FE0  24000       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   91.70 k stv_charger_connection
+   09-24 18:01:13.059 removeTrack_l (0xb4000072bb137cd0) F1 S    758     no    3348/  10050   11865    2789 T  0x600 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00001140   4800     384 f         0        0      false        false 0.000000 0.000000     Y     2     0   16.00 t 
+   09-24 18:01:15.441 threadLoop_standby: framesWritten:634560  suspendedFrames:0  monoPipeWritten:634560  monoPipeLeft:2688
+   09-24 18:01:15.441 threadLoop_standby: BOOTTIME offset 0: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 634560  time: 336866323864569), ([2]  position: 630912  time: 336866341713905), ([3]  position: 634560  time: 336866323864569), ([4]  position: 630336  time: 336866329738827)
+   09-26 19:35:22.783 AT::add       (0xb4000072bb138900) F1 S    760     no    3348/  10050   11881    2791 A  0x000 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00000000   4800    4800 F         0        0      false        false 0.000000 0.000000     Y     6     0       new 
+   09-26 19:35:22.949 AT::remove    (0xb4000072bb138900) F1 S    760     no    3348/  10050   11881    2791 P  0x600 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00001140   4800     384 F         0        0      false        false 0.000000 0.000000     Y     8     0   16.00 t 
+   09-26 19:35:23.154 AT::add       (0xb4000072bb12de60)         761     no    3348/  10050   11889    2792 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  24000       0 f         0        0      false        false 1.000000 1.000000     Y     6     0       new stv_charger_connection
+   09-26 19:35:24.790 AT::remove    (0xb4000072bb12de60)         761     no    3348/  10050   11889    2792 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00010FE0  24000       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   86.24 k stv_charger_connection
+   09-26 19:35:24.792 removeTrack_l (0xb4000072bb12de60)         761     no    3348/  10050   11889    2792 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00010FE0  24000       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   86.24 k stv_charger_connection
+   09-26 19:35:25.390 removeTrack_l (0xb4000072bb138900) F1 S    760     no    3348/  10050   11881    2791 T  0x600 00000001 00000003  48000  1   d  4  -inf  -inf  -inf     0         -inf      false 00001140   4800     384 f         0        0      false        false 0.000000 0.000000     Y     2     0   16.00 t 
+   09-26 19:35:27.679 threadLoop_standby: framesWritten:865920  suspendedFrames:0  monoPipeWritten:865920  monoPipeLeft:2496
+   09-26 19:35:27.679 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 865920  time: 393768449617616), ([2]  position: 862464  time: 393768465547694), ([3]  position: 865920  time: 393768449617616), ([4]  position: 862080  time: 393768457531835)
+   09-27 02:30:21.109 AT::add       (0xb4000072bb12b9d0) F1 S    810     no    7006/  10126   12137    2844 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  15040   15040 F         0        0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 02:30:21.544 AT::remove    (0xb4000072bb12b9d0) F1 S    810     no    7006/  10126   12137    2844 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:30:24.531 threadLoop_standby: framesWritten:1025280  suspendedFrames:0  monoPipeWritten:1025280  monoPipeLeft:960
+   09-27 02:30:24.531 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 1025280  time: 418651603114608), ([2]  position: 1023360  time: 418651618738788), ([3]  position: 1025280  time: 418651603114608), ([4]  position: 1022976  time: 418651610732499)
+   09-27 02:30:36.481 AT::add       (0xb4000072bb128910) F2 S    811     no    7006/  10126   12145    2846 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  19136   19136 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 02:30:36.973 AT::remove    (0xb4000072bb128910) F2 S    811     no    7006/  10126   12145    2846 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:30:39.957 threadLoop_standby: framesWritten:1190400  suspendedFrames:0  monoPipeWritten:1190400  monoPipeLeft:768
+   09-27 02:30:39.957 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 1190400  time: 418667028770545), ([2]  position: 1188672  time: 418667047154960), ([3]  position: 1190400  time: 418667028770545), ([4]  position: 1188096  time: 418667035130585)
+   09-27 02:31:41.954 removeTrack_l (0xb4000072bb128910) F2 S    811     no    7006/  10126   12145    2846 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:31:41.954 removeTrack_l (0xb4000072bb12b9d0) F1 S    810     no    7006/  10126   12137    2844 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:35:13.875 AT::add       (0xb4000072bb12b9d0) F1 S    816     no    7006/  10126   12185    2857 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  15040   15040 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 02:35:14.307 AT::remove    (0xb4000072bb12b9d0) F1 S    816     no    7006/  10126   12185    2857 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:35:17.152 AT::add       (0xb4000072bb130f20) F2 S    817     no    7006/  10126   12193    2859 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  19136   19136 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 02:35:17.153 removeTrack_l (0xb4000072bb12b9d0) F1 S    816     no    7006/  10126   12185    2857 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:35:17.607 AT::remove    (0xb4000072bb130f20) F2 S    817     no    7006/  10126   12193    2859 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:35:20.485 removeTrack_l (0xb4000072bb130f20) F2 S    817     no    7006/  10126   12193    2859 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:35:20.584 threadLoop_standby: framesWritten:1510080  suspendedFrames:0  monoPipeWritten:1510080  monoPipeLeft:1344
+   09-27 02:35:20.584 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 1510080  time: 418947667312538), ([2]  position: 1507776  time: 418947672376991), ([3]  position: 1509120  time: 418947645927577), ([4]  position: 1507392  time: 418947664396913)
+   09-27 02:37:23.740 AT::add       (0xb4000072bb12b9d0) F1 S    822     no    7006/  10126   12233    2870 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  15040   15040 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 02:37:24.158 AT::remove    (0xb4000072bb12b9d0) F1 S    822     no    7006/  10126   12233    2870 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:37:27.134 threadLoop_standby: framesWritten:1670400  suspendedFrames:0  monoPipeWritten:1670400  monoPipeLeft:1344
+   09-27 02:37:27.135 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 1670400  time: 419074216659100), ([2]  position: 1668096  time: 419074224198006), ([3]  position: 1669440  time: 419074196584374), ([4]  position: 1667520  time: 419074212151795)
+   09-27 02:37:34.127 AT::add       (0xb4000072bb129540) F2 S    823     no    7006/  10126   12241    2872 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  19136   19136 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 02:37:34.132 removeTrack_l (0xb4000072bb12b9d0) F1 S    822     no    7006/  10126   12233    2870 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:37:34.607 AT::remove    (0xb4000072bb129540) F2 S    823     no    7006/  10126   12241    2872 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 02:37:37.593 threadLoop_standby: framesWritten:1834560  suspendedFrames:0  monoPipeWritten:1834560  monoPipeLeft:960
+   09-27 02:37:37.593 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 1834560  time: 419084664893827), ([2]  position: 1832640  time: 419084681702460), ([3]  position: 1834560  time: 419084664893827), ([4]  position: 1832256  time: 419084673679022)
+   09-27 02:37:40.255 removeTrack_l (0xb4000072bb129540) F2 S    823     no    7006/  10126   12241    2872 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 03:49:39.927 AT::add       (0xb4000072bb1302f0) F1 S    828     no    7006/  10126   12281    2883 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  15040   15040 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 03:49:40.372 AT::remove    (0xb4000072bb1302f0) F1 S    828     no    7006/  10126   12281    2883 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 03:49:43.358 threadLoop_standby: framesWritten:1995840  suspendedFrames:0  monoPipeWritten:1995840  monoPipeLeft:768
+   09-27 03:49:43.358 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 1995840  time: 423410430143163), ([2]  position: 1994112  time: 423410448781131), ([3]  position: 1995840  time: 423410430143163), ([4]  position: 1993536  time: 423410436818631)
+   09-27 03:50:00.319 AT::add       (0xb4000072bb131b50) F2 S    829     no    7006/  10126   12289    2885 A  0x000 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00000000  19136   19136 F         0*       0      false        false 1.000000 1.000000     Y     6     0       new stv_camcording_start
+   09-27 03:50:00.323 removeTrack_l (0xb4000072bb1302f0) F1 S    828     no    7006/  10126   12281    2883 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00003AC0  15040       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 03:50:00.807 AT::remove    (0xb4000072bb131b50) F2 S    829     no    7006/  10126   12289    2885 S  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+   09-27 03:50:03.789 threadLoop_standby: framesWritten:2160960  suspendedFrames:0  monoPipeWritten:2160960  monoPipeLeft:960
+   09-27 03:50:03.789 threadLoop_standby: BOOTTIME offset 121550112034690: ExtendedTimestamp: ([0]  position: 0  time: -1), ([1]  position: 2160960  time: 423430862011561), ([2]  position: 2159040  time: 423430877695702), ([3]  position: 2160960  time: 423430862011561), ([4]  position: 2158656  time: 423430869724139)
+   09-27 03:52:00.958 removeTrack_l (0xb4000072bb131b50) F2 S    829     no    7006/  10126   12289    2885 T  0x600 00000001 00000003  48000  1   d  4  -inf     0     0     0         -inf      false 00004AC0  19136       0 f         0        0      false        false 1.000000 1.000000     Y     2     0   16.00 t stv_camcording_start
+
+Output thread 0xb40000759ac13510, name AudioOut_2D, tid 1892, type 0 (MIXER):
+  I/O handle: 45
+  Standby: yes
+  Sample rate: 48000 Hz
+  HAL frame count: 480
+  HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  HAL buffer size: 1920 bytes
+  Channel count: 2
+  Channel mask: 0x00000003 (front-left, front-right)
+  Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  Processing frame size: 4 bytes
+  SystemReady: yes
+  SystemReadyCount: 3
+  Pending config events: none
+  Output devices: 0x10000 (AUDIO_DEVICE_OUT_TELEPHONY_TX)
+  Input device: 0 (AUDIO_DEVICE_NONE)
+  Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+  Timestamp stats: n=0 disc=0 cold=0 nRdy=0 err=1 jitterMs(unavail) localSR(nan, nan) correctedJitterMs(unavail)
+  Timestamp corrected: no
+  Master volume: 1.000000
+  Master mute: off
+  Mixer channel Mask: 0x3 (front-left, front-right)
+  Normal frame count: 960
+  Total writes: 0
+  Delayed writes: 0
+  Blocked in write: no
+  Suspend count: 0
+  Fast track availMask=0xfe
+  Standby delay ns=3000000000
+  AudioStreamOut: 0xb4000072ab135790 flags 0x10000 (AUDIO_OUTPUT_FLAG_INCALL_MUSIC)
+  Frames written: 0
+  Suspended frames: 0
+  Hal stream dump:
+
+Audio Stream Out(10000)::dump
+	output devices 65536
+	output flgas: 10000
+	output sample rate: 48000
+	output channel mask: 3
+	output format: 1
+	output audio usage: 0
+	output standby state: 0
+	output backend_mode: 2
+      Signal power history: (none)
+      Signal power history: (none)
+  Thread throttle time (msecs): 0
+  AudioMixer tracks: 
+  Master mono: off
+  Master balance: 0.000000 (balance 0 channelCount 2 volumes: 1 1)
+  DualSpk mono: off
+  Current mono: off
+  No FastMixer
+Bluetooth latency modes are not enabled
+HAL does not support Bluetooth latency modes
+Supported latency modes: { }
+
+  Normal mixer raw underrun counters: partial=0 empty=0
+  0 Tracks
+  0 Effect Chains
+  Local log:
+                                                         Type     Id Active Client(pid/uid) Session Port Id S  Flags   Format Chn mask  SRate ST Usg CT  G db  L dB  R dB  VS dB  PortVol dB  PortMuted   Server FrmCnt  FrmRdy F Underruns  Flushed BitPerfect InternalMute    L Vol    R Vol Drain State CType   Latency
+   09-20 20:27:15.739 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x10000 (AUDIO_DEVICE_OUT_TELEPHONY_TX)
+
+Output thread 0xb40000759a8e3510, name AudioOut_35, tid 1898, type 0 (MIXER):
+  I/O handle: 53
+  Standby: yes
+  Sample rate: 48000 Hz
+  HAL frame count: 960
+  HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  HAL buffer size: 5760 bytes
+  Channel count: 2
+  Channel mask: 0x00000003 (front-left, front-right)
+  Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  Processing frame size: 6 bytes
+  SystemReady: yes
+  SystemReadyCount: 3
+  Pending config events: none
+  Output devices: 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+  Input device: 0 (AUDIO_DEVICE_NONE)
+  Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+  Timestamp stats: n=0 disc=0 cold=0 nRdy=0 err=1 jitterMs(unavail) localSR(nan, nan) correctedJitterMs(unavail)
+  Timestamp corrected: no
+  Master volume: 1.000000
+  Master mute: off
+  Mixer channel Mask: 0x3 (front-left, front-right)
+  Haptic channel mask: 0x20000000 (haptic-A)
+  Normal frame count: 960
+  Total writes: 0
+  Delayed writes: 0
+  Blocked in write: no
+  Suspend count: 0
+  Fast track availMask=0xfe
+  Standby delay ns=3000000000
+  AudioStreamOut: 0xb4000072ab136930 flags 0 (AUDIO_OUTPUT_FLAG_NONE)
+  Frames written: 0
+  Suspended frames: 0
+  Hal stream dump:
+
+Audio Stream Out(0)::dump
+	output devices 2
+	output flgas: 0
+	output sample rate: 48000
+	output channel mask: 536870915
+	output format: 1
+	output audio usage: 0
+	output standby state: 0
+	output backend_mode: 2
+      Signal power history: (none)
+      Signal power history: (none)
+  EffectStages count : main 1
+   Has Extended Mono Balance Logic : 0
+    Stage Name					 StageIndex			 Format			 SampleRate			 FC			 ActiveVolCnt		 CurVol
+    haptic_output_normal			 -5301			 5			 48000			 960			 0			 0.000000		
+          InChMsk			 InBuf				 Size		 OutChMsk			 OutBuf				 Size
+          20000003			  b275ec5				  11520		 20000003			 b275ec5				 11520
+   IndicateVolumeOnIntegEffect : 0 , ControlVolumeOnIntegEffect: 0 
+	 EffectStageModule count : 1
+	Inbuffer   Outbuffer   Sample    InChannel OutChannel    Format
+	b275ec5  b275ec5   48000          2        2            5
+	FxName		 Session Status Standby Lazy :
+	SoundBoosterPlus  -5301   000     0     0
+		[In] Buffer  Frames   Sample          Chn   Format  Vol  Device  Enable
+		b275ec5     0000960   48000    0x00000003   0x5   0     2      1
+		[Out] Buffer  Frames   Sample         Chn   Format
+		b275ec5      0000960   48000   0x00000003   0x5
+----------------------------------
+  Thread throttle time (msecs): 0
+  AudioMixer tracks: 
+  Master mono: off
+  Master balance: 0.000000 (balance 0 channelCount 2 volumes: 1 1)
+  DualSpk mono: off
+  Current mono: off
+  No FastMixer
+Bluetooth latency modes are not enabled
+HAL does not support Bluetooth latency modes
+Supported latency modes: { }
+
+  Normal mixer raw underrun counters: partial=0 empty=0
+  0 Tracks
+  0 Effect Chains
+  Local log:
+                                                         Type     Id Active Client(pid/uid) Session Port Id S  Flags   Format Chn mask  SRate ST Usg CT  G db  L dB  R dB  VS dB  PortVol dB  PortMuted   Server FrmCnt  FrmRdy F Underruns  Flushed BitPerfect InternalMute    L Vol    R Vol Drain State CType   Latency
+   09-20 20:27:15.803 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+
+Output thread 0xb40000738b14b430, name AudioMmapOut_15, tid 18795, type 5 (MMAP_PLAYBACK):
+  I/O handle: 5621
+  Standby: no
+  Sample rate: 48000 Hz
+  HAL frame count: 96
+  HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  HAL buffer size: 384 bytes
+  Channel count: 2
+  Channel mask: 0x00000003 (front-left, front-right)
+  Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+  Processing frame size: 4 bytes
+  SystemReady: yes
+  SystemReadyCount: 0
+  Pending config events: none
+  Output devices: 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+  Input device: 0 (AUDIO_DEVICE_NONE)
+  Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+  Attributes: content type 2 usage 1 source 0
+  Session: 12457 port Id: 2920
+  HAL volume: 0.001778
+  Master volume: 1.000000 Master mute 0
+  1 Tracks
+    Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+      18534/  10293   12457    2921 00000001 00000003  48000 0x8100    1  2        -55       false
+  0 Effect Chains
+  Local log:
+                                                         Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+   09-27 18:58:59.336 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+   09-27 18:58:59.360 AT::add       (0xb4000073db13be40)   18534/  10293   12457    2921 00000001 00000003  48000 0x8100    1  2        -55       false
+
+Recording Silenced History
+
+Camcorder Mute History
+
+Proximity Sensor History
+  App Volume list
+
+Auracast Broadcast Active : false
+Disallow App Uid List For Auracast
+
+Historical Thread Log 09-27 18:51:49.346 - 
+- Output thread 0xb40000738b1815e0, name AudioMmapOut_15, tid 13985, type 5 (MMAP_PLAYBACK):
+-   I/O handle: 5581
+-   Standby: no
+-   Sample rate: 48000 Hz
+-   HAL frame count: 96
+-   HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   HAL buffer size: 384 bytes
+-   Channel count: 2
+-   Channel mask: 0x00000003 (front-left, front-right)
+-   Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   Processing frame size: 4 bytes
+-   SystemReady: yes
+-   SystemReadyCount: 0
+-   Pending config events: none
+-   Output devices:  (Empty device types)
+-   Input device: 0 (AUDIO_DEVICE_NONE)
+-   Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+-   Attributes: content type 2 usage 1 source 0
+-   Session: 12377 port Id: 0
+-   No active clients
+-   HAL volume: 0.000000
+-   Master volume: 1.000000 Master mute 0
+-   0 Tracks
+- 
+-   0 Effect Chains
+-   Local log:
+-                                                          Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+-    09-27 18:51:03.758 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+-    09-27 18:51:03.772 AT::add       (0xb4000073db134ba0)   13622/  10293   12377    2901 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:51:49.326 AT::remove    (0xb4000073db134ba0)   13622/  10293   12377    2901 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:51:49.345 CFG_EVENT_RELEASE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device  (Empty device types)
+
+Historical Thread Log 09-27 18:56:39.539 - 
+- Output thread 0xb40000738b153ce0, name AudioMmapOut_15, tid 17181, type 5 (MMAP_PLAYBACK):
+-   I/O handle: 5589
+-   Standby: no
+-   Sample rate: 48000 Hz
+-   HAL frame count: 96
+-   HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   HAL buffer size: 384 bytes
+-   Channel count: 2
+-   Channel mask: 0x00000003 (front-left, front-right)
+-   Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   Processing frame size: 4 bytes
+-   SystemReady: yes
+-   SystemReadyCount: 0
+  Pending config events: none
+-   Output devices:  (Empty device types)
+-   Input device: 0 (AUDIO_DEVICE_NONE)
+-   Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+-   Attributes: content type 2 usage 1 source 0
+-   Session: 12393 port Id: 0
+-   No active clients
+-   HAL volume: 0.000000
+-   Master volume: 1.000000 Master mute 0
+-   0 Tracks
+- 
+-   0 Effect Chains
+-   Local log:
+-                                                          Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+-    09-27 18:55:53.208 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+-    09-27 18:55:53.228 AT::add       (0xb4000073db134ba0)   16794/  10293   12393    2905 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:56:39.515 AT::remove    (0xb4000073db134ba0)   16794/  10293   12393    2905 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:56:39.536 CFG_EVENT_RELEASE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device  (Empty device types)
+
+Historical Thread Log 09-27 18:57:53.951 - 
+- Output thread 0xb40000738b178d30, name AudioMmapOut_15, tid 18110, type 5 (MMAP_PLAYBACK):
+-   I/O handle: 5597
+-   Standby: no
+-   Sample rate: 48000 Hz
+-   HAL frame count: 96
+-   HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   HAL buffer size: 384 bytes
+-   Channel count: 2
+-   Channel mask: 0x00000003 (front-left, front-right)
+-   Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   Processing frame size: 4 bytes
+-   SystemReady: yes
+-   SystemReadyCount: 0
+  Pending config events: none
+-   Output devices:  (Empty device types)
+-   Input device: 0 (AUDIO_DEVICE_NONE)
+-   Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+-   Attributes: content type 2 usage 1 source 0
+-   Session: 12409 port Id: 0
+-   No active clients
+-   HAL volume: 0.000000
+-   Master volume: 1.000000 Master mute 0
+-   0 Tracks
+- 
+-   0 Effect Chains
+-   Local log:
+-                                                          Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+-    09-27 18:57:05.319 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+-    09-27 18:57:05.338 AT::add       (0xb4000073db124dd0)   17947/  10293   12409    2909 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:57:53.928 AT::remove    (0xb4000073db124dd0)   17947/  10293   12409    2909 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:57:53.949 CFG_EVENT_RELEASE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device  (Empty device types)
+
+Historical Thread Log 09-27 18:58:44.149 - 
+- Output thread 0xb40000738b173210, name AudioMmapOut_15, tid 18711, type 5 (MMAP_PLAYBACK):
+-   I/O handle: 5605
+-   Standby: no
+-   Sample rate: 48000 Hz
+-   HAL frame count: 96
+-   HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   HAL buffer size: 384 bytes
+-   Channel count: 2
+-   Channel mask: 0x00000003 (front-left, front-right)
+-   Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   Processing frame size: 4 bytes
+-   SystemReady: yes
+-   SystemReadyCount: 0
+-   Pending config events: none
+-   Output devices:  (Empty device types)
+-   Input device: 0 (AUDIO_DEVICE_NONE)
+-   Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+-   Attributes: content type 2 usage 1 source 0
+-   Session: 12425 port Id: 0
+-   No active clients
+-   HAL volume: 0.000000
+-   Master volume: 1.000000 Master mute 0
+-   0 Tracks
+- 
+-   0 Effect Chains
+-   Local log:
+-                                                          Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+-    09-27 18:58:27.511 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+-    09-27 18:58:27.524 AT::add       (0xb4000073db13be40)   18534/  10293   12425    2913 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:58:44.120 AT::remove    (0xb4000073db13be40)   18534/  10293   12425    2913 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:58:44.148 CFG_EVENT_RELEASE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device  (Empty device types)
+
+Historical Thread Log 09-27 18:58:59.141 - 
+- Output thread 0xb40000738b1815e0, name AudioMmapOut_15, tid 18769, type 5 (MMAP_PLAYBACK):
+-   I/O handle: 5613
+-   Standby: no
+-   Sample rate: 48000 Hz
+-   HAL frame count: 96
+-   HAL format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   HAL buffer size: 384 bytes
+-   Channel count: 2
+-   Channel mask: 0x00000003 (front-left, front-right)
+-   Processing format: 0x1 (AUDIO_FORMAT_PCM_16_BIT)
+-   Processing frame size: 4 bytes
+-   SystemReady: yes
+-   SystemReadyCount: 0
+-   Pending config events: none
+-   Output devices:  (Empty device types)
+-   Input device: 0 (AUDIO_DEVICE_NONE)
+-   Audio source: 0 (AUDIO_SOURCE_DEFAULT)
+-   Attributes: content type 2 usage 1 source 0
+-   Session: 12441 port Id: 0
+-   No active clients
+-   HAL volume: 0.000000
+-   Master volume: 1.000000 Master mute 0
+-   0 Tracks
+- 
+-   0 Effect Chains
+-   Local log:
+-                                                          Client(pid/uid) Session Port Id   Format Chn mask  SRate Flags Usg/Src PortVol dB PortMuted
+-    09-27 18:58:44.321 CFG_EVENT_CREATE_AUDIO_PATCH: old device  (Empty device types) new device 0x2 (AUDIO_DEVICE_OUT_SPEAKER)
+-    09-27 18:58:44.343 AT::add       (0xb4000073db134ba0)   18534/  10293   12441    2917 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:58:59.117 AT::remove    (0xb4000073db134ba0)   18534/  10293   12441    2917 00000001 00000003  48000 0x8100    1  2        -55       false
+-    09-27 18:58:59.138 CFG_EVENT_RELEASE_AUDIO_PATCH: old device 0x2 (AUDIO_DEVICE_OUT_SPEAKER) new device  (Empty device types)
+
+
+<MultiRecordManager>
+
+ ## BEGIN setParameters dump 
+
+  Rejected setParameters:
+
+  App setParameters:
+
+  System setParameters:
+    09-27 18:01:51.857 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:03:38.559 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:03:39.192 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:05:26.016 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:05:29.112 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:05:57.013 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:05:57.348 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:34:30.457 UID  1000, 1 KVP received: g_hw_display_rotation=0
+    09-27 18:34:30.471 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:34:30.694 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:34:31.675 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:34:31.777 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:34:32.045 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:35:01.422 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:35:01.545 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:50:53.127 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:50:53.348 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:51:04.311 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:51:04.318 UID  1000, 1 KVP received: g_effect_game_dolby_enable=0
+    09-27 18:51:04.324 UID  1000, 1 KVP received: g_effect_dolby_volume_leveler=-1
+    09-27 18:51:04.326 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:51:04.561 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:51:04.851 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:51:06.442 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:51:49.302 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:51:53.965 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:51:57.003 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:52:20.483 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:52:22.704 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:52:22.902 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:52:23.866 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:52:26.275 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:52:26.517 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:52:53.025 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:52:53.177 UID  1000, 1 KVP received: screen_state=off
+    09-27 18:55:41.508 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:55:41.693 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:55:53.770 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:55:53.780 UID  1000, 1 KVP received: g_effect_game_dolby_enable=0
+    09-27 18:55:53.788 UID  1000, 1 KVP received: g_effect_dolby_volume_leveler=-1
+    09-27 18:55:53.790 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:55:54.020 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:55:54.344 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:55:55.908 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:56:39.461 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:56:44.124 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:56:47.208 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:56:48.212 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:56:51.530 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:56:53.928 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:56:54.189 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:57:05.879 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:57:05.893 UID  1000, 1 KVP received: g_effect_game_dolby_enable=0
+    09-27 18:57:05.912 UID  1000, 1 KVP received: g_effect_dolby_volume_leveler=-1
+    09-27 18:57:05.916 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:57:06.130 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:57:06.457 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:57:08.008 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:57:53.909 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:57:56.481 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:57:59.599 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:10.758 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:14.065 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:15.955 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:16.216 UID  1000, 1 KVP received: audioHDR=0
+    09-27 18:58:28.059 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:58:28.074 UID  1000, 1 KVP received: g_effect_game_dolby_enable=0
+    09-27 18:58:28.089 UID  1000, 1 KVP received: g_effect_dolby_volume_leveler=-1
+    09-27 18:58:28.091 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:58:28.312 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:28.625 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:30.183 UID  1000, 1 KVP received: screen_state=on
+    09-27 18:58:44.882 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:58:44.894 UID  1000, 1 KVP received: g_effect_game_dolby_enable=0
+    09-27 18:58:44.909 UID  1000, 1 KVP received: g_effect_dolby_volume_leveler=-1
+    09-27 18:58:44.912 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:58:59.901 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+    09-27 18:58:59.909 UID  1000, 1 KVP received: g_effect_game_dolby_enable=0
+    09-27 18:58:59.917 UID  1000, 1 KVP received: g_effect_dolby_volume_leveler=-1
+    09-27 18:58:59.918 UID  1000, 2 KVP received: g_effect_dolby_enable=0;g_effect_dolby_profile=5
+
+  FlatMotion setParameters:
+
+ ## BEGIN misc af dump 
+
+Patches:
+  Patch 12: No software bridge (thread 0x0 => thread 0x0) thread 0xb40000759f514ff0 num sinks (1) first device type 00000002
+  Patch 28: No software bridge (thread 0x0 => thread 0x0) thread 0xb40000759d7c9ff0 num sinks (1) first device type 00000002
+  Patch 36: No software bridge (thread 0x0 => thread 0x0) thread 0xb40000759ac57ff0 num sinks (1) first device type 00010000
+  Patch 44: No software bridge (thread 0x0 => thread 0x0) thread 0xb40000759a927ff0 num sinks (1) first device type 00000002
+  Patch 5596: No software bridge (thread 0x0 => thread 0x0) thread 0xb40000759e917ff0 num sinks (1) first device type 00000002
+  Patch 5756: No software bridge (thread 0x0 => thread 0x0) thread 0xb40000738b14daf8 num sinks (1) first device type 00000002
+
+Device Effects:
+
+Sound Dose:
+CSD is disabled[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : PRIMARY
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : DEEP
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : LOW
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : FAST_290
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : OFFLOAD
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : INCALL_MUSIC
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : HAPTIC
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : RECORD_SOURCE_0
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : RECORD_R_SUBMIX_48000
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : RECORD_SOURCE_6
+[END_AUDIO_TRACE]
+[START_AUDIO_TRACE]
+Version : AudioTracer_v2.0
+Archive : RECORD_SOURCE_5
+[END_AUDIO_TRACE]
+[START_AUDIO_SEC_INFO]
+0927022938607,startInput portId 2840
+0927023021015,stopInput portId 2840
+0927023021060,startInput portId 2843
+0927023036369,stopInput portId 2843
+0927023037169,startInput portId 2850
+0927023142006,stopInput portId 2850
+0927023509578,startInput portId 2855
+0927023513791,stopInput portId 2855
+0927023513846,startInput portId 2853
+0927023517063,stopInput portId 2853
+0927023517833,startInput portId 2863
+0927023520545,stopInput portId 2863
+0927023719355,startInput portId 2868
+0927023723644,stopInput portId 2868
+0927023723692,startInput portId 2866
+0927023734026,stopInput portId 2866
+0927023734824,startInput portId 2876
+0927023740324,stopInput portId 2876
+0927034911779,startInput portId 2881
+0927034939855,stopInput portId 2881
+0927034939907,startInput portId 2879
+0927035000201,stopInput portId 2879
+0927035000997,startInput portId 2889
+0927035201025,stopInput portId 2889
+[END_AUDIO_SEC_INFO]
