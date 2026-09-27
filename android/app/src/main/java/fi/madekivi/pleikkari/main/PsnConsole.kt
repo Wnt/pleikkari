@@ -97,6 +97,10 @@ internal fun shouldLoadPsnConsoleList(
 internal fun shouldReloadPsnConsoleList(state: PsnConsoleListState?): Boolean =
 	state == PsnConsoleListState.Hidden || state is PsnConsoleListState.Error
 
+/** PLE-271: a PSN list that loaded but holds no Remote Play console says so instead of staying silent. */
+internal fun showPsnNoRemotePlayConsoles(state: PsnConsoleListState?, psnConsoles: List<PsnConsole>): Boolean =
+	state == PsnConsoleListState.Ready && psnConsoles.isEmpty()
+
 sealed interface PsnConsoleListState
 {
 	data object Hidden : PsnConsoleListState

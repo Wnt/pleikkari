@@ -242,6 +242,17 @@
                         android:text="@string/action_retry" />
                 </LinearLayout>
 
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/psnNoRemotePlayTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingHorizontal="20dp"
+                    android:paddingVertical="8dp"
+                    android:text="@string/psn_no_remote_play_consoles"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone" />
+
                 <LinearLayout
                     android:id="@+id/psnActionErrorLayout"
                     android:layout_width="match_parent"
