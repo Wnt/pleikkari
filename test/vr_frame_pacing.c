@@ -234,6 +234,77 @@ static MunitResult test_drain(const MunitParameter params[], void *user)
 	return MUNIT_OK;
 }
 
+// PLE-753: the hold and drain, with no late latch.
+static MunitResult test_hold_drain(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	PleikkariVrPacingConfig config;
+	pleikkari_vr_pacing_config_default(&config, 72.0f);
+	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "holddrain"), ==, 1);
+	munit_assert_int(config.mode, ==, PLEIKKARI_VR_PACING_HOLD);
+	munit_assert_string_equal(pleikkari_vr_pacing_mode_name(PLEIKKARI_VR_PACING_HOLD), "hold and drain");
+	PleikkariVrPacing pacing;
+	pleikkari_vr_pacing_init(&pacing, &config);
+	// Throttled frames at lead 0 start as soon as the submit returns, as VrApi's own loop does: a
+	// room keeps the whole refresh.
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, 2000 * MS), ==, 0);
+	int64_t release = throttled_frames(&pacing, 2000 * MS, 400, 0);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	munit_assert_false(pacing.draining);
+	// A frame came 5 ms after its release and was let through at once: the next one starts at
+	// the next release, not in the late one's refresh.
+	const int64_t late = release + REAL_72 + 5 * MS;
+	frame(&pacing, late - 3 * MS, 3 * MS, 2 * MS, release + 2 * REAL_72 + lead0(REAL_72));
+	munit_assert_false(pacing.throttled);
+	int64_t wake = pleikkari_vr_pacing_wake_ns(&pacing, late + 2 * MS);
+	munit_assert_int64(wake, >=, release + 2 * REAL_72 - 20000LL);
+	munit_assert_int64(wake, <=, release + 2 * REAL_72 + 20000LL);
+	// Back on time: no sleep.
+	release = throttled_frames(&pacing, release + 2 * REAL_72, 1, 0);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	// A late return 1 ms before a release may share that release's refresh with its submit
+	// call: the next frame waits for the release after it.
+	const int64_t r = release + 2 * REAL_72;
+	frame(&pacing, r - 6 * MS, 3 * MS, 2 * MS, r + REAL_72 + lead0(REAL_72));
+	wake = pleikkari_vr_pacing_wake_ns(&pacing, r - 1 * MS);
+	munit_assert_int64(wake, >=, r + REAL_72 - 20000LL);
+	munit_assert_int64(wake, <=, r + REAL_72 + 20000LL);
+	PleikkariVrPacingWindow window;
+	pleikkari_vr_pacing_take_window(&pacing, &window);
+	munit_assert_uint32(window.drains, ==, 0);
+
+	// At lead 1, the 36th frame in a row drains: the next frame skips the release it would start
+	// at and starts at the one after, once within 2 s.
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 3000 * MS, PLEIKKARI_VR_PACING_DRAIN_FRAMES - 1, 1);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	release = throttled_frames(&pacing, release, 1, 1);
+	wake = pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_true(pacing.draining);
+	munit_assert_int64(wake, >=, release + REAL_72 - 20000LL);
+	munit_assert_int64(wake, <=, release + REAL_72 + 20000LL);
+	release = throttled_frames(&pacing, release + REAL_72, 100, 1);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	munit_assert_false(pacing.draining);
+	pleikkari_vr_pacing_take_window(&pacing, &window);
+	munit_assert_uint32(window.drains, ==, 1);
+	munit_assert_uint32(window.leads[1], ==, PLEIKKARI_VR_PACING_DRAIN_FRAMES + 100);
+	// drain=2 skips one release more; drain=0 turns the drain off and leaves the hold.
+	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "drain=2"), ==, 1);
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 9000 * MS, PLEIKKARI_VR_PACING_DRAIN_FRAMES, 1);
+	wake = pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL);
+	munit_assert_int64(wake, >=, release + 2 * REAL_72 - 20000LL);
+	munit_assert_int64(wake, <=, release + 2 * REAL_72 + 20000LL);
+	munit_assert_int(pleikkari_vr_pacing_config_parse(&config, "drain=0"), ==, 1);
+	pleikkari_vr_pacing_init(&pacing, &config);
+	release = throttled_frames(&pacing, 9000 * MS, 200, 1);
+	munit_assert_int64(pleikkari_vr_pacing_wake_ns(&pacing, release + 50000LL), ==, 0);
+	munit_assert_false(pacing.draining);
+	return MUNIT_OK;
+}
+
 static MunitResult test_experiments(const MunitParameter params[], void *user)
 {
 	(void)params;
@@ -262,6 +333,7 @@ MunitTest tests_vr_frame_pacing[] = {
 	{ "/late_start", test_late_start, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/hold_and_period", test_hold_and_period, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/drain", test_drain, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
+	{ "/hold_drain", test_hold_drain, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/experiments", test_experiments, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL }
 };

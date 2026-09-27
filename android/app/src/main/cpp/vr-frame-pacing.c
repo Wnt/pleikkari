@@ -59,6 +59,8 @@ int pleikkari_vr_pacing_config_parse(PleikkariVrPacingConfig *config, const char
 			config->drain_refreshes = (uint32_t)strtoul(value, NULL, 10);
 		else if(strcmp(item, "late") == 0)
 			config->mode = PLEIKKARI_VR_PACING_LATE;
+		else if(strcmp(item, "holddrain") == 0)
+			config->mode = PLEIKKARI_VR_PACING_HOLD;
 		else if(strncmp(item, "sleep=", 6) == 0)
 			config->sleep_ns = parse_us(value, NULL);
 		else if(strncmp(item, "budget=", 7) == 0)
@@ -127,6 +129,21 @@ int64_t pleikkari_vr_pacing_next_release_ns(const PleikkariVrPacing *pacing, int
 	return pacing->release_ns + periods * pacing->period_ns;
 }
 
+// Out of a lead of 1 or more held for DRAIN_FRAMES frames, at most once per DRAIN_INTERVAL: the
+// frame being started skips releases, so the one before it is shown once more (VrApi may count a
+// stale frame) and this one takes a slot at lead 0.
+static bool drain_due(PleikkariVrPacing *pacing, int64_t now_ns)
+{
+	if(!pacing->config.drain_refreshes || pacing->lead_frames < PLEIKKARI_VR_PACING_DRAIN_FRAMES
+			|| (pacing->drain_ns && now_ns - pacing->drain_ns < PLEIKKARI_VR_PACING_DRAIN_INTERVAL_NS))
+		return false;
+	pacing->drain_ns = now_ns;
+	pacing->lead_frames = 0;
+	pacing->draining = true;
+	pacing->window.drains++;
+	return true;
+}
+
 int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns)
 {
 	const PleikkariVrPacingConfig *config = &pacing->config;
@@ -138,25 +155,26 @@ int64_t pleikkari_vr_pacing_wake_ns(PleikkariVrPacing *pacing, int64_t now_ns)
 	const bool late_frame = pacing->return_ns > 0 && !pacing->throttled;
 	int64_t release = pleikkari_vr_pacing_next_release_ns(pacing, now_ns);
 	pacing->draining = false;
-	if(release && (config->mode == PLEIKKARI_VR_PACING_LATE || (config->hold && late_frame)))
+	if(release && (config->mode == PLEIKKARI_VR_PACING_LATE
+			|| (config->mode == PLEIKKARI_VR_PACING_VRAPI && config->hold && late_frame)))
 	{
 		if(release - now_ns < PLEIKKARI_VR_PACING_MIN_START_NS)
 			release += pacing->period_ns;
-		// Out of a lead of 1 or more: this frame skips releases, so it is shown late once (VrApi
-		// counts a stale frame) and the next one, held too, takes a slot at lead 0.
-		if(config->mode == PLEIKKARI_VR_PACING_LATE && config->drain_refreshes
-				&& pacing->lead_frames >= PLEIKKARI_VR_PACING_DRAIN_FRAMES
-				&& (!pacing->drain_ns || now_ns - pacing->drain_ns >= PLEIKKARI_VR_PACING_DRAIN_INTERVAL_NS))
-		{
+		if(config->mode == PLEIKKARI_VR_PACING_LATE && drain_due(pacing, now_ns))
 			release += (int64_t)config->drain_refreshes * pacing->period_ns;
-			pacing->drain_ns = now_ns;
-			pacing->lead_frames = 0;
-			pacing->draining = true;
-			pacing->window.drains++;
-		}
 		const int64_t start = release - config->budget_ns;
 		if(start > now_ns)
 			wake = start;
+	}
+	else if(release && config->mode == PLEIKKARI_VR_PACING_HOLD)
+	{
+		// PLE-753: no budget; a held frame starts at the release itself, the moment a throttled
+		// submit would have returned, so it has the whole refresh too. A drain starts it one
+		// release later for each refresh drained (the first is the one skipped by waiting).
+		const bool drain = drain_due(pacing, now_ns);
+		if(late_frame || drain)
+			wake = pleikkari_vr_pacing_next_release_ns(pacing, now_ns + PLEIKKARI_VR_PACING_HOLD_GUARD_NS)
+				+ (drain ? (int64_t)(config->drain_refreshes - 1) * pacing->period_ns : 0);
 	}
 	if(config->sweep_frames && frame > 0 && frame % config->sweep_frames == 0)
 	{
@@ -247,6 +265,7 @@ const char *pleikkari_vr_pacing_mode_name(PleikkariVrPacingMode mode)
 	switch(mode)
 	{
 		case PLEIKKARI_VR_PACING_LATE: return "late start";
+		case PLEIKKARI_VR_PACING_HOLD: return "hold and drain";
 		default: return "VrApi release";
 	}
 }

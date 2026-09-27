@@ -146,8 +146,9 @@ struct Cinema {
     // PLE-715: when each frame starts (after the loop's own sleep, if any) and what VrApi's
     // scheduler did with it; the per-second "Frame pacing" line with the stats log on.
     PleikkariVrPacing pacing;
-    // The mode asked for; the late start is for the plain cinema only (see applyPacingMode).
+    // The modes asked for, with the plain screen and with a room (see applyPacingMode).
     PleikkariVrPacingMode pacingRequested = PLEIKKARI_VR_PACING_VRAPI;
+    PleikkariVrPacingMode roomPacingRequested = PLEIKKARI_VR_PACING_VRAPI;
     bool pacingLog = false;
     int64_t frameStartNs = 0;
     int64_t frameSleptNs = 0;
@@ -235,7 +236,7 @@ struct Cinema {
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
-        setPacing(PLEIKKARI_VR_PACING_VRAPI, false, nullptr, refreshHz);
+        setPacing(PLEIKKARI_VR_PACING_VRAPI, PLEIKKARI_VR_PACING_VRAPI, false, nullptr, refreshHz);
         applyClockLevels();
         {
             // PLE-698: per-frame latency mixes both clocks; log how far apart they are (expected ~0).
@@ -356,31 +357,34 @@ struct Cinema {
     }
 
     // PLE-715: mode and the stats log from the settings; spec is a debug build's experiments.
-    void setPacing(PleikkariVrPacingMode mode, bool log, const char *spec, float refreshHz) {
+    // PLE-753: roomMode applies while a room is drawn; its holddrain applies to both.
+    void setPacing(PleikkariVrPacingMode mode, PleikkariVrPacingMode roomMode, bool log, const char *spec, float refreshHz) {
         PleikkariVrPacingConfig config;
         pleikkari_vr_pacing_config_default(&config, refreshHz);
         config.mode = mode;
         const int read = pleikkari_vr_pacing_config_parse(&config, spec);
         pleikkari_vr_pacing_init(&pacing, &config);
         pacingRequested = config.mode;
+        roomPacingRequested = config.mode == PLEIKKARI_VR_PACING_HOLD || roomMode == PLEIKKARI_VR_PACING_HOLD
+            ? PLEIKKARI_VR_PACING_HOLD : PLEIKKARI_VR_PACING_VRAPI;
         pacingLog = log || config.trace;
         pacingWindowStartNs = 0;
-        if(read || mode != PLEIKKARI_VR_PACING_VRAPI)
-            LOGI("Frame pacing: %s, budget %.1f ms, period %.3f ms%s%s", pleikkari_vr_pacing_mode_name(config.mode),
-                config.budget_ns / 1e6, config.period_ns / 1e6, read ? "; debug experiments: " : "", read ? spec : "");
+        if(read || mode != PLEIKKARI_VR_PACING_VRAPI || roomPacingRequested != PLEIKKARI_VR_PACING_VRAPI)
+            LOGI("Frame pacing: %s, with a room %s, budget %.1f ms, period %.3f ms%s%s", pleikkari_vr_pacing_mode_name(config.mode),
+                pleikkari_vr_pacing_mode_name(roomPacingRequested), config.budget_ns / 1e6, config.period_ns / 1e6,
+                read ? "; debug experiments: " : "", read ? spec : "");
         applyPacingMode();
     }
 
     // PLE-715: a room's eye frame takes about 8 ms of GPU (VrApi App=, PLE-623), which the late
-    // start's budget does not leave, and the rooms were never measured with it: they keep VrApi's
-    // release, today's loop.
+    // start's budget does not leave: a room never takes the late start. PLE-753: it takes the hold
+    // and drain when that is asked for, else VrApi's release, today's loop.
     void applyPacingMode() {
-        const PleikkariVrPacingMode mode = pacingRequested == PLEIKKARI_VR_PACING_LATE && environment
-            ? PLEIKKARI_VR_PACING_VRAPI : pacingRequested;
+        const PleikkariVrPacingMode mode = environment ? roomPacingRequested : pacingRequested;
         if(pacing.config.mode == mode) return;
         pacing.config.mode = mode;
         LOGI("Frame pacing: %s%s", pleikkari_vr_pacing_mode_name(mode),
-            mode != pacingRequested ? " (late start is for the plain cinema; a room is drawn)" : "");
+            environment && pacingRequested == PLEIKKARI_VR_PACING_LATE ? " (late start is for the plain cinema; a room is drawn)" : "");
     }
 
     // PLE-715: at the top of the loop, before input and the video latch.
@@ -637,10 +641,15 @@ extern "C" JNIEXPORT jint JNICALL JNI_METHOD(messageTexture)(JNIEnv *, jobject, 
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(input)(JNIEnv *, jobject, jlong h) { return cinema(h)->input(); }
 // PLE-715: the top of every render loop iteration; sleeps when the pacing mode asks.
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(pace)(JNIEnv *, jobject, jlong h) { cinema(h)->pace(); }
-// PLE-715: mode 0 is VrApi's own release (the default), 1 the late start; spec a debug build's experiments.
-extern "C" JNIEXPORT void JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jboolean log, jstring spec, jfloat refreshHz) {
+// PLE-715: mode 0 is VrApi's own release (the default), 1 the late start, 2 (PLE-753) the hold and
+// drain; roomMode the same while a room is drawn (never the late start); spec a debug build's experiments.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(setPacing)(JNIEnv *env, jobject, jlong h, jint mode, jint roomMode, jboolean log,
+        jstring spec, jfloat refreshHz) {
     const char *chars = spec ? env->GetStringUTFChars(spec, nullptr) : nullptr;
-    cinema(h)->setPacing(mode == PLEIKKARI_VR_PACING_LATE ? PLEIKKARI_VR_PACING_LATE : PLEIKKARI_VR_PACING_VRAPI, log, chars, refreshHz);
+    auto known = [](jint m) {
+        return m == PLEIKKARI_VR_PACING_LATE || m == PLEIKKARI_VR_PACING_HOLD ? static_cast<PleikkariVrPacingMode>(m) : PLEIKKARI_VR_PACING_VRAPI;
+    };
+    cinema(h)->setPacing(known(mode), known(roomMode), log, chars, refreshHz);
     if(chars) env->ReleaseStringUTFChars(spec, chars);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(recentre)(JNIEnv *, jobject, jlong h) { pleikkari_vr_screen_placement_request(&cinema(h)->placement); }

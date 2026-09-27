@@ -315,6 +315,13 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrLateStartKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrLateStartKey, value).apply() }
 
+	// PLE-753: A/B keeping VrApi at lead 0 (hold after a late frame, drain a lead of 1) with frames still
+	// starting right after the last submit returns; applies with a room too, unlike the late start.
+	val goVrHoldDrainKey get() = "stream_go_vr_hold_drain"
+	var goVrHoldDrain
+		get() = sharedPreferences.getBoolean(goVrHoldDrainKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrHoldDrainKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)

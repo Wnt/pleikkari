@@ -534,11 +534,18 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                         host.stats(VrStatsPanel.lines(null, refreshHz, preview))
                     }
                 }
-                // PLE-715: when each frame starts relative to VrApi's release. The late start is an A/B
-                // setting; a debug build also takes `adb shell setprop debug.pleikkari.vr_pacing <experiments>`
-                // (vr-frame-pacing.h). The per-second "Frame pacing" line comes with the stats log.
+                // PLE-715: when each frame starts relative to VrApi's release. The late start (plain cinema)
+                // and PLE-753's hold and drain (plain and rooms) are A/B settings; a debug build also takes
+                // `adb shell setprop debug.pleikkari.vr_pacing <experiments>` (vr-frame-pacing.h). The
+                // per-second "Frame pacing" line comes with the stats log.
                 val pacingSpec = if(BuildConfig.DEBUG) debugProperty(PACING_PROPERTY) else ""
-                VrCinemaNative.setPacing(native, if(Preferences(this@StreamVrActivity).goVrLateStart) 1 else 0,
+                val holdDrain = Preferences(this@StreamVrActivity).goVrHoldDrain
+                val pacing = when {
+                    Preferences(this@StreamVrActivity).goVrLateStart -> PACING_LATE
+                    holdDrain -> PACING_HOLD
+                    else -> PACING_VRAPI
+                }
+                VrCinemaNative.setPacing(native, pacing, if(holdDrain) PACING_HOLD else PACING_VRAPI,
                     frameLatency, pacingSpec, refreshHz)
                 val frameReady = AtomicBoolean(false)
                 // PLE-673: count every signal, so the window log separates frames the decoder
@@ -788,6 +795,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
         /** PLE-715: debug builds only; frame pacing experiments, see vr-frame-pacing.h. */
         private const val PACING_PROPERTY = "debug.pleikkari.vr_pacing"
+        /** VrCinemaNative.setPacing modes: vr-frame-pacing.h's PleikkariVrPacingMode. */
+        private const val PACING_VRAPI = 0
+        private const val PACING_LATE = 1
+        private const val PACING_HOLD = 2
         /** PLE-722: debug builds only; "x,y" degrees from the open menu's middle for a synthetic pointer. */
         private const val POINTER_PROPERTY = "debug.pleikkari.vr_pointer"
         /** PLE-722: vr-ui-layers.h's VrUiAnchor*. */
@@ -829,8 +840,12 @@ internal object VrCinemaNative {
     external fun input(handle: Long): Int
     /** PLE-715: the top of every loop iteration, before input and the latch; sleeps when pacing asks. */
     external fun pace(handle: Long)
-    /** PLE-715: mode 0 VrApi's release (default), 1 the late start; log the per-second pacing line. */
-    external fun setPacing(handle: Long, mode: Int, log: Boolean, spec: String, refreshHz: Float)
+    /**
+     * PLE-715: mode 0 VrApi's release (default), 1 the late start, 2 (PLE-753) the hold and drain;
+     * [roomMode] the same while a room is drawn (a room never takes the late start); log the
+     * per-second pacing line.
+     */
+    external fun setPacing(handle: Long, mode: Int, roomMode: Int, log: Boolean, spec: String, refreshHz: Float)
     external fun recentre(handle: Long)
     external fun setFullPoseRecentre(handle: Long, enabled: Boolean)
     /** PLE-722: [uiControl] null keeps the strip menu; otherwise VrUiHost's control slots in, its output slots in [uiOut]. */
