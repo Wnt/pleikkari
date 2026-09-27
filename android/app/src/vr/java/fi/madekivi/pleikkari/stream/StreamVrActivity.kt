@@ -442,13 +442,16 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         private val paint = Paint()
         private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = PREVIEW_HEIGHT / 12f }
         private var frames = 0L
-        private var lastNs = 0L
+        private var deadlineNs = 0L
         private var inFlight = false
 
         fun post() {
             val now = System.nanoTime()
-            if(inFlight || now - lastNs < 1_000_000_000L / 60) return
-            lastNs = now
+            // PLE-716: a deadline accumulator, not "skip if under 1/60 s since the last post". Polled
+            // from a 72 Hz loop, that check posted every other iteration (36 fps); advancing the
+            // deadline by a fixed period posts 60 of every 72. Resync after a stall instead of bursting.
+            if(inFlight || now < deadlineNs) return
+            deadlineNs = if(now - deadlineNs > PERIOD_NS) now + PERIOD_NS else deadlineNs + PERIOD_NS
             val canvas = output.lockHardwareCanvas()
             try {
                 val w = PREVIEW_WIDTH.toFloat()
@@ -470,6 +473,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
 
         fun consumed() {
             inFlight = false
+        }
+
+        private companion object {
+            const val PERIOD_NS = 1_000_000_000L / 60
         }
     }
 
