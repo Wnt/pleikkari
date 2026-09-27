@@ -280,6 +280,11 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrMatch60HzKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrMatch60HzKey, value).apply() }
 
+	val goVrRoomHighGpuKey get() = "stream_go_vr_room_high_gpu"
+	var goVrRoomHighGpu
+		get() = sharedPreferences.getBoolean(goVrRoomHighGpuKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrRoomHighGpuKey, value).apply() }
+
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled
 		get() = sharedPreferences.getBoolean(videoPacingEnabledKey, false)

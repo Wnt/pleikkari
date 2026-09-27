@@ -34,6 +34,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val main = Handler(Looper.getMainLooper())
     private var preview = false
     private var previewEnvironment: String? = null
+    private var environmentSamples = DEFAULT_ENVIRONMENT_SAMPLES
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +43,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // picture, so the Go's cinema and environment cost can be read from adb (README).
         preview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_VR_CINEMA_PREVIEW, false)
         previewEnvironment = if(preview) intent.getStringExtra(EXTRA_ENVIRONMENT) else null
+        if(preview) environmentSamples = intent.getIntExtra(EXTRA_ENVIRONMENT_MSAA, DEFAULT_ENVIRONMENT_SAMPLES)
         if(!GoVrSupport.available() || !preview && (!Preferences(this).goVrEnabled || info == null)) {
             finish()
             return
@@ -149,9 +151,11 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
             try {
                 // PLE-636: 60 Hz only when the setting is on and the stream is 60 fps.
                 val refreshHz = if(Preferences(this@StreamVrActivity).goVrMatch60Hz && info?.videoProfile?.maxFPS == 60) 60f else 72f
-                native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz)
+                native = VrCinemaNative.create(this@StreamVrActivity, surface, refreshHz, environmentSamples)
                 check(native != 0L) { "VrApi/EGL initialization or $refreshHz Hz request failed (see GoCinema log)" }
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
+                // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
+                if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
                 val stored = Preferences(this@StreamVrActivity).vrEnvironmentConfig()
                 val environment = previewEnvironment?.let { stored.copy(environment = VrEnvironmentKind.fromValue(it)) } ?: stored
                 environment.toNative().let {
@@ -289,19 +293,23 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_VR_CINEMA_PREVIEW = "vr_cinema_preview"
         /** With the preview: plain, void, cinema or terrace instead of the stored setting. */
         const val EXTRA_ENVIRONMENT = "environment"
+        /** PLE-653: with the preview, the rooms' MSAA sample count (1 turns MSAA off) instead of PLE-615's 4x. */
+        const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
+        private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
         private const val PREVIEW_WIDTH = 1280
         private const val PREVIEW_HEIGHT = 720
     }
 }
 
 internal object VrCinemaNative {
-    external fun create(activity: android.app.Activity, surface: Surface, refreshHz: Float): Long
+    external fun create(activity: android.app.Activity, surface: Surface, refreshHz: Float, environmentSamples: Int): Long
     external fun videoTexture(handle: Long): Int
     external fun messageTexture(handle: Long): Int
     external fun input(handle: Long): Int
     external fun recentre(handle: Long)
     external fun draw(handle: Long, transform: FloatArray, video: Boolean, menu: Boolean, newFrame: Boolean): Int
     /** PLE-603: [VrEnvironmentNativeConfig] fields; environment 0 (plain) removes the room. */
+    external fun setRoomGpuLevel(handle: Long, level: Int)
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
         heightOffset: Float, glow: Float, roomLight: Float)
     external fun destroy(handle: Long)

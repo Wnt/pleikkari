@@ -26,7 +26,6 @@ namespace {
 constexpr int Segments = 64;
 constexpr float Radius = 3.0f;
 constexpr float Arc = 1.4f; // 80 degrees wide, 3 m away; arc length preserves 16:9.
-constexpr GLsizei EnvironmentSamples = 4; // PLE-615: the environments' thin edges assume Skybox's 4x.
 struct Eye {
     ovrTextureSwapChain *chain = nullptr;
     std::vector<GLuint> fbos;
@@ -116,6 +115,8 @@ struct Cinema {
     // the default picture is this file's own path, untouched.
     PleikkariVrEnvironment *environment = nullptr;
     long long environmentStatsFrame = 0;
+    // PLE-652: GPU clock level while a room is drawn; 2 (the PLE-623 baseline) unless the A/B setting raises it.
+    int roomGpuLevel = 2;
 
     ~Cinema() {
         // Called on the same Java render thread, with its JNIEnv and EGL context still alive.
@@ -143,7 +144,8 @@ struct Cinema {
         if(java.ActivityObject) java.Env->DeleteGlobalRef(java.ActivityObject);
     }
 
-    bool init(JNIEnv *env, jobject activity, jobject surface, float refreshHz) {
+    // environmentSamples: PLE-615's 4x unless the debug preview asks otherwise (PLE-653).
+    bool init(JNIEnv *env, jobject activity, jobject surface, float refreshHz, GLsizei environmentSamples) {
         env->GetJavaVM(&java.Vm);
         java.Env = env;
         java.ActivityObject = env->NewGlobalRef(activity);
@@ -183,7 +185,7 @@ struct Cinema {
         vr = vrapi_EnterVrMode(&mode);
         if(!vr) { LOGE("vrapi_EnterVrMode failed"); return false; }
         if(vrapi_SetDisplayRefreshRate(vr, refreshHz) < 0) { LOGE("Runtime refused %.0f Hz", refreshHz); return false; }
-        vrapi_SetClockLevels(vr, 2, 2);
+        applyClockLevels();
         width = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH);
         height = vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT);
         if(width <= 0 || height <= 0) return false;
@@ -193,7 +195,7 @@ struct Cinema {
         const char *extensions = reinterpret_cast<const char *>(glGetString(GL_EXTENSIONS));
         GLint maxSamples = 0;
         if(extensions && strstr(extensions, "GL_EXT_multisampled_render_to_texture")) glGetIntegerv(GL_MAX_SAMPLES_EXT, &maxSamples);
-        const GLsizei samples = std::min<GLsizei>(EnvironmentSamples, maxSamples);
+        const GLsizei samples = std::min<GLsizei>(environmentSamples, maxSamples);
         if(!attachMultisample || samples < 2) { attachMultisample = nullptr; LOGI("No multisampled render-to-texture; environments render without MSAA"); }
         for(auto &eye : eyes) {
             eye.chain = vrapi_CreateTextureSwapChain3(VRAPI_TEXTURE_TYPE_2D, GL_RGBA8, width, height, 1, 3);
@@ -255,7 +257,19 @@ struct Cinema {
     // PLE-603: apply the environment setting. PLAIN drops the renderer so nothing of it
     // runs per frame; anything else builds or reconfigures it on this GL thread. A room
     // that fails to build logs and falls back to the plain screen rather than failing VR.
+    // PLE-652: CPU stays at 2; the GPU takes roomGpuLevel only while a room is active.
+    void applyClockLevels() {
+        const int gpu = environment ? roomGpuLevel : 2;
+        const ovrResult result = vrapi_SetClockLevels(vr, 2, gpu);
+        LOGI("Clock levels CPU 2 / GPU %d (%s)", gpu, result == ovrSuccess ? "accepted" : "refused");
+    }
+
     void setEnvironment(const PleikkariVrEnvironmentConfig &requested) {
+        setEnvironmentRenderer(requested);
+        applyClockLevels();
+    }
+
+    void setEnvironmentRenderer(const PleikkariVrEnvironmentConfig &requested) {
         PleikkariVrEnvironmentConfig config = requested;
         pleikkari_vr_environment_config_clamp(&config);
         if(config.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN) {
@@ -414,9 +428,9 @@ struct Cinema {
 Cinema *cinema(jlong handle) { return reinterpret_cast<Cinema *>(handle); }
 } // namespace
 
-extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobject activity, jobject surface, jfloat refreshHz) {
+extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(create)(JNIEnv *env, jobject, jobject activity, jobject surface, jfloat refreshHz, jint environmentSamples) {
     std::unique_ptr<Cinema> state(new Cinema());
-    if(!state->init(env, activity, surface, refreshHz)) { LOGE("Cinema initialization failed; EGL error 0x%x", eglGetError()); return 0; }
+    if(!state->init(env, activity, surface, refreshHz, environmentSamples)) { LOGE("Cinema initialization failed; EGL error 0x%x", eglGetError()); return 0; }
     return reinterpret_cast<jlong>(state.release());
 }
 extern "C" JNIEXPORT jint JNICALL JNI_METHOD(videoTexture)(JNIEnv *, jobject, jlong h) { return cinema(h)->video; }
@@ -442,5 +456,9 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setEnvironment)(JNIEnv *, jobject, 
     config.glow = glow;
     config.room_light = roomLight;
     cinema(h)->setEnvironment(config);
+}
+// PLE-652: call before setEnvironment; it applies on the next environment change.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(setRoomGpuLevel)(JNIEnv *, jobject, jlong h, jint level) {
+    cinema(h)->roomGpuLevel = std::clamp(static_cast<int>(level), 0, 4);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(destroy)(JNIEnv *, jobject, jlong h) { delete cinema(h); }

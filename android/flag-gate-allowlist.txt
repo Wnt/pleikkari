@@ -29,7 +29,9 @@ debug-guard | source set: android/app/src/debug/AndroidManifest.xml | debug-harn
 default-off-pref | stream_go_vr_enabled | measurement | PLE-602: native Go cinema A/B against the existing Oculus TV virtual display
 default-off-pref | stream_decoder_qcom_vt_low_latency | measurement | PLE-635: Qualcomm vt-low-latency (decode-order output) on the Oculus Go, A/B against today's display-order output for PLE-601; shown and applied only on the Go
 default-off-pref | stream_go_vr_match_60hz | measurement | PLE-636: Go panel at 60 Hz for a 60 fps stream vs 72 Hz resampling; PLE-601 A/B
+default-off-pref | stream_go_vr_room_high_gpu | measurement | PLE-652: Go GPU clock level 4 vs 2 while a VrApi cinema room is drawn; A/B for stale frames vs battery and heat
 adb-only-extra | EXTRA_VR_CINEMA_PREVIEW | debug-harness | PLE-623: `am start` extra that opens the VrApi cinema with no console for Go previews; read only behind the BuildConfig.DEBUG guard in StreamVrActivity (scanned since PLE-657)
 adb-only-extra | EXTRA_ENVIRONMENT | debug-harness | PLE-623: picks the environment for the debug VR previews (StreamVrActivity preview, VrEnvironmentPreviewActivity); only read when the DEBUG-gated preview is on (scanned since PLE-657)
 debug-guard | fi/madekivi/pleikkari/main/MainActivity.kt: if(BuildConfig.DEBUG && savedInstanceState == null) | debug-harness | PLE-659: reads the adb auto-connect extra so Go and S22 latency runs start a stream unattended; ignored in a release build
 adb-only-extra | EXTRA_AUTO_CONNECT_HOST | debug-harness | PLE-659: `am start -e auto_connect_host <address>` streams from that registered console once discovered; debug builds only
+adb-only-extra | EXTRA_ENVIRONMENT_MSAA | measurement | PLE-653: sets the VrApi rooms' MSAA sample count (default 4, PLE-615) for 4x-vs-off Go runs; only read when the DEBUG-gated preview is on
