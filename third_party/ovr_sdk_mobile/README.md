@@ -46,9 +46,40 @@ Go VR and the PSN mock build use mutually exclusive manifest overlays; use
 
 On an arm64 Oculus Go (`Build.DEVICE == "pacific"`, API 25+), Settings offers
 **Native VR cinema (Oculus Go)** only when both native libraries load. It defaults
-to off. Both LAN and opted-in PSN Connect paths route through the same selection;
+to on on the Go since PLE-689 (off everywhere else). Both LAN and opted-in PSN Connect paths route through the same selection;
 phones always open the original `StreamActivity`, even with an imported true
 preference. Turning the setting off restores the existing Oculus TV stream.
+
+**Library launch (PLE-690).** With the setting on, launching Pleikkari from the Go
+Library goes straight into the cinema, with no 2D panel step. The vr overlay declares an
+`activity-alias` of `StreamVrActivity`, `.stream.GoVrLibraryEntry`, with `MAIN` + `INFO` +
+`com.oculus.intent.category.VR`. vrshell's `PackageUtil.isVrApp()` accepts that category as
+well as application-level `vr_only`/`dual` meta-data, so a VR app launch runs
+`ShellApplication.sendLaunchIntent()`. That starts `getLaunchIntentForPackage()`, which prefers
+`MAIN`/`INFO` over `MainActivity`'s `LAUNCHER`. The alias ships `enabled="false"`.
+`GoVrSupport.syncLibraryEntry` enables it at app start, and when the setting changes, only on
+an eligible Go with the setting on, so no phone ever resolves it. The package manager keeps that
+state across `install -r`, but a fresh install needs one app start (the Library's 2D launch
+into Oculus TV) before the Library treats the app as VR. `StreamVrActivity` has its own task
+affinity (`<applicationId>.vr`), so a Library launch never joins a `MainActivity` task that
+Oculus TV hosts.
+
+A Library launch drops every intent extra (the alias is exported) and enters the cinema at
+once. `GoVrLibraryFlow` reads the linked consoles and picks the last used one
+(`last_console_mac`, written by every Connect), or the only one. It finds the console with LAN
+discovery and wakes it from rest mode, then streams on the same `StreamViewModel`/`StreamSession`
+path as Connect. With several consoles and none used last it shows an in-VR chooser. With none
+linked it shows a message. Both have a row that opens `MainActivity` on the Oculus TV screen
+(the Library's 2D launch intent, `GoVrSupport.panelIntent`) for linking and Settings. The touchpad
+thirds move and choose; a Bluetooth pad uses the D-pad, A and B. Logcat tag `GoVrEntry`.
+
+Settings stay reachable with one console too. A click while the app looks for or wakes the
+console opens the chooser, and so does a Disconnect from the cinema menu: a Library launch
+restarts `StreamVrActivity` (not exported) with its `library_chooser` extra instead of leaving.
+There, the menu's right third reads Exit. For a proof on the Go with no console connect (the
+operator's PS5 hold), a debug build honours `adb shell setprop debug.pleikkari.go_entry_choose 1`:
+the Library launch logs the console it would stream and opens the chooser instead. Nobody clicks
+it, so nothing connects. Set it back to 0 afterwards.
 
 The cinema uses the existing `StreamViewModel`, `StreamSession`, `StreamInput`,
 codec configuration and audio. The decoder writes to an external-OES
@@ -170,17 +201,14 @@ acceptance and latency were not run. Before treating this as a usable Go build:
    (60 Hz with `stream_go_vr_match_60hz`), decoded frames are latched and drawn, and
    seven sessions, each in a fresh process, ran with no crash. Everything seen, heard or
    held in the headset still needs a person.
-4. Library classification (PLE-609, resolved): Pleikkari stays a 2D app in the
-   Go Library and opens in Oculus TV; the VR cinema is entered from Connect with
-   the setting on. The Go's own VR apps are classified per package: the installed
-   `games.b4t.epicrollercoasters.oculus` tags `vr_only` on the **application** node
-   and exposes its activity as MAIN/INFO with no LAUNCHER (aapt2 dump of the APK
-   pulled from Go `192.168.1.202:5555`, 2026-09-26). Doing the same here would
-   launch `MainActivity` in VR mode, which breaks the Oculus TV path and the phone
-   launcher, and a separate VR entry would need its own console picker in VrApi.
-   So `vr_only` stays **activity-local**. Do not move it to the application node,
-   and do not add a MAIN/INFO activity, unless a separate Go-only package or build
-   variant owns them.
+4. Library classification (PLE-609, then PLE-690): `vr_only` stays **activity-local**. Do not
+   move it to the application node, which would classify the whole package, `MainActivity` and
+   the phone launcher included (the installed `games.b4t.epicrollercoasters.oculus` does that
+   and exposes a MAIN/INFO activity with no LAUNCHER). PLE-690 makes the Library launch VR in a
+   different way: the vrshell dex (`com.oculus.vrshell.util.PackageUtil.isVrApp`) also accepts a
+   `MAIN` + `com.oculus.intent.category.VR` activity, and the only such activity here is the
+   disabled-by-default `GoVrLibraryEntry` alias described above. It has its own VrApi console
+   picker (`GoVrLibraryFlow`).
 5. PLE-601 owns operator-in-headset A/B latency rounds. Keep codec, stream profile,
    pacing preferences, network and pad identical; record the two paths and actual
    refresh cadence. Do not infer a latency improvement from removing Oculus TV.

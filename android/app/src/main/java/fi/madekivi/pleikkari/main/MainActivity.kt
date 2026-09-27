@@ -27,7 +27,6 @@ import fi.madekivi.pleikkari.common.ext.putRevealExtra
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
 import fi.madekivi.pleikkari.databinding.ActivityMainBinding
 import fi.madekivi.pleikkari.discovery.serverMac
-import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.DiscoveryHost
 import fi.madekivi.pleikkari.manualconsole.EditManualConsoleActivity
 import fi.madekivi.pleikkari.regist.PsnLoginActivity
@@ -518,32 +517,8 @@ class MainActivity : AppCompatActivity()
 				startLegacyRegistration(host)
 			return
 		}
-		val connectInfo = ConnectInfo(
-			ps5 = host.isPS5,
-			host = host.host,
-			registKey = registeredHost.rpRegistKey,
-			morning = registeredHost.rpKey,
-			videoProfile = preferences.videoProfile,
-			decoderLowLatencyEnabled = preferences.decoderLowLatencyEnabled,
-			threadPriorityBoostEnabled = preferences.threadPriorityBoostEnabled,
-			decoderLateFrameRecoveryEnabled = preferences.decoderLateFrameRecoveryEnabled,
-			packetLossMax = preferences.packetLossMax,
-			adaptiveLossReport = preferences.adaptiveLossReport,
-			takionVideoPacketReorderingDisabled = preferences.takionVideoPacketReorderingDisabled,
-			feedbackStateMinIntervalMs = if(preferences.feedbackReducedIntervalEnabled) 4 else 0,
-			feedbackStatsLogIntervalMs = preferences.feedbackStatsLogIntervalMs,
-			audioBufferBursts = preferences.audioBufferBursts,
-			audioFifoMs = preferences.audioFifoMs,
-			performanceModeEnabled = preferences.performanceModeEnabled,
-			decoderOperatingRate = preferences.decoderOperatingRate,
-			decoderOperatingRateDefault = preferences.decoderOperatingRateDefault,
-			decoderOperatingRateAuto = preferences.decoderOperatingRateAuto,
-			decoderRealtimePriority = preferences.decoderRealtimePriority,
-			decoderQcomVtLowLatency = GoDecoderProfile.vtLowLatency(preferences),
-			videoTimestampRateHz = preferences.videoTimestampRateHz,
-			streamDiagnosticsEnabled = true,
-			videoPresenterConfig = preferences.videoPresenterConfig
-		)
+		val connectInfo = preferences.connectInfo(host.host, registeredHost, ps5 = host.isPS5)
+		preferences.lastConsoleMac = registeredHost.serverMac
 		streamLauncher.launch(GoVrSupport.streamIntent(this).apply {
 			putExtra(StreamActivity.EXTRA_CONNECT_INFO, connectInfo)
 			putExtra(StreamActivity.EXTRA_JUST_LINKED, justLinked)
@@ -695,6 +670,7 @@ class MainActivity : AppCompatActivity()
 			showUnsupportedRegistration(registered)
 			return
 		}
+		preferences.lastConsoleMac = registered.serverMac
 		streamLauncher.launch(GoVrSupport.streamIntent(this).apply {
 			putExtra(StreamActivity.EXTRA_CONNECT_INFO, viewModel.connectInfo(registered))
 			putExtra(StreamActivity.EXTRA_PSN_DEVICE, console.device)

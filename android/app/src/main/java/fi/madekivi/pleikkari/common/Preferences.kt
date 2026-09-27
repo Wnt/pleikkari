@@ -11,6 +11,7 @@ import fi.madekivi.pleikkari.stream.VrEnvironmentConfig
 import fi.madekivi.pleikkari.stream.VrEnvironmentKind
 import fi.madekivi.pleikkari.lib.AndroidChiakiVideoPresenterConfig
 import fi.madekivi.pleikkari.lib.Codec
+import fi.madekivi.pleikkari.lib.ConnectInfo
 import fi.madekivi.pleikkari.lib.ConnectVideoProfile
 import fi.madekivi.pleikkari.lib.VideoFPSPreset
 import fi.madekivi.pleikkari.lib.VideoResolutionPreset
@@ -274,6 +275,12 @@ class Preferences(context: Context)
 	var goVrEnabled
 		get() = sharedPreferences.getBoolean(goVrEnabledKey, GoDecoderProfile.eligible())
 		set(value) { sharedPreferences.edit().putBoolean(goVrEnabledKey, value).apply() }
+
+	// PLE-690: the console the Go Library's VR launch streams from when more than one is registered.
+	val lastConsoleMacKey get() = "last_console_mac"
+	var lastConsoleMac: MacAddress?
+		get() = if(sharedPreferences.contains(lastConsoleMacKey)) MacAddress(sharedPreferences.getLong(lastConsoleMacKey, 0L)) else null
+		set(value) { sharedPreferences.edit().apply { if(value == null) remove(lastConsoleMacKey) else putLong(lastConsoleMacKey, value.value) }.apply() }
 
 	// PLE-636: native Go cinema at 60 Hz for a 60 fps stream; off keeps PLE-602's 72 Hz.
 	val goVrMatch60HzKey get() = "stream_go_vr_match_60hz"
@@ -670,4 +677,37 @@ class Preferences(context: Context)
 		else
 			it.copy(bitrate = bitrate)
 	}
+
+	/**
+	 * The session settings for a stream from [registeredHost] at [host] ("" when the PSN remote path
+	 * picks the address). One builder for Home's local and PSN connects and the Go Library entry (PLE-690).
+	 */
+	fun connectInfo(host: String, registeredHost: RegisteredHost?, ps5: Boolean = true, autoRegister: Boolean = false) = ConnectInfo(
+		ps5 = ps5,
+		host = host,
+		registKey = registeredHost?.rpRegistKey ?: ByteArray(16),
+		morning = registeredHost?.rpKey ?: ByteArray(16),
+		videoProfile = videoProfile,
+		decoderLowLatencyEnabled = decoderLowLatencyEnabled,
+		threadPriorityBoostEnabled = threadPriorityBoostEnabled,
+		decoderLateFrameRecoveryEnabled = decoderLateFrameRecoveryEnabled,
+		packetLossMax = packetLossMax,
+		adaptiveLossReport = adaptiveLossReport,
+		takionVideoPacketReorderingDisabled = takionVideoPacketReorderingDisabled,
+		feedbackStateMinIntervalMs = if(feedbackReducedIntervalEnabled) 4 else 0,
+		feedbackStatsLogIntervalMs = feedbackStatsLogIntervalMs,
+		audioBufferBursts = audioBufferBursts,
+		audioFifoMs = audioFifoMs,
+		autoRegister = autoRegister,
+		performanceModeEnabled = performanceModeEnabled,
+		decoderOperatingRate = decoderOperatingRate,
+		decoderOperatingRateDefault = decoderOperatingRateDefault,
+		decoderOperatingRateAuto = decoderOperatingRateAuto,
+		decoderRealtimePriority = decoderRealtimePriority,
+		decoderQcomVtLowLatency = GoDecoderProfile.vtLowLatency(this),
+		videoTimestampRateHz = videoTimestampRateHz,
+		// The Home session summary consumes the same 1 Hz counters as the optional overlay.
+		streamDiagnosticsEnabled = true,
+		videoPresenterConfig = videoPresenterConfig
+	)
 }

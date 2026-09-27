@@ -277,6 +277,11 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				title = getString(R.string.go_vr_title)
 				summary = getString(R.string.go_vr_summary)
 				isChecked = preferences.goVrEnabled
+				// PLE-690: the Library's launch follows the switch (off: Oculus TV, as before).
+				setOnPreferenceChangeListener { _, value ->
+					GoVrSupport.syncLibraryEntry(context, value as Boolean)
+					true
+				}
 			})
 			preferenceScreen.addPreference(SwitchPreferenceCompat(context).apply {
 				key = preferences.goVrMatch60HzKey

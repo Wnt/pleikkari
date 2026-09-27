@@ -398,7 +398,7 @@
 	<string name="preferences_vr_glow_percent_key">stream_vr_glow_percent</string>
 	<string name="preferences_vr_room_light_percent_key">stream_vr_room_light_percent</string>
     <string name="go_vr_title">Native VR cinema (Oculus Go)</string>
-    <string name="go_vr_summary">Head-tracked cinema at 72 Hz. Turn off to use the Oculus TV screen.</string>
+    <string name="go_vr_summary">Head-tracked cinema at 72 Hz; the Go Library opens straight into it. Turn off to use the Oculus TV screen.</string>
     <string name="go_vr_match_60hz_title">Match panel to stream (60 Hz)</string>
     <string name="go_vr_match_60hz_summary">Run the Go panel at 60 Hz when the stream is 60 fps, instead of 72 Hz.</string>
     <string name="go_vr_room_high_gpu_title">Higher GPU clock in rooms</string>
@@ -414,4 +414,17 @@
     <string name="go_vr_recentre">Recentre</string>
     <string name="go_vr_disconnect">Disconnect</string>
     <string name="go_vr_menu_help">Click left: Resume · centre: Recentre · right: Disconnect</string>
+    <string name="go_vr_exit">Exit</string>
+    <string name="go_vr_menu_help_exit">Click left: Resume · centre: Recentre · right: Exit</string>
+    <!-- PLE-690: the Go Library's VR launch, drawn in the cinema; keep lines under about 60 characters. -->
+    <string name="go_vr_entry_loading">Pleikkari\n\nLooking for your PlayStation…</string>
+    <string name="go_vr_entry_finding">Looking for %1$s on this network…</string>
+    <string name="go_vr_entry_waking">Waking %1$s from rest mode…</string>
+    <string name="go_vr_entry_not_found">%1$s did not answer on this network.\nCheck that it is on or in rest mode,\non the same network as this headset.</string>
+    <string name="go_vr_entry_finding_help">Click the touchpad for your consoles and settings.</string>
+    <string name="go_vr_entry_not_found_help">Click the touchpad to try again, or for settings.\nBack: menu</string>
+    <string name="go_vr_entry_no_console">No PlayStation 5 is linked to Pleikkari yet.\n\nLink it in Pleikkari on the Oculus TV screen:\nclick the touchpad to open it there.\n\nBack: menu</string>
+    <string name="go_vr_entry_choose">Choose a PlayStation</string>
+    <string name="go_vr_entry_panel">Link a console or change settings (Oculus TV screen)</string>
+    <string name="go_vr_entry_choose_help">Click left or right to move, centre to choose.\nGamepad: D-pad to move, A to choose, B to leave.</string>
 </resources>
