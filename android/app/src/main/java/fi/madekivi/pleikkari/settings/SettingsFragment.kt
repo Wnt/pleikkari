@@ -75,6 +75,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.controllerInputCoalescingEnabledKey -> preferences.controllerInputCoalescingEnabled
 		preferences.gamepadUnbufferedDispatchEnabledKey -> preferences.gamepadUnbufferedDispatchEnabled
 		preferences.padInputThreadEnabledKey -> preferences.padInputThreadEnabled
+		// PLE-829: PLE-509's switch was missing here, so it never stored a change (XmlSwitchDataStoreTest).
+		preferences.senkushaFallbackNoticeEnabledKey -> preferences.senkushaFallbackNoticeEnabled
 		preferences.gamepadTriggerFallbackEnabledKey -> preferences.gamepadTriggerFallbackEnabled
 		preferences.touchscreenTouchpadEnabledKey -> preferences.touchscreenTouchpadEnabled
 		preferences.coalesceTouchRedrawEnabledKey -> preferences.coalesceTouchRedrawEnabled
@@ -134,6 +136,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.controllerInputCoalescingEnabledKey -> preferences.controllerInputCoalescingEnabled = value
 			preferences.gamepadUnbufferedDispatchEnabledKey -> preferences.gamepadUnbufferedDispatchEnabled = value
 			preferences.padInputThreadEnabledKey -> preferences.padInputThreadEnabled = value
+			preferences.senkushaFallbackNoticeEnabledKey -> preferences.senkushaFallbackNoticeEnabled = value
 			preferences.gamepadTriggerFallbackEnabledKey -> preferences.gamepadTriggerFallbackEnabled = value
 			preferences.touchscreenTouchpadEnabledKey -> preferences.touchscreenTouchpadEnabled = value
 			preferences.coalesceTouchRedrawEnabledKey -> preferences.coalesceTouchRedrawEnabled = value
