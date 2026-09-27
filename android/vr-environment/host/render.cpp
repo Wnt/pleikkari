@@ -5,7 +5,7 @@
 // for. This is the off-headset proof the ticket allows when the Oculus Mobile SDK and
 // PLE-602's activity are not available.
 //
-//   vr-environment-render --out DIR [--size 1024] [--check] [--env NAME]
+//   vr-environment-render --out DIR [--size 1024] [--check] [--env NAME] [--yaw DEGREES]
 //
 // Output: DIR/<env>-yaw<deg>.png, a stereo pair side by side (left eye left), plus one
 // line per environment with the draw-call and triangle counts.
@@ -185,6 +185,7 @@ int main(int argc, char **argv)
 	std::string outDir = ".";
 	int size = 1024;
 	bool check = false;
+	std::vector<float> yaws{0.0f, 40.0f};
 	std::string only;
 	for(int i = 1; i < argc; ++i)
 	{
@@ -192,10 +193,11 @@ int main(int argc, char **argv)
 		if(a == "--out" && i + 1 < argc) outDir = argv[++i];
 		else if(a == "--size" && i + 1 < argc) size = atoi(argv[++i]);
 		else if(a == "--check") check = true;
+		else if(a == "--yaw" && i + 1 < argc) yaws = {float(atof(argv[++i]))};
 		else if(a == "--env" && i + 1 < argc) only = argv[++i];
 		else
 		{
-			fprintf(stderr, "usage: %s [--out DIR] [--size N] [--check] [--env NAME]\n", argv[0]);
+			fprintf(stderr, "usage: %s [--out DIR] [--size N] [--check] [--env NAME] [--yaw DEGREES]\n", argv[0]);
 			return 2;
 		}
 	}
@@ -255,7 +257,6 @@ int main(int argc, char **argv)
 	perspective(projection, 90.0f, 1.0f, 0.1f, 200.0f);
 
 	Check checks;
-	const float yaws[] = {0.0f, 40.0f};
 	std::vector<uint8_t> eyeImage(size_t(size) * size * 4), pair(size_t(size) * 2 * size * 4);
 	for(int kind = 0; kind < PLEIKKARI_VR_ENVIRONMENT_COUNT; ++kind)
 	{
@@ -317,7 +318,16 @@ int main(int argc, char **argv)
 						checks.expect(lowLeft[1] < 120 && midLeft[1] < 120, what);
 					}
 				}
-				if(check && yawDeg != 0.0f && eye == 0 && kind == PLEIKKARI_VR_ENVIRONMENT_CINEMA)
+				if(check && yawDeg >= 90.0f && eye == 0 && kind == PLEIKKARI_VR_ENVIRONMENT_PLAIN)
+				{
+					int visible = 0;
+					for(int y = 0; y < size; ++y)
+						for(int x = 0; x < size; ++x)
+							if(!is_black(pixel(eyeImage, size, x, y))) ++visible;
+					checks.expect(PLEIKKARI_VR_ORIENTATION_CUE ? visible > size / 2 : visible == 0,
+						"plain looking away: cue visible only in enabled build");
+				}
+				if(check && yawDeg == 40.0f && eye == 0 && kind == PLEIKKARI_VR_ENVIRONMENT_CINEMA)
 				{
 					// Looking 40 degrees left: the left third of the frame is the wall
 					// beside the picture, lit warm by the red block on that side.

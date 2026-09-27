@@ -17,3 +17,8 @@ add_executable(vr-environment-render
 target_include_directories(vr-environment-render PRIVATE ../../app/src/main/cpp)
 target_compile_options(vr-environment-render PRIVATE -Wall -Wextra)
 target_link_libraries(vr-environment-render PkgConfig::EGL PkgConfig::GLES PkgConfig::ZLIB)
+
+# PLE-711: default-off room orientation A/B arm.
+option(PLEIKKARI_VR_ORIENTATION_CUE "Faint floor cue in plain and void rooms" OFF)
+target_compile_definitions(vr-environment-render PRIVATE
+        PLEIKKARI_VR_ORIENTATION_CUE=$<BOOL:${PLEIKKARI_VR_ORIENTATION_CUE}>)

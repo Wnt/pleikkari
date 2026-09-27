@@ -1038,6 +1038,25 @@ bool PleikkariVrEnvironment::init()
 	return err == GL_NO_ERROR;
 }
 
+// A thin ring remains visible when looking away from the screen. A short inward
+// spoke on its front side points toward -z (the screen), without tracking the head.
+// Emission keeps the cue visible with room light/glow disabled or a black video.
+void build_orientation_cue(RoomBuilder &b)
+{
+	constexpr int segments = 96;
+	const Rgb tint{0.018f, 0.024f, 0.032f};
+	for(int i = 0; i < segments; ++i)
+	{
+		float a = 2 * kPi * i / segments, c = 2 * kPi * (i + 1) / segments;
+		auto point = [](float angle, float radius) {
+			return Vec3{radius * std::sin(angle), -1.5f, radius * std::cos(angle)};
+		};
+		b.quad(point(a, 5.9f), point(a, 6.0f), point(c, 6.0f), point(c, 5.9f), tint, 1.0f);
+	}
+	b.quad({-0.05f, -1.5f, -6.0f}, {-0.05f, -1.5f, -4.5f},
+		{0.05f, -1.5f, -4.5f}, {0.05f, -1.5f, -6.0f}, tint, 1.0f);
+}
+
 void PleikkariVrEnvironment::rebuild_geometry()
 {
 	RoomBuilder b;
@@ -1057,6 +1076,9 @@ void PleikkariVrEnvironment::rebuild_geometry()
 		default:
 			break;
 	}
+	if(PLEIKKARI_VR_ORIENTATION_CUE && (config.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN
+			|| config.environment == PLEIKKARI_VR_ENVIRONMENT_VOID))
+		build_orientation_cue(b);
 	if(b.vertices.size() > 65535)
 		LOGE("room mesh has %zu vertices, more than 16-bit indices allow", b.vertices.size());
 	roomIndexCount = static_cast<GLsizei>(b.indices.size());
@@ -1338,6 +1360,7 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 	mat4_multiply(viewProj, projection, view);
 	const PleikkariVrEnvironmentConfig &cfg = env->config;
 	const bool plain = cfg.environment == PLEIKKARI_VR_ENVIRONMENT_PLAIN;
+	const bool needsDepth = !plain || PLEIKKARI_VR_ORIENTATION_CUE;
 
 	GLint fbo = 0, viewport[4] = {0, 0, 0, 0};
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
@@ -1349,7 +1372,7 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 	glDisable(GL_BLEND);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-	if(plain)
+	if(!needsDepth)
 	{
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_CULL_FACE);
@@ -1548,7 +1571,7 @@ void pleikkari_vr_environment_draw_eye(PleikkariVrEnvironment *env, const float 
 		glDepthMask(GL_TRUE);
 	}
 
-	if(!plain && fbo != 0)
+	if(needsDepth && fbo != 0)
 	{
 		// Depth is never needed after the eye: tell the tiler not to write it back, then
 		// hand the caller's framebuffer back as it came.
