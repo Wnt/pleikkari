@@ -29,6 +29,7 @@ typedef struct android_chiaki_latency_probe_t
 	uint32_t presses_written;
 	uint32_t frames_written;
 	uint32_t buttons_prev; // the last controller state's buttons
+	uint32_t press_buttons; // PLE-803: the buttons that open a press (Cross by default)
 	// The press on its way: KeyEvent -> controller state -> history packet sent.
 	bool pending;
 	uint32_t press_id;
@@ -54,6 +55,8 @@ bool android_chiaki_latency_probe_start(AndroidChiakiLatencyProbe *probe, FILE *
  * else the rows written go to presses and frames (either may be NULL).
  */
 bool android_chiaki_latency_probe_stop(AndroidChiakiLatencyProbe *probe, uint32_t *presses, uint32_t *frames);
+/** PLE-803: presses are these buttons going down (0 keeps the current mask); default Cross. */
+void android_chiaki_latency_probe_set_press_buttons(AndroidChiakiLatencyProbe *probe, uint32_t buttons);
 bool android_chiaki_latency_probe_enabled(AndroidChiakiLatencyProbe *probe);
 /** A Cross KeyEvent reached the app. A press still on its way is written unsent first. */
 void android_chiaki_latency_probe_press(AndroidChiakiLatencyProbe *probe, int64_t event_ns, int64_t received_ns);

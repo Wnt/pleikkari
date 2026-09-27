@@ -12,6 +12,7 @@ static const char *const row_kinds[] = { "latched", "replaced", "unmatched" };
 ChiakiErrorCode android_chiaki_latency_probe_init(AndroidChiakiLatencyProbe *probe)
 {
 	memset(probe, 0, sizeof(*probe));
+	probe->press_buttons = CHIAKI_CONTROLLER_BUTTON_CROSS;
 	return chiaki_mutex_init(&probe->mutex, false);
 }
 
@@ -93,6 +94,15 @@ bool android_chiaki_latency_probe_stop(AndroidChiakiLatencyProbe *probe, uint32_
 	return was_enabled;
 }
 
+void android_chiaki_latency_probe_set_press_buttons(AndroidChiakiLatencyProbe *probe, uint32_t buttons)
+{
+	if(!buttons)
+		return;
+	chiaki_mutex_lock(&probe->mutex);
+	probe->press_buttons = buttons;
+	chiaki_mutex_unlock(&probe->mutex);
+}
+
 bool android_chiaki_latency_probe_enabled(AndroidChiakiLatencyProbe *probe)
 {
 	chiaki_mutex_lock(&probe->mutex);
@@ -114,8 +124,8 @@ void android_chiaki_latency_probe_controller_state(AndroidChiakiLatencyProbe *pr
 	chiaki_mutex_lock(&probe->mutex);
 	if(probe->enabled)
 	{
-		bool cross_down = (buttons & CHIAKI_CONTROLLER_BUTTON_CROSS) && !(probe->buttons_prev & CHIAKI_CONTROLLER_BUTTON_CROSS);
-		if(cross_down)
+		bool press_down = (buttons & probe->press_buttons) && !(probe->buttons_prev & probe->press_buttons);
+		if(press_down)
 		{
 			if(!probe->pending || probe->state_ns != 0)
 				open_press_locked(probe, 0, 0);
@@ -130,7 +140,7 @@ void android_chiaki_latency_probe_history_sent(AndroidChiakiLatencyProbe *probe,
 		int64_t now_ns)
 {
 	chiaki_mutex_lock(&probe->mutex);
-	if(probe->enabled && probe->pending && probe->state_ns != 0 && (buttons & CHIAKI_CONTROLLER_BUTTON_CROSS))
+	if(probe->enabled && probe->pending && probe->state_ns != 0 && (buttons & probe->press_buttons))
 		write_press_locked(probe, now_ns, history_seq);
 	chiaki_mutex_unlock(&probe->mutex);
 }
