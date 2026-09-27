@@ -153,6 +153,15 @@
             app:defaultValue="false"
             app:icon="@drawable/ic_fps" />
 
+        <!-- PLE-635: shown only on the Oculus Go (SettingsFragment); a no-op anywhere else. -->
+        <SwitchPreference
+            app:key="@string/preferences_decoder_qcom_go_profile_key"
+            app:title="@string/preferences_decoder_qcom_go_profile_title"
+            app:summary="@string/preferences_decoder_qcom_go_profile_summary"
+            app:defaultValue="false"
+            app:isPreferenceVisible="false"
+            app:icon="@drawable/ic_fps" />
+
         <SwitchPreference
             app:key="@string/preferences_decoder_low_latency_enabled_key"
             app:title="@string/preferences_decoder_low_latency_enabled_title"

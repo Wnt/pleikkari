@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.*
 import fi.madekivi.pleikkari.BuildConfig
 import fi.madekivi.pleikkari.R
+import fi.madekivi.pleikkari.common.GoDecoderProfile
 import fi.madekivi.pleikkari.common.Preferences
 import fi.madekivi.pleikkari.common.exportAndShareAllSettings
 import fi.madekivi.pleikkari.common.ext.viewModelFactory
@@ -42,6 +43,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.decoderOperatingRateDefaultKey -> preferences.decoderOperatingRateDefault
 		preferences.decoderOperatingRateAutoKey -> preferences.decoderOperatingRateAuto
 		preferences.decoderRealtimePriorityKey -> preferences.decoderRealtimePriority
+		preferences.decoderQcomGoProfileKey -> preferences.decoderQcomGoProfile
 		preferences.feedbackReducedIntervalEnabledKey -> preferences.feedbackReducedIntervalEnabled
 		preferences.feedbackStatsLogEnabledKey -> preferences.feedbackStatsLogEnabled
 		preferences.streamEndCauseProbeEnabledKey -> preferences.streamEndCauseProbeEnabled
@@ -87,6 +89,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.decoderOperatingRateDefaultKey -> preferences.decoderOperatingRateDefault = value
 			preferences.decoderOperatingRateAutoKey -> preferences.decoderOperatingRateAuto = value
 			preferences.decoderRealtimePriorityKey -> preferences.decoderRealtimePriority = value
+			preferences.decoderQcomGoProfileKey -> preferences.decoderQcomGoProfile = value
 			preferences.feedbackReducedIntervalEnabledKey -> preferences.feedbackReducedIntervalEnabled = value
 			preferences.feedbackStatsLogEnabledKey -> preferences.feedbackStatsLogEnabled = value
 			preferences.streamEndCauseProbeEnabledKey -> preferences.streamEndCauseProbeEnabled = value
@@ -276,6 +279,9 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 				isChecked = preferences.goVrEnabled
 			})
 		}
+
+		preferenceScreen.findPreference<Preference>(preferences.decoderQcomGoProfileKey)?.isVisible =
+			GoDecoderProfile.eligible()
 
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_resolution_key))?.let {
 			it.entryValues = Preferences.resolutionAll.map { res -> res.value }.toTypedArray()

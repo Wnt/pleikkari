@@ -49,6 +49,7 @@ class PreferenceKeyContractTest
 			"@string/preferences_decoder_operating_rate_auto_key",
 			"@string/preferences_decoder_operating_rate_default_key",
 			"@string/preferences_decoder_operating_rate_key",
+			"@string/preferences_decoder_qcom_go_profile_key",
 			"@string/preferences_decoder_realtime_priority_key",
 			"@string/preferences_display_refresh_rate_key",
 			"@string/preferences_export_settings_key",

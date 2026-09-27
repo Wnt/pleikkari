@@ -42,7 +42,7 @@ ChiakiErrorCode android_chiaki_video_decoder_init(AndroidChiakiVideoDecoder *dec
 		int32_t target_fps, ChiakiCodec codec, bool low_latency_enabled, bool real_pts_enabled,
 		bool input_thread_enabled, bool late_frame_recovery_enabled,
 		int32_t operating_rate, bool operating_rate_default, bool operating_rate_auto,
-		bool realtime_priority, unsigned int pts_rate_hz,
+		bool realtime_priority, int32_t qcom_profile_operating_rate, unsigned int pts_rate_hz,
 		bool diagnostics_enabled, bool stats_log_enabled,
 		const AndroidChiakiVideoPresenterConfig *presenter_config)
 {
@@ -63,14 +63,18 @@ ChiakiErrorCode android_chiaki_video_decoder_init(AndroidChiakiVideoDecoder *dec
 	decoder->target_fps = target_fps;
 	decoder->target_codec = codec;
 	decoder->low_latency_enabled = low_latency_enabled;
-	// Explicit rate > default-path experiment > real-PTS auto switch > codec default.
+	// Explicit rate > Qualcomm OMX profile > default-path experiment > real-PTS auto switch
+	// > codec default.
+	decoder->qcom_profile_operating_rate = qcom_profile_operating_rate > 0 ? qcom_profile_operating_rate : 0;
 	AndroidChiakiDecoderOperatingRate selected_operating_rate =
 			android_chiaki_video_decoder_select_operating_rate(operating_rate,
+					decoder->qcom_profile_operating_rate,
 					operating_rate_default, DECODER_DEFAULT_PATH_OPERATING_RATE,
 					real_pts_enabled, operating_rate_auto, DECODER_REAL_PTS_OPERATING_RATE);
 	decoder->operating_rate = selected_operating_rate.rate;
 	decoder->operating_rate_source = selected_operating_rate.source;
-	decoder->realtime_priority = realtime_priority;
+	// PLE-635: the Go's ACodec maps priority onto the msm_vidc session priority; 0 = realtime.
+	decoder->realtime_priority = realtime_priority || decoder->qcom_profile_operating_rate > 0;
 	decoder->diagnostics_enabled = diagnostics_enabled;
 	decoder->late_frame_recovery_enabled = late_frame_recovery_enabled;
 	decoder->last_queued_frame_index_valid = false;
@@ -379,12 +383,19 @@ void android_chiaki_video_decoder_set_surface(AndroidChiakiVideoDecoder *decoder
 			source = " (default-path setting)";
 		else if(decoder->operating_rate_source == ANDROID_CHIAKI_DECODER_OPERATING_RATE_AUTO)
 			source = " (auto for frame-index timestamps)";
+		else if(decoder->operating_rate_source == ANDROID_CHIAKI_DECODER_OPERATING_RATE_QCOM_PROFILE)
+			source = " (Qualcomm OMX profile)";
 		CHIAKI_LOGI(decoder->log, "Decoder operating-rate override: operating-rate=%d frame-rate=%d%s",
 				decoder->operating_rate, decoder->target_fps,
 				source);
 	}
 	if(decoder->realtime_priority)
 		CHIAKI_LOGI(decoder->log, "Decoder realtime priority override: priority=0");
+	if(decoder->qcom_profile_operating_rate > 0)
+		CHIAKI_LOGI(decoder->log, "Qualcomm OMX decoder profile on: frame-rate=%d operating-rate=%d%s priority=0",
+				decoder->target_fps, decoder->operating_rate,
+				decoder->operating_rate_source == ANDROID_CHIAKI_DECODER_OPERATING_RATE_QCOM_PROFILE
+					? "" : " (explicit rate wins)");
 	int first_tier = decoder->low_latency_enabled ? 0 : DECODER_CONFIGURE_BASELINE_TIER;
 	media_status_t r = AMEDIA_ERROR_UNKNOWN;
 	AMediaFormat *format = NULL;

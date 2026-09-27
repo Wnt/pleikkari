@@ -584,6 +584,13 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(decoderOperatingRateDefaultKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(decoderOperatingRateDefaultKey, value).apply() }
 
+	// PLE-635: the Oculus Go's Qualcomm OMX decoder profile (GoDecoderProfile); off keeps today's
+	// phone-tuned decoder format on the Go too. Ignored on every other device.
+	val decoderQcomGoProfileKey get() = resources.getString(R.string.preferences_decoder_qcom_go_profile_key)
+	var decoderQcomGoProfile
+		get() = sharedPreferences.getBoolean(decoderQcomGoProfileKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(decoderQcomGoProfileKey, value).apply() }
+
 	// PLE-75: with frame-index timestamps on and no explicit operating rate, request 960 (default on;
 	// off reproduces the 14 ms decode latency of AB round 2).
 	val decoderOperatingRateAutoKey get() = resources.getString(R.string.preferences_decoder_operating_rate_auto_key)

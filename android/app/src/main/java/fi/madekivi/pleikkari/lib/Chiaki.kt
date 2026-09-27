@@ -108,6 +108,8 @@ data class ConnectInfo(
 	val decoderOperatingRateDefault: Boolean = false,
 	val decoderOperatingRateAuto: Boolean = true,
 	val decoderRealtimePriority: Boolean = false,
+	/** PLE-635: > 0 turns on the Oculus Go's Qualcomm OMX decoder profile at this operating rate. */
+	val decoderQcomProfileOperatingRate: Int = 0,
 	val videoTimestampRateHz: Int = 0,
 	val streamDiagnosticsEnabled: Boolean = false,
 	val videoPresenterConfig: AndroidChiakiVideoPresenterConfig = AndroidChiakiVideoPresenterConfig()
