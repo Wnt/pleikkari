@@ -90,6 +90,9 @@ class Preferences(context: Context)
 
 	companion object
 	{
+		/** PLE-753: the rooms' MSAA sample counts on offer; 4 is PLE-615's, 1 turns MSAA off. */
+		val goVrRoomMsaaChoices = listOf(4, 2, 1)
+		const val GO_VR_ROOM_MSAA_DEFAULT = 4
 		val resolutionDefault = Resolution.RES_1080P
 		val resolutionAll = Resolution.values()
 		val fpsDefault = FPS.FPS_60
@@ -321,6 +324,13 @@ class Preferences(context: Context)
 	var goVrHoldDrain
 		get() = sharedPreferences.getBoolean(goVrHoldDrainKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrHoldDrainKey, value).apply() }
+
+	// PLE-753: A/B the rooms' MSAA sample count (PLE-615's 4x by default; 2x or off cut their GPU time).
+	val goVrRoomMsaaKey get() = "stream_go_vr_room_msaa"
+	var goVrRoomMsaa: Int
+		get() = sharedPreferences.getString(goVrRoomMsaaKey, null)?.toIntOrNull()?.takeIf { it in goVrRoomMsaaChoices }
+			?: GO_VR_ROOM_MSAA_DEFAULT
+		set(value) { sharedPreferences.edit().putString(goVrRoomMsaaKey, value.toString()).apply() }
 
 	val videoPacingEnabledKey get() = resources.getString(R.string.preferences_video_pacing_enabled_key)
 	var videoPacingEnabled

@@ -408,6 +408,10 @@
     <string name="go_vr_late_start_title">Cinema frames start late</string>
     <string name="go_vr_late_start_summary">Draw each frame of the plain cinema just before the headset takes it, instead of right after the last one, and keep the headset from running a frame ahead, so it shows a newer video frame.</string>
     <string name="go_vr_hold_drain_title">Keep the headset from running ahead</string>
+    <string name="go_vr_room_msaa_title">Room anti-aliasing</string>
+    <string name="go_vr_room_msaa_4x">4x MSAA (default)</string>
+    <string name="go_vr_room_msaa_2x">2x MSAA, less GPU time</string>
+    <string name="go_vr_room_msaa_off">Off, least GPU time</string>
     <string name="go_vr_hold_drain_summary">In the plain cinema and in rooms, keep the headset from running a frame ahead, so each frame reaches the display one refresh sooner. Frames still start as soon as the headset takes the last one, so rooms keep their drawing time.</string>
     <string name="go_vr_failed">VR cinema could not start. Turn off Native VR cinema in Settings to use Oculus TV.</string>
     <string name="go_vr_connecting">Connecting to PlayStation…</string>

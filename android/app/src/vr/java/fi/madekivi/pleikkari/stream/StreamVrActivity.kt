@@ -76,7 +76,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         // picture, so the Go's cinema and environment cost can be read from adb (README).
         preview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_VR_CINEMA_PREVIEW, false)
         previewEnvironment = if(preview) intent.getStringExtra(EXTRA_ENVIRONMENT) else null
-        if(preview) environmentSamples = intent.getIntExtra(EXTRA_ENVIRONMENT_MSAA, DEFAULT_ENVIRONMENT_SAMPLES)
+        // PLE-753: the rooms' MSAA setting; the preview's PLE-653 extra, when given, overrides it.
+        environmentSamples = if(preview && intent.hasExtra(EXTRA_ENVIRONMENT_MSAA))
+            intent.getIntExtra(EXTRA_ENVIRONMENT_MSAA, DEFAULT_ENVIRONMENT_SAMPLES)
+        else Preferences(this).goVrRoomMsaa
         if(library) {
             // The referrer names the app that started us (com.oculus.vrshell for the Library).
             Log.i(TAG_ENTRY, (if(chooser) "Back in the Library chooser" else "Library VR launch, referrer ${referrer ?: "none"}") +

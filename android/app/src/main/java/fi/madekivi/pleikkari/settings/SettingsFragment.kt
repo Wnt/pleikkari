@@ -36,6 +36,9 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.goVrMatch60HzKey -> preferences.goVrMatch60Hz
 		preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu
 		preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread
+		// PLE-753: PLE-715's late start was missing here, so its switch never stored a change.
+		preferences.goVrLateStartKey -> preferences.goVrLateStart
+		preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain
 		preferences.logVerboseKey -> preferences.logVerbose
 		preferences.swapCrossMoonKey -> preferences.swapCrossMoon
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
@@ -86,6 +89,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.goVrMatch60HzKey -> preferences.goVrMatch60Hz = value
 			preferences.goVrRoomHighGpuKey -> preferences.goVrRoomHighGpu = value
 			preferences.goVrFrameListenerThreadKey -> preferences.goVrFrameListenerThread = value
+			preferences.goVrLateStartKey -> preferences.goVrLateStart = value
+			preferences.goVrHoldDrainKey -> preferences.goVrHoldDrain = value
 			preferences.logVerboseKey -> preferences.logVerbose = value
 			preferences.swapCrossMoonKey -> preferences.swapCrossMoon = value
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
@@ -171,6 +176,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		key == preferences.audioFifoMsKey -> preferences.audioFifoMs.toString()
 		key == preferences.codecKey -> preferences.codec.value
 		key == preferences.vrEnvironmentKey -> preferences.vrEnvironment.value
+		key == preferences.goVrRoomMsaaKey -> preferences.goVrRoomMsaa.toString()
 		key.startsWith("mapping_") -> preferences.sharedPreferences.getString(key, defValue)
 		else -> defValue
 	}
@@ -252,6 +258,11 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 				preferences.codec = codec
 			}
 			key == preferences.vrEnvironmentKey -> preferences.vrEnvironment = VrEnvironmentKind.fromValue(value)
+			key == preferences.goVrRoomMsaaKey ->
+			{
+				val samples = value?.toIntOrNull()?.takeIf { it in Preferences.goVrRoomMsaaChoices } ?: return
+				preferences.goVrRoomMsaa = samples
+			}
 			key.startsWith("mapping_") -> 
 			{
 				preferences.sharedPreferences.edit().putString(key, value).apply()
@@ -521,6 +532,16 @@ open class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			entryValues = VrEnvironmentKind.values().map { it.value }.toTypedArray()
 			entries = VrEnvironmentKind.values().map { getString(it.title) }.toTypedArray()
 			setDefaultValue(VrEnvironmentKind.default.value)
+			summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
+		})
+		// PLE-753: the rooms' MSAA; applies from the next cinema start (the eye framebuffers are made then).
+		category.addPreference(ListPreference(context).apply {
+			key = preferences.goVrRoomMsaaKey
+			title = getString(R.string.go_vr_room_msaa_title)
+			dialogTitle = title
+			entryValues = Preferences.goVrRoomMsaaChoices.map { it.toString() }.toTypedArray()
+			entries = arrayOf(getString(R.string.go_vr_room_msaa_4x), getString(R.string.go_vr_room_msaa_2x), getString(R.string.go_vr_room_msaa_off))
+			setDefaultValue(Preferences.GO_VR_ROOM_MSAA_DEFAULT.toString())
 			summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
 		})
 		fun slider(keyName: String, titleRes: Int, minValue: Int, maxValue: Int, defaultValue: Int) =
