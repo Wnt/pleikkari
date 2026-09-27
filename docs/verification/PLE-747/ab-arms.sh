@@ -15,7 +15,7 @@
 # go-probe.sh restores the snapshot prefs byte-identically after every session; `finish` (the last
 # lease) checks them against $BACKUP/prefs.xml once more and leaves the Go on its VR home.
 #
-# Env: ARMS (names from the table below; default all but input_thread), REPS (2), COOLDOWN_S (300),
+# Env: ARMS (names from the table below; default all), REPS (2), COOLDOWN_S (300),
 # LONG_COOLDOWN_S (1200), HOT_AFTER_S (2400), SESSION_S (570: one batch's go-probe DEADLINE),
 # ROUNDS/PRESSES/STIMULUS/PADS as go-probe.sh, TICKET (PLE-747).
 set -uo pipefail
@@ -51,8 +51,8 @@ h264|stream_codec=h264|
 h265|stream_codec=h265|
 input_thread|stream_go_vr_input_thread=true|
 '
-# input_thread is PLE-802's switch: add it to ARMS once PLE-802 has landed in the APK.
-ARMS=${ARMS:-control late72 late60 late_budget75 late_budget90 listener_thread signal signal_late qcom_ll res720 h264 h265}
+# input_thread is PLE-802's switch (landed).
+ARMS=${ARMS:-control late72 late60 late_budget75 late_budget90 listener_thread signal signal_late qcom_ll res720 h264 h265 input_thread}
 
 arm_field() { # <name> <field 2|3>
 	printf '%s\n' "$ARM_TABLE" | awk -F'|' -v n="$1" -v f="$2" '$1 == n { print $f; found = 1 } END { exit !found }'

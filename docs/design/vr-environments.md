@@ -386,6 +386,25 @@ warnings, and against 1.50.0's headers too (PLE-623).
   in line with PLE-666's confounded reading. Unlike the terrace (whose geometry covers
   most of the sky), the void shows the sky on nearly every pixel, so a cheaper sky pays
   off only there. Logs, `run.sh` and `sum.py` under `build/ple-697/` of the workspace.
+- Sky variants 0 vs 7 in the preview on the S22 (PLE-676): `VrEnvironmentPreviewActivity`
+  on the Galaxy S22 Ultra (serial R3CT30WLVFV, Xclipse 920, 120 Hz, 1024x1024 eyes, no
+  VrApi, no MSAA), `--ei sky_variant 0|7` switched every 12 s, four rounds per room, the
+  first sample after each switch dropped. Median preview `gpu=` (`GL_TIME_ELAPSED`), about
+  80 samples per cell:
+
+  | Room | dome (0) | vertex gradient (7) | 7 vs 0 |
+  | --- | ---: | ---: | ---: |
+  | void, session 2 | 2.54 ms | 2.14 ms | -0.40 ms |
+  | terrace, session 1 / 2 | 2.49 / 2.51 ms | 2.34 / 2.37 ms | -0.15 ms |
+
+  (session 1's void log was lost.) Frame time stayed at the 8.34 ms vsync in every
+  cell, so neither variant is near the S22's budget. Screenshots of both variants in
+  the void show the same dim horizon glow with no visible banding or seam at the stacks;
+  the head pose differed between shots, so this is an eyeball check, not a pixel diff.
+  Variant 7 wins in the direction the Go showed (PLE-697, -0.13 ms of `App=`) and looks
+  right, but the Go is the target that matters and its gain there is small; the default
+  was left at 0 here. Logs, screenshots, `run.sh` and `sum.py` under `build/ple-676/` of
+  the ticket worktree.
 - Device, live PS5 stream (PLE-654, `docs/verification/PLE-654.md`): the cinema room
   with a live 1080p60 picture measured VrApi `App=` 8.02 ms (median) and 3.0 stale
   frames/s (max 26), as in PLE-623's preview. `Environment frame: gpu` still read 2.40

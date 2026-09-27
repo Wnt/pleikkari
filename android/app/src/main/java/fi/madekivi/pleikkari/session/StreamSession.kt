@@ -45,7 +45,8 @@ class StreamSession(private val context: Context, val connectInfo: ConnectInfo, 
 		/** This stream was started straight off a successful registration — see [SessionHandoffRetry]. */
 		justLinked: Boolean = false)
 {
-	var session: Session? = null
+	/** Volatile: PLE-802's GoPadInput thread sends controller states to it (the PSN path already set it off main). */
+	@Volatile var session: Session? = null
 		private set
 
 	private val handoffRetry = SessionHandoffRetry(clock = SystemClock::elapsedRealtime)

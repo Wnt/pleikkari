@@ -538,6 +538,11 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean, r
 	}
 
 	private var nativePtr: Long
+	/**
+	 * PLE-802: [setControllerState] may run on the Go's GoPadInput thread while the main thread
+	 * disposes the session; this makes the native free and a controller state set exclusive.
+	 */
+	private val controllerStateLock = Any()
 	private val performanceHints = PerformanceHints.create(
 		context,
 		connectInfo.performanceModeEnabled,
@@ -573,8 +578,11 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean, r
 			return
 		if(join)
 			ChiakiNative.sessionJoin(nativePtr)
-		ChiakiNative.sessionFree(nativePtr)
-		nativePtr = 0L
+		synchronized(controllerStateLock)
+		{
+			ChiakiNative.sessionFree(nativePtr)
+			nativePtr = 0L
+		}
 		performanceHints.close()
 	}
 
@@ -753,7 +761,11 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean, r
 
 	fun setControllerState(controllerState: ControllerState)
 	{
-		ChiakiNative.sessionSetControllerState(nativePtr, controllerState)
+		synchronized(controllerStateLock)
+		{
+			if(nativePtr != 0L)
+				ChiakiNative.sessionSetControllerState(nativePtr, controllerState)
+		}
 	}
 
 	fun setLoginPin(pin: String)

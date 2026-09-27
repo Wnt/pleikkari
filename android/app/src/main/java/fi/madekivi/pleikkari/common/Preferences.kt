@@ -312,6 +312,12 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(goVrFrameListenerThreadKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrFrameListenerThreadKey, value).apply() }
 
+	// PLE-802: A/B the Go's pad and key input read on its own thread (a window of its own) instead of the main looper.
+	val goVrInputThreadKey get() = "stream_go_vr_input_thread"
+	var goVrInputThread
+		get() = sharedPreferences.getBoolean(goVrInputThreadKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrInputThreadKey, value).apply() }
+
 	// PLE-715: A/B the cinema starting each frame just before VrApi's release instead of right after the last.
 	val goVrLateStartKey get() = "stream_go_vr_late_start"
 	var goVrLateStart
@@ -344,6 +350,12 @@ class Preferences(context: Context)
 	var goVrWarmUp
 		get() = sharedPreferences.getBoolean(goVrWarmUpKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(goVrWarmUpKey, value).apply() }
+
+	// PLE-809: A/B PLE-753's flusheyes, a glFlush after the first eye so the GPU starts it sooner.
+	val goVrFlushEyesKey get() = "stream_go_vr_flush_eyes"
+	var goVrFlushEyes
+		get() = sharedPreferences.getBoolean(goVrFlushEyesKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(goVrFlushEyesKey, value).apply() }
 
 	// PLE-746: the Go cinema's input-to-photon probe (per-frame GPU luma, presses.csv/frames.csv, atrace
 	// markers). Measurement only; its frame join also needs stream_feedback_stats_log.

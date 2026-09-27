@@ -30,7 +30,7 @@
 # Every streaming mode: PLE-654's go-live.sh `setup` (prefs, databases, app data and base.apk into
 # $BACKUP, once) and `ensure <apk>` (install -r, never uninstall or clear); the snapshot prefs plus
 # stream_feedback_stats_log, stream_go_vr_enabled and stream_go_vr_latency_probe, with the A/B keys
-# in BASELINE_DROP removed so their defaults apply; the Go Library VR entry (PLE-690/PLE-717, the
+# in BASELINE_DROP removed so their defaults apply, then ARM_PREFS set (PLE-802); the Go Library VR entry (PLE-690/PLE-717, the
 # route that works until PLE-729); debug.pleikkari.vr_full_pose=1 so a Go on the table has the
 # screen in its screencap. The stream ends with the cinema menu's Disconnect (PLE-739 broadcast:
 # back, then right), so the cinema stops and closes the probe's files before the force-stop; the
@@ -71,6 +71,7 @@ ATRACE_KB=${ATRACE_KB:-16384}
 PADS=${PADS:-}
 STEP_WAIT=${STEP_WAIT:-1.5}
 BASELINE_DROP=${BASELINE_DROP:-stream_go_vr_match_60hz stream_go_vr_room_high_gpu stream_go_vr_frame_listener_thread stream_decoder_qcom_vt_low_latency}
+# PLE-802: for example ARM_PREFS="stream_go_vr_input_thread=true".
 DEADLINE=${DEADLINE:-$(( $(date +%s) + 570 ))}
 # PLE-815: an A/B arm on top of the baseline. ARM_PREFS="key=value ..." (true/false -> boolean, anything
 # else -> string) replaces or adds those prefs; ARM_PROPS="prop=value ..." is set before the launch and
@@ -267,7 +268,7 @@ step_stop() {
 		say "no probe directory written this session"
 	fi
 	awk '!s[$0]++' "$OUT/logcat-raw.txt" > "$OUT/logcat.txt"
-	grep -E ' (GoCinema|GoVrEntry|Chiaki|VrApi) *: ' "$OUT/logcat.txt" | grep -E 'Latency probe|Cinema video|Cinema latency|Debug pad|Debug input|FPS=|Screen placed|entered' > "$OUT/probe-lines.txt"
+	grep -E ' (GoCinema|GoVrEntry|Chiaki|VrApi|GoPadInput) *: ' "$OUT/logcat.txt" | grep -E 'Latency probe|Cinema video|Cinema latency|Debug pad|Debug input|FPS=|Screen placed|entered|Input window' > "$OUT/probe-lines.txt"
 	grep -E 'FATAL EXCEPTION' -A12 "$OUT/logcat.txt" | head -60 > "$OUT/crashes.txt"
 	say "fatal $(grep -c 'FATAL EXCEPTION' "$OUT/crashes.txt"), Cinema latency lines $(grep -c 'Cinema latency' "$OUT/probe-lines.txt")"
 	write_prefs "$BACKUP/prefs.xml" && say "snapshot prefs back"
