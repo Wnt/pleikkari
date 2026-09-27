@@ -127,7 +127,7 @@ class MainViewModel(
 			{
 				Log.w(PSN_LIST_TAG, "PSN console list failed: ${describePsnFailure(error)}", error)
 				_psnListState.value = PsnConsoleListState.Error(
-					error.message ?: "Unable to list consoles on your PSN account",
+					psnErrorText(error, "Unable to list consoles on your PSN account"),
 					if(error is PsnRemoteAuthenticationException) PsnErrorRecovery.SIGN_IN else PsnErrorRecovery.RETRY
 				)
 			}
@@ -252,7 +252,7 @@ class MainViewModel(
 				Log.w(PSN_LIST_TAG, "PSN ${action.name.lowercase()} failed: ${describePsnFailure(error)}", error)
 				lastFailedPsnConsole = console
 				_psnError.value = PsnActionError(
-					error.message ?: "Could not start Remote Play",
+					psnErrorText(error, "Could not start Remote Play"),
 					if(error is PsnRemoteAuthenticationException) PsnErrorRecovery.SIGN_IN else PsnErrorRecovery.RETRY
 				)
 			}
@@ -324,6 +324,10 @@ internal fun joinDisplayHosts(
 		ManualDisplayHost(it.registeredHost?.let { id -> idRegisteredHosts[id] }, it)
 	}
 }
+
+/** On-screen text: the message, or for a message-less error the fallback plus its type so a silent failure stays visible. */
+internal fun psnErrorText(error: Throwable, fallback: String): String =
+	error.message?.takeIf { it.isNotBlank() } ?: "$fallback (${error.javaClass.simpleName})"
 
 /** One support-readable line: exception type, message, HTTP status and PSN's error excerpt. Never tokens. */
 internal fun describePsnFailure(error: Throwable): String = buildString {
