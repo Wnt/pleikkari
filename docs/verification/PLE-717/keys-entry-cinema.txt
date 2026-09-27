@@ -1,0 +1,21 @@
+09-27 12:59:59.246 31724 31724 I GoVrEntry: Library VR launch, referrer none
+09-27 12:59:59.497 31724 31724 I GoVrEntry: Picked PS5-466: the only of 1 linked console(s); in-VR chooser first, no connect until one is chosen
+09-27 12:59:59.713 31724 31744 I GoCinema: Clock levels CPU 2 / GPU 2 (accepted)
+09-27 12:59:59.747 31724 31744 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+09-27 12:59:59.749 31724 31744 I GoCinema: Environment plain: black plus the 3 m / 80 degree screen
+09-27 12:59:59.749 31724 31744 I GoCinema: Clock levels CPU 2 / GPU 2 (accepted)
+09-27 12:59:59.775 31724 31744 I GoCinema: Screen placed at frame 1 (requested): head yaw 1, pitch -87 degrees, runtime recentres 254, full pose
+09-27 12:59:59.789 31724 31744 I GoCinema: Screen placed at frame 2 (runtime recentre): head yaw -0, pitch -87 degrees, runtime recentres 255, full pose
+09-27 13:00:04.782 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 355 submitted frames showed video, 0 frame signals
+09-27 13:00:09.793 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:14.805 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:19.818 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:24.830 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:29.843 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:34.855 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:39.867 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:44.880 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:49.893 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:54.905 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:00:59.918 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals
+09-27 13:01:04.930 31724 31744 I GoCinema: Cinema video: 0 decoder frames latched in 5.0 s (0.0 fps), 0 of 360 submitted frames showed video, 0 frame signals

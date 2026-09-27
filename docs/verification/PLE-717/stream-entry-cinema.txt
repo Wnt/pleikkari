@@ -1,0 +1,21 @@
+09-27 12:49:54.320 30451 30451 I GoVrEntry: Library VR launch, referrer none
+09-27 12:49:54.574 30451 30451 I GoVrEntry: Picked PS5-466: the only of 1 linked console(s)
+09-27 12:49:54.575 30451 30451 I GoVrEntry: Connecting to PS5-466 at 192.168.1.164 (awake)
+09-27 12:49:54.812 30451 30473 I GoCinema: Clock levels CPU 2 / GPU 2 (accepted)
+09-27 12:49:54.848 30451 30473 I GoCinema: VrApi cinema entered; requested 72 Hz, eye 1024x1024, curved screen 3 m / 80 degrees, environment MSAA 4x
+09-27 12:49:54.851 30451 30473 I GoCinema: Environment plain: black plus the 3 m / 80 degree screen
+09-27 12:49:54.851 30451 30473 I GoCinema: Clock levels CPU 2 / GPU 2 (accepted)
+09-27 12:49:54.896 30451 30473 I GoCinema: Screen placed at frame 1 (requested): head yaw -0, pitch -87 degrees, runtime recentres 250, full pose
+09-27 12:49:54.911 30451 30473 I GoCinema: Screen placed at frame 2 (runtime recentre): head yaw 0, pitch -87 degrees, runtime recentres 251, full pose
+09-27 12:49:59.870 30451 30473 I GoCinema: Cinema video: 116 decoder frames latched in 5.0 s (23.1 fps), 147 of 353 submitted frames showed video, 117 frame signals
+09-27 12:50:04.877 30451 30473 I GoCinema: Cinema video: 292 decoder frames latched in 5.0 s (58.3 fps), 357 of 357 submitted frames showed video, 292 frame signals
+09-27 12:50:09.890 30451 30473 I GoCinema: Cinema video: 294 decoder frames latched in 5.0 s (58.7 fps), 360 of 360 submitted frames showed video, 293 frame signals
+09-27 12:50:14.902 30451 30473 I GoCinema: Cinema video: 289 decoder frames latched in 5.0 s (57.7 fps), 360 of 360 submitted frames showed video, 290 frame signals
+09-27 12:50:19.915 30451 30473 I GoCinema: Cinema video: 291 decoder frames latched in 5.0 s (58.1 fps), 360 of 360 submitted frames showed video, 290 frame signals
+09-27 12:50:24.928 30451 30473 I GoCinema: Cinema video: 292 decoder frames latched in 5.0 s (58.3 fps), 360 of 360 submitted frames showed video, 293 frame signals
+09-27 12:50:29.943 30451 30473 I GoCinema: Cinema video: 289 decoder frames latched in 5.0 s (57.6 fps), 360 of 360 submitted frames showed video, 289 frame signals
+09-27 12:50:34.952 30451 30473 I GoCinema: Cinema video: 291 decoder frames latched in 5.0 s (58.1 fps), 360 of 360 submitted frames showed video, 291 frame signals
+09-27 12:50:39.965 30451 30473 I GoCinema: Cinema video: 291 decoder frames latched in 5.0 s (58.1 fps), 360 of 360 submitted frames showed video, 290 frame signals
+09-27 12:50:44.980 30451 30473 I GoCinema: Cinema video: 298 decoder frames latched in 5.0 s (59.4 fps), 360 of 360 submitted frames showed video, 299 frame signals
+09-27 12:50:49.991 30451 30473 I GoCinema: Cinema video: 287 decoder frames latched in 5.0 s (57.3 fps), 360 of 360 submitted frames showed video, 287 frame signals
+09-27 12:50:55.003 30451 30473 I GoCinema: Cinema video: 291 decoder frames latched in 5.0 s (58.1 fps), 360 of 360 submitted frames showed video, 291 frame signals

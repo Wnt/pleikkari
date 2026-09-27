@@ -1,0 +1,63 @@
+09:47:29 PLE-690 start, MODE=stream; 570s before the deadline; serial 1KWPH802EW8203; mWakefulness=Awake
+09:47:29 start; 570s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+09:47:32 backup: prefs 192 B, db chiaki chiaki-shm chiaki-wal , appdata 424960 B, apk f05b5dec8616dd8f;     versionCode=12 minSdk=24 targetSdk=35     lastUpdateTime=2026-09-27 12:32:31 
+09:47:34 installed APK b6676be7a8f221524767a6ae45fae06b is not ours (d7e18d5ff184c59ff3e905e4d44c7ab7, c4a26a18c403580a): install -r
+Success
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 12:47:42
+09:47:42 done
+09:47:42 battery 96%
+09:47:46 prefs: snapshot + stream_feedback_stats_log=true + stream_go_vr_enabled=true; last_console_mac: 0
+databases: chiaki chiaki-shm chiaki-wal  
+Starting: Intent { cmp=fi.madekivi.pleikkari/.stream.StreamVrActivity }
+09-27 12:49:50.331 30382 30382 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+09-27 12:49:50.338 30382 30382 D AndroidRuntime: CheckJNI is OFF
+09-27 12:49:50.608 30382 30382 D AndroidRuntime: Calling main entry com.android.commands.am.Am
+09-27 12:49:50.626 30382 30382 D AndroidRuntime: Shutting down VM
+      enabledComponents:
+        fi.madekivi.pleikkari.stream.GoVrLibraryEntry
+
+
+resolve INFO: ActivityInfo:
+resolve INFO:   name=fi.madekivi.pleikkari.stream.GoVrLibraryEntry
+resolve INFO:   packageName=fi.madekivi.pleikkari
+resolve INFO:   taskAffinity=fi.madekivi.pleikkari.vr targetActivity=fi.madekivi.pleikkari.stream.StreamVrActivity persistableMode=PERSIST_ROOT_ONLY
+09:49:51 MAIN/INFO resolves to .stream.GoVrLibraryEntry
+query VR:       name=fi.madekivi.pleikkari.stream.GoVrLibraryEntry
+query VR:         name=fi.madekivi.pleikkari.ChiakiApplication
+go-keepawake: 192.168.1.202:5555 is Awake; focus: com.oculus.vrshell/com.oculus.vrshell.MainActivity
+09:49:52 launch: MAIN/INFO .stream.GoVrLibraryEntry with NEW_TASK|NO_ANIMATION, the intent sendLaunchIntent() sends
+Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.INFO] flg=0x10010000 cmp=fi.madekivi.pleikkari/.stream.GoVrLibraryEntry }
+Warning: Activity not started, its current task has been brought to the front
+09:49:54 resumed after 1s: mResumedActivity: ActivityRecord{e8b64f5 u0 fi.madekivi.pleikkari/.stream.GoVrLibraryEntry t305}
+09:49:55 launch path: the Go handed the start to vrshell's desktop, which started the entry as uid 1000
+09:50:20 screencap 1: 1494874 B
+09:50:39 screencap 2: 1611718 B
+09:50:55 after 60s: mResumedActivity: ActivityRecord{e8b64f5 u0 fi.madekivi.pleikkari/.stream.GoVrLibraryEntry t305}
+09:51:01 after force-stop: mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+09:51:01 session log chiaki_session_2026-09-27_12-49-54-862.log (73728 B)
+09:51:01 entry/cinema lines 21, vrshell launch lines 3, Cinema video lines 12, Feedback stats lines 58, fatal 0
+09:51:01 original prefs back
+09:51:01 start; 358s before the deadline; mWakefulness=Awake
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+Success
+09:51:13 original APK back
+09:51:14 prefs restored byte-identically
+    versionCode=12 minSdk=24 targetSdk=35
+    lastUpdateTime=2026-09-27 12:51:12
+total 192
+drwxrwx--x 2 u0_a63 u0_a63  4096 2026-09-26 23:55 .
+drwx------ 7 u0_a63 u0_a63  4096 2026-09-26 23:55 ..
+-rw-rw---- 1 u0_a63 u0_a63 28672 2026-09-26 23:55 chiaki
+-rw------- 1 u0_a63 u0_a63 32768 2026-09-27 12:49 chiaki-shm
+-rw-rw---- 1 u0_a63 u0_a63  4152 2026-09-26 23:55 chiaki-wal
+    mResumedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mFocusedActivity: ActivityRecord{5ccaec2 u0 com.oculus.vrshell/.MainActivity t176}
+    mCurrentFocus=Window{7ce6094 u0 com.oculus.vrshell/com.oculus.vrshell.MainActivity}
+09:51:14 done
+09:51:14 done
