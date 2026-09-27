@@ -16,6 +16,11 @@
 #             exists): A plays the focused card, screencaps of the status sheet and of the stream once
 #             `GoVrUi: Home closed` shows, then force-stop (never BACK)
 #  noconsole  debug.pleikkari.go_entry_no_console=1 (PLE-739): the no-console sheet
+#  notfound   debug.pleikkari.go_entry_not_found=1 (PLE-784, PLE-816): the Library launch's first look
+#             lands on Home's not-found sheet (focus on Try again); the pad's up moves to Enter
+#             address, A opens PLE-733's address pad, A types its first key, Back cancels the pad
+#             (never Save, which would store a manual address and look for real). Off by default:
+#             MODES="home noconsole notfound", or MODES=notfound alone
 # and go-live.sh `restore`. Every debug property goes back to 0/off, and the Go must end on vrshell.
 # Output: logcat.txt, home.txt (GoVrUi/GoVrEntry/GoCinema lines), vrapi-fps.txt, shot-*.png and
 # screen-check.txt (scripts/dev/go-latency/screen_check.py).
@@ -29,6 +34,8 @@ PREFS=shared_prefs/${PKG}_preferences.xml
 OUT=${1:?out dir}
 APK=${2:?apk}
 HOLD=$ROOT/build/dispatch/PS5-HOLD
+MODES=${MODES:-home noconsole}
+has_mode() { case " $MODES " in *" $1 "*) return 0 ;; esac; return 1; }
 if [ -e "$HOLD" ]; then LIVE=0; else LIVE=${LIVE:-1}; fi
 DEADLINE=${DEADLINE:-$(( $(date +%s) + 560 ))}
 [ -n "${PLEIKKARI_GO_LEASE_TOKEN:-}" ] || { echo "run under scripts/dev/device.py run --resource go" >&2; exit 2; }
@@ -46,6 +53,7 @@ props_off() {
 	a shell setprop debug.pleikkari.vr_full_pose 0
 	a shell setprop debug.pleikkari.go_entry_choose 0
 	a shell setprop debug.pleikkari.go_entry_no_console 0
+	a shell setprop debug.pleikkari.go_entry_not_found 0
 	a shell setprop debug.pleikkari.vr_pointer off
 }
 
@@ -204,20 +212,52 @@ step_noconsole() {
 	dump_log
 }
 
-say "PLE-730 start, LIVE=$LIVE; $(( DEADLINE - $(date +%s) ))s before the deadline; serial $(a shell getprop ro.serialno | tr -d '\r'); $(a shell 'dumpsys power | grep mWakefulness=' | tr -d '\r ')"
+# PLE-816: the not-found sheet and the address pad, with no PS5 needed. Without go_entry_choose the
+# Library launch looks for the last-played console at once, and the debug property makes that look
+# end on the not-found sheet: Consoles, Enter address, Try again (primary, focused).
+step_notfound() {
+	a shell setprop debug.pleikkari.vr_full_pose 1
+	a shell setprop debug.pleikkari.go_entry_choose 0
+	a shell setprop debug.pleikkari.go_entry_not_found 1
+	launch notfound || { dump_log; stop_app; a shell setprop debug.pleikkari.go_entry_not_found 0; return 6; }
+	sleep 6
+	shot 10-not-found
+	key left           # the pad's up: Try again to Enter address
+	shot 11-not-found-address-focus
+	key centre         # A on Enter address: the address pad on the menu panel
+	shot 12-address-pad
+	key centre         # A on the first key: types it
+	shot 13-address-typed
+	key back           # Back cancels the pad: the not-found sheet again
+	shot 14-not-found-again
+	dump_log
+	say "not-found lines: $(grep -cE 'GoVrEntry *: .*forced not found' "$OUT/logcat-raw.txt"), address cancelled: $(grep -c 'address cancelled' "$OUT/logcat-raw.txt"), saved: $(grep -c 'address saved' "$OUT/logcat-raw.txt")"
+	stop_app
+	a shell setprop debug.pleikkari.go_entry_not_found 0
+	dump_log
+}
+
+say "PLE-730 start, LIVE=$LIVE, MODES=$MODES; $(( DEADLINE - $(date +%s) ))s before the deadline; serial $(a shell getprop ro.serialno | tr -d '\r'); $(a shell 'dumpsys power | grep mWakefulness=' | tr -d '\r ')"
 a shell getprop ro.serialno | tr -d '\r' > "$OUT/serial.txt"
 fits 240 || { say "deferred: under 240 s left for setup, install, Home and restore"; exit 9; }
 golive setup ensure "$APK" || { say "setup/ensure failed"; exit 3; }
 if step_entry; then
-	if fits 150; then step_home || say "home failed rc=$?"; else say "home deferred: no time left"; fi
-	if fits 60; then step_noconsole || say "noconsole failed rc=$?"; else say "noconsole deferred: no time left"; fi
+	if has_mode home; then
+		if fits 150; then step_home || say "home failed rc=$?"; else say "home deferred: no time left"; fi
+	fi
+	if has_mode noconsole; then
+		if fits 60; then step_noconsole || say "noconsole failed rc=$?"; else say "noconsole deferred: no time left"; fi
+	fi
+	if has_mode notfound; then
+		if fits 75; then step_notfound || say "notfound failed rc=$?"; else say "notfound deferred: no time left"; fi
+	fi
 else
 	say "entry failed rc=$?"
 fi
 props_off
 write_prefs "$BACKUP/prefs.xml" && say "original prefs back"
 golive restore
-say "debug properties: full_pose=$(a shell getprop debug.pleikkari.vr_full_pose | tr -d '\r') choose=$(a shell getprop debug.pleikkari.go_entry_choose | tr -d '\r') no_console=$(a shell getprop debug.pleikkari.go_entry_no_console | tr -d '\r') pointer=$(a shell getprop debug.pleikkari.vr_pointer | tr -d '\r')"
+say "debug properties: full_pose=$(a shell getprop debug.pleikkari.vr_full_pose | tr -d '\r') choose=$(a shell getprop debug.pleikkari.go_entry_choose | tr -d '\r') no_console=$(a shell getprop debug.pleikkari.go_entry_no_console | tr -d '\r') not_found=$(a shell getprop debug.pleikkari.go_entry_not_found | tr -d '\r') pointer=$(a shell getprop debug.pleikkari.vr_pointer | tr -d '\r')"
 say "resumed at the end: $(resumed)"
 awk '!s[$0]++' "$OUT/logcat-raw.txt" > "$OUT/logcat.txt"
 # logcat pads a short tag: "GoVrUi  : ".
