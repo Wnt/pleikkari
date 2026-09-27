@@ -623,6 +623,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
                 // PLE-675: debug builds only, `adb shell setprop debug.pleikkari.vr_full_pose 1` before
                 // the stream starts; the screen follows the full head pose so a Go on a table shows it.
                 if(BuildConfig.DEBUG && debugProperty(FULL_POSE_PROPERTY) == "1") VrCinemaNative.setFullPoseRecentre(native, true)
+                // PLE-808: debug builds, `setprop debug.pleikkari.vr_depth_attach_once 1` keeps the rooms' depth attached.
+                if(BuildConfig.DEBUG && debugProperty(DEPTH_ATTACH_ONCE_PROPERTY) == "1") VrCinemaNative.debugSetDepthAttachOnce(native, true)
                 // PLE-603: the room around the screen; "plain" (the default) leaves the native path as it was.
                 // PLE-652: A/B a higher GPU clock while a room is drawn; off keeps GPU level 2.
                 if(Preferences(this@StreamVrActivity).goVrRoomHighGpu) VrCinemaNative.setRoomGpuLevel(native, 4)
@@ -952,6 +954,7 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_ENVIRONMENT_MSAA = "environment_msaa"
         private const val DEFAULT_ENVIRONMENT_SAMPLES = 4
         private const val FULL_POSE_PROPERTY = "debug.pleikkari.vr_full_pose"
+        private const val DEPTH_ATTACH_ONCE_PROPERTY = "debug.pleikkari.vr_depth_attach_once"
         /** PLE-715: debug builds only; frame pacing experiments, see vr-frame-pacing.h. */
         private const val PACING_PROPERTY = "debug.pleikkari.vr_pacing"
         /** PLE-722: debug builds only; "x,y" degrees from the open menu's middle for a synthetic pointer. */
@@ -1034,5 +1037,6 @@ internal object VrCinemaNative {
     external fun setEnvironment(handle: Long, environment: Int, distance: Float, width: Float, radius: Float,
         heightOffset: Float, glow: Float, roomLight: Float)
     external fun debugSetSkyVariant(handle: Long, variant: Int)
+    external fun debugSetDepthAttachOnce(handle: Long, enabled: Boolean)
     external fun destroy(handle: Long)
 }

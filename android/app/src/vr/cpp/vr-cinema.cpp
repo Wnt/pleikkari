@@ -289,6 +289,7 @@ struct Cinema {
     // PLE-652: GPU clock level while a room is drawn; 2 (the PLE-623 baseline) unless the A/B setting raises it.
     int roomGpuLevel = 2;
     int skyVariant = PLEIKKARI_VR_SKY_DOME; // PLE-666: debug sky draw, kept across environment rebuilds
+    bool depthAttachOnce = false; // PLE-808: A/B, kept across environment rebuilds
     // PLE-698: the last vrapi_SubmitFrame2 call (CLOCK_MONOTONIC ns) and its predicted display time.
     int64_t submitNs = 0;
     int64_t predictedDisplayNs = 0;
@@ -538,6 +539,7 @@ struct Cinema {
         else environment = pleikkari_vr_environment_create(&config, GL_TEXTURE_EXTERNAL_OES);
         if(!environment) { LOGE("Environment %s failed to build; keeping the plain screen", pleikkari_vr_environment_name(config.environment)); return; }
         if(skyVariant != PLEIKKARI_VR_SKY_DOME) pleikkari_vr_environment_debug_set_sky_variant(environment, skyVariant);
+        if(depthAttachOnce) pleikkari_vr_environment_debug_set_depth_attach_once(environment, true);
         LOGI("Environment %s: screen %.2f m away, %.2f m wide, curve radius %.2f m, %.2f m above eyes, glow %.2f, room light %.2f",
             pleikkari_vr_environment_name(config.environment), config.screen_distance_m, config.screen_width_m,
             config.screen_curve_radius_m, config.screen_height_offset_m, config.glow, config.room_light);
@@ -931,6 +933,10 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(setRoomGpuLevel)(JNIEnv *, jobject,
 // PLE-666: debug preview only; call before setEnvironment (PLE-650 variants, 0 is shipped).
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetSkyVariant)(JNIEnv *, jobject, jlong h, jint variant) {
     cinema(h)->skyVariant = variant;
+}
+// PLE-808: debug A/B; call before setEnvironment.
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(debugSetDepthAttachOnce)(JNIEnv *, jobject, jlong h, jboolean enabled) {
+    cinema(h)->depthAttachOnce = enabled;
 }
 // PLE-746: start the input-to-photon probe's luma pass; false when the GPU objects cannot be made.
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(probeEnable)(JNIEnv *, jobject, jlong h) {
