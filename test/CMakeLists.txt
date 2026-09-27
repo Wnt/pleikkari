@@ -15,6 +15,7 @@ set(CHIAKI_UNIT_SOURCES
 				gkcrypt.c
 				takion.c
 				senkusha.c
+				feedbacksender.c
 				fake_console.c
 				fake_console.h
 				linkwatchdog.c

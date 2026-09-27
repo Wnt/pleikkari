@@ -11,6 +11,7 @@ extern MunitTest tests_rpcrypt[];
 extern MunitTest tests_gkcrypt[];
 extern MunitTest tests_takion[];
 extern MunitTest tests_senkusha[];
+extern MunitTest tests_feedback_sender[];
 extern MunitTest tests_link_watchdog[];
 extern MunitTest tests_frame_loss[];
 extern MunitTest tests_video_receiver[];
@@ -86,6 +87,13 @@ static MunitSuite suites[] = {
 	{
 		"/senkusha",
 		tests_senkusha,
+		NULL,
+		1,
+		MUNIT_SUITE_OPTION_NONE
+	},
+	{
+		"/feedback_sender",
+		tests_feedback_sender,
 		NULL,
 		1,
 		MUNIT_SUITE_OPTION_NONE

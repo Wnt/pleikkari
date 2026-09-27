@@ -1,0 +1,25 @@
+== fixed-history.txt: 200 history packets
+  queued->sent us: p50 214 p95 527 max 1041; >=1000 us: 1; >=5000 us: 0
+  queued after the last state packet us: p50 4348 p95 8214 max 12454
+  queued inside the 8 ms state minimum: 184; their queued->sent us: p50 212 max 685; >=1000 us: 0
+  sent in the same pass as a state packet: 26
+  history seq contiguous: True (0..199)
+    slow: seq 181 queued->sent 1041 us, queued 8083 us after a state packet, state in same pass 1
+== unfixed-history.txt: 200 history packets
+  queued->sent us: p50 4669 p95 9629 max 12553; >=1000 us: 172; >=5000 us: 92
+  queued after the last state packet us: p50 4052 p95 8130 max 12624
+  queued inside the 8 ms state minimum: 187; their queued->sent us: p50 4962 max 12553; >=1000 us: 172
+  sent in the same pass as a state packet: 199
+  history seq contiguous: True (0..199)
+    slow: seq 0 queued->sent 5494 us, queued 3318 us after a state packet, state in same pass 1
+    slow: seq 1 queued->sent 6358 us, queued 1787 us after a state packet, state in same pass 1
+    slow: seq 2 queued->sent 4407 us, queued 3722 us after a state packet, state in same pass 1
+    slow: seq 3 queued->sent 3056 us, queued 4917 us after a state packet, state in same pass 1
+    slow: seq 4 queued->sent 6898 us, queued 794 us after a state packet, state in same pass 1
+    slow: seq 5 queued->sent 6466 us, queued 816 us after a state packet, state in same pass 1
+    slow: seq 7 queued->sent 3944 us, queued 4052 us after a state packet, state in same pass 1
+    slow: seq 8 queued->sent 2657 us, queued 5339 us after a state packet, state in same pass 1
+    slow: seq 9 queued->sent 7600 us, queued 3517 us after a state packet, state in same pass 1
+    slow: seq 10 queued->sent 1917 us, queued 6315 us after a state packet, state in same pass 1
+    slow: seq 11 queued->sent 4628 us, queued 3080 us after a state packet, state in same pass 1
+    slow: seq 13 queued->sent 7497 us, queued 63 us after a state packet, state in same pass 1
