@@ -29,6 +29,7 @@ set(CHIAKI_UNIT_SOURCES
 				bitstream.c
 				video_presenter.c
 				video_frame_latency.c
+				latency_probe.c
 				video_decoder_operating_rate.c
 				video_decoder_codec_header.c
 				vr_screen_placement.c
@@ -48,6 +49,7 @@ set(CHIAKI_UNIT_SOURCES
 				../android/app/src/main/cpp/vr-frame-pacing.c
 				../android/app/src/main/cpp/vr-ui-panel.c
 				../android/app/src/main/cpp/video-frame-latency.c
+				../android/app/src/main/cpp/latency-probe.c
 				regist.c)
 
 if(NOT CHIAKI_LIB_ENABLE_MBEDTLS)

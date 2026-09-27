@@ -12,6 +12,7 @@
 #include <chiaki/session.h>
 #include <chiaki/discoveryservice.h>
 #include <chiaki/regist.h>
+#include <chiaki/trace.h>
 
 #include <string.h>
 #include <errno.h>
@@ -25,6 +26,8 @@
 
 #include "video-decoder.h"
 #include "video-frame-latency.h"
+#include "latency-probe.h"
+#include "latency-trace.h"
 #include "audio-decoder.h"
 #include "audio-output.h"
 #include "log.h"
@@ -89,6 +92,9 @@ JavaVM *global_vm;
 // pauses the session before it joins the cinema thread), so it never holds a session pointer.
 static AndroidChiakiVideoFrameLatency cinema_frame_latency;
 static bool cinema_frame_latency_ready = false;
+// PLE-746: the Go's input-to-photon probe; one per process like the latency above, which feeds its frames.csv.
+static AndroidChiakiLatencyProbe latency_probe;
+static bool latency_probe_ready = false;
 
 static int64_t monotonic_ns(void)
 {
@@ -108,6 +114,33 @@ static void log_cinema_frame_latency(ChiakiLog *log)
 	char line[512];
 	android_chiaki_video_frame_latency_format(&window, line, sizeof(line));
 	CHIAKI_LOGI(log, "%s", line);
+}
+
+/**
+ * PLE-746: chiaki's trace points (lib/include/chiaki/trace.h), registered once at load. Returns at
+ * once unless the probe is armed; then they complete presses and become atrace markers.
+ */
+static void android_chiaki_trace_event_cb(ChiakiTraceEvent event, uint64_t a, uint64_t b, void *user)
+{
+	(void)user;
+	if(!android_chiaki_latency_trace_armed())
+		return;
+	switch(event)
+	{
+		case CHIAKI_TRACE_EVENT_VIDEO_PACKET:
+			android_chiaki_latency_trace_mark("PLE746 video packet f=%u u=%u", (unsigned)a, (unsigned)b);
+			break;
+		case CHIAKI_TRACE_EVENT_VIDEO_FRAME_READY:
+			android_chiaki_latency_trace_mark("PLE746 video frame ready f=%u", (unsigned)a);
+			break;
+		case CHIAKI_TRACE_EVENT_FEEDBACK_HISTORY_SENT:
+			android_chiaki_latency_probe_history_sent(&latency_probe, (uint32_t)a, (uint32_t)b, monotonic_ns());
+			android_chiaki_latency_trace_mark("PLE746 input sent history seq=%u buttons=0x%x", (unsigned)b, (unsigned)a);
+			break;
+		case CHIAKI_TRACE_EVENT_FEEDBACK_STATE_SENT:
+			android_chiaki_latency_trace_mark("PLE746 input sent state seq=%u", (unsigned)a);
+			break;
+	}
 }
 
 // Off by default: current behavior is unchanged until a session enables it via
@@ -154,6 +187,10 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
 	CHIAKI_LOGI(&global_log, "Chiaki Library Init Result: %s\n", chiaki_error_string(err));
 	chiaki_thread_set_affinity_cb(android_chiaki_thread_affinity_cb, NULL);
 	cinema_frame_latency_ready = android_chiaki_video_frame_latency_init(&cinema_frame_latency) == CHIAKI_ERR_SUCCESS;
+	latency_probe_ready = cinema_frame_latency_ready
+			&& android_chiaki_latency_probe_init(&latency_probe) == CHIAKI_ERR_SUCCESS;
+	if(latency_probe_ready)
+		chiaki_trace_set_event_cb(android_chiaki_trace_event_cb, NULL);
 	return JNI_VERSION;
 }
 
@@ -914,12 +951,60 @@ JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyEnable)(JNIEnv *env, jobject ob
 }
 
 // PLE-698: one call per frame the cinema latched; all times are CLOCK_MONOTONIC ns, submit 0 when not shown.
+// PLE-746: luma is the latched picture's mean 0..255 when the probe measured it, else -1.
 JNIEXPORT void JNICALL JNI_FCN(cinemaFrameLatencyLatched)(JNIEnv *env, jobject obj, jlong buffer_timestamp_ns,
-		jlong latched_ns, jlong submitted_ns, jlong predicted_display_ns)
+		jlong latched_ns, jlong submitted_ns, jlong predicted_display_ns, jint luma)
 {
 	if(cinema_frame_latency_ready)
 		android_chiaki_video_frame_latency_record_latched(&cinema_frame_latency, buffer_timestamp_ns,
-				latched_ns, submitted_ns, predicted_display_ns);
+				latched_ns, submitted_ns, predicted_display_ns, (int32_t)luma);
+}
+
+// PLE-746: starts the input-to-photon probe into <dir>/presses.csv and <dir>/frames.csv and arms
+// the atrace markers; the cinema calls it after cinemaFrameLatencyEnable(true).
+JNIEXPORT jboolean JNICALL JNI_FCN(latencyProbeStart)(JNIEnv *env, jobject obj, jstring dir_java)
+{
+	if(!latency_probe_ready)
+		return false;
+	const char *dir = E->GetStringUTFChars(env, dir_java, NULL);
+	if(!dir)
+		return false;
+	char path[512];
+	snprintf(path, sizeof(path), "%s/presses.csv", dir);
+	FILE *presses = fopen(path, "w");
+	snprintf(path, sizeof(path), "%s/frames.csv", dir);
+	FILE *frames = fopen(path, "w");
+	bool started = android_chiaki_latency_probe_start(&latency_probe, presses, frames);
+	if(started)
+	{
+		android_chiaki_video_frame_latency_set_row_cb(&cinema_frame_latency, android_chiaki_latency_probe_frame_row, &latency_probe);
+		android_chiaki_latency_trace_arm(true);
+		CHIAKI_LOGI(&global_log, "Latency probe: recording presses and frames to %s", dir);
+	}
+	else
+		CHIAKI_LOGE(&global_log, "Latency probe: cannot write to %s: %s", dir, strerror(errno));
+	E->ReleaseStringUTFChars(env, dir_java, dir);
+	return started;
+}
+
+JNIEXPORT void JNICALL JNI_FCN(latencyProbeStop)(JNIEnv *env, jobject obj)
+{
+	if(!latency_probe_ready)
+		return;
+	android_chiaki_latency_trace_arm(false);
+	android_chiaki_video_frame_latency_set_row_cb(&cinema_frame_latency, NULL, NULL);
+	uint32_t presses = 0, frames = 0;
+	if(android_chiaki_latency_probe_stop(&latency_probe, &presses, &frames))
+		CHIAKI_LOGI(&global_log, "Latency probe: stopped, %u presses and %u frames written", presses, frames);
+}
+
+// PLE-746: a Cross KeyEvent reached the app; event_ns is its getEventTime() in ns (CLOCK_MONOTONIC).
+JNIEXPORT void JNICALL JNI_FCN(latencyProbePress)(JNIEnv *env, jobject obj, jlong event_ns, jlong received_ns)
+{
+	if(!android_chiaki_latency_trace_armed())
+		return;
+	android_chiaki_latency_probe_press(&latency_probe, event_ns, received_ns);
+	android_chiaki_latency_trace_mark("PLE746 input key cross event_ns=%lld", (long long)event_ns);
 }
 
 // PLE-698: the debug preview has no session and so no stats window; its cinema logs one itself, once a second.
@@ -1035,6 +1120,12 @@ JNIEXPORT void JNICALL JNI_FCN(sessionSetControllerState)(JNIEnv *env, jobject o
 	controller_state.orient_y = E->GetFloatField(env, controller_state_java, session->java_controller_state_orient_y);
 	controller_state.orient_z = E->GetFloatField(env, controller_state_java, session->java_controller_state_orient_z);
 	controller_state.orient_w = E->GetFloatField(env, controller_state_java, session->java_controller_state_orient_w);
+	if(android_chiaki_latency_trace_armed())
+	{
+		// PLE-746: only while the probe runs; stamps Cross going down on its way to the sender.
+		android_chiaki_latency_probe_controller_state(&latency_probe, controller_state.buttons, monotonic_ns());
+		android_chiaki_latency_trace_mark("PLE746 input state buttons=0x%x", (unsigned)controller_state.buttons);
+	}
 	chiaki_session_set_controller_state(&session->session, &controller_state);
 }
 

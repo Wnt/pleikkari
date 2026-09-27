@@ -2,6 +2,7 @@
 
 #include "video-decoder.h"
 #include "video-decoder-codec-header.h"
+#include "latency-trace.h"
 
 #include <jni.h>
 
@@ -623,7 +624,13 @@ static bool android_chiaki_video_decoder_queue_sample(AndroidChiakiVideoDecoder 
 
 		int64_t queued_ns = first_chunk
 				? (int64_t)chiaki_time_now_monotonic_us() * 1000LL : 0;
+		// PLE-746: the frame reaches the decoder (its first chunk; a split frame queues more).
+		bool traced = first_chunk && android_chiaki_latency_trace_begin("PLE746 video queue");
+		if(traced)
+			android_chiaki_latency_trace_mark("PLE746 video queued f=%u", (unsigned)frame_index);
 		media_status_t queue_result = AMediaCodec_queueInputBuffer(decoder->codec, (size_t)codec_buf_index, 0, codec_sample_size, presentation_time_us, 0);
+		if(traced)
+			android_chiaki_latency_trace_end();
 		if(queue_result == AMEDIA_OK && first_chunk)
 			android_chiaki_video_presenter_record_input_queued(&decoder->presenter,
 					(int64_t)presentation_time_us, queued_ns, frame_index,
