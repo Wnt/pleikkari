@@ -77,3 +77,35 @@ slowly. A release gap of 0 merges two taps of the same button into one press.
 
 The receiver logs each sequence and its outcome under the `PadScript` tag:
 `adb logcat -s PadScript`.
+
+## Frame grab: the decoded frame at native resolution (GRAB)
+
+`adb screencap` gives the video only at its on-screen size (1080x608 in portrait
+for a 1280x720 stream) and with the touch controls drawn over it. A debug
+`StreamActivity` also registers, while resumed, `FrameGrabReceiver` for
+`fi.madekivi.pleikkari.GRAB` (same `android.permission.DUMP` sender rule, same
+create/register/unregister lifecycle as the pad receiver; the Go VR activity is
+not covered).
+
+```
+adb shell am broadcast --receiver-foreground -a fi.madekivi.pleikkari.GRAB -p fi.madekivi.pleikkari [--es name menu.png]
+adb exec-out cat /sdcard/Android/data/fi.madekivi.pleikkari/files/grab/latest.png > frame.png
+```
+
+The reply is `ok <W>x<H> <absolute path> in <ms> ms`, or `error: ...`
+(`not streaming (<state>)`, `grab not supported on ... renderer`, ...); a bare
+`result=0` means nothing is listening. The file is written through a temp file
+and a rename, so a poller never reads half a PNG; `name` must be a plain name
+ending in `.png`.
+
+- **Default path only.** With post-processing (debanding) off, which is the
+  default, the video decodes straight into the `SurfaceView` and the grab is
+  `PixelCopy.request(surfaceView, bitmap(videoW x videoH))`, which reads the
+  surface's own buffer, so the pixels are the decoder's, not scaled to the view.
+  Overlays are separate windows and are not in it. With debanding on (GLSurfaceView
+  or native EGL) the grab answers `error: grab not supported on ... renderer`.
+- **Size** is the stream profile's width x height (`connectInfo.videoProfile`),
+  which is also what the native decoder is configured with; the decoder's output
+  format is not read back from the NDK codec. Switching the stream to 1080p
+  therefore gives 1920x1080 frames without any change here.
+- The workspace wrapper is `scripts/scratch/grab.sh`.
