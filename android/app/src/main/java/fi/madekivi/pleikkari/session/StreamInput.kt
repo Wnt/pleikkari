@@ -127,7 +127,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		if(motionControllerState.r2State > 0U)
 			controllerState.r2State = motionControllerState.r2State
 
-		return controllerState or touchControllerState
+		return controllerState or touchControllerState or scriptedControllerState
 	}
 
 	private val sensorControllerState = ControllerState() // from Motion Sensors
@@ -140,6 +140,21 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			synchronized(stateLock)
 			{
 				field = value
+				controllerStateUpdated()
+			}
+		}
+
+	/**
+	 * PLE-869: debug builds only, what [PadScriptReceiver]'s adb script holds down. A layer of its
+	 * own, so a script never clears a held pad button and a pad event never cancels a scripted one.
+	 */
+	var scriptedControllerState = ControllerState()
+		get() = synchronized(stateLock) { field }
+		set(value)
+		{
+			synchronized(stateLock)
+			{
+				field = value.copy()
 				controllerStateUpdated()
 			}
 		}

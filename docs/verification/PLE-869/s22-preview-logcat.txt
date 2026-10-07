@@ -1,0 +1,11 @@
+--------- beginning of main
+10-07 22:57:26.449 I/StreamActivity(25159): Stream window created: display 0 (60.00 Hz), window 384x823 dp, 450 dpi, touchscreen=true
+10-07 22:57:26.461 I/PadScript(25159): listening for fi.madekivi.pleikkari.PAD
+10-07 22:57:26.466 I/StreamActivity(25159): Stream diagnostics overlay enabled; redraw interval 1000 ms
+10-07 22:57:31.002 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.167 I/PadScript(25159): ok cancelled
+10-07 22:57:31.337 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.485 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.648 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.800 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.951 I/PadScript(25159): error: not streaming (StreamStateIdle)

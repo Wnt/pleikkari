@@ -157,6 +157,11 @@ class StreamActivity : AppCompatActivity()
 	private var lastLayoutBoundsLog: String? = null
 	private var quitReasonInjector: BroadcastReceiver? = null
 	/**
+	 * PLE-869: debug builds only; adb drives the console's pad, see [PadScriptReceiver]. Listens only
+	 * while resumed, so a stopped stream activity left in the back stack never answers.
+	 */
+	private var padScriptReceiver: PadScriptReceiver? = null
+	/**
 	 * PLE-829: with stream_pad_input_thread, the window that takes the pad's key and joystick events
 	 * off the main looper while the stream is resumed; null otherwise. Touch stays on main.
 	 */
@@ -273,7 +278,12 @@ class StreamActivity : AppCompatActivity()
 			updateConnectOverlay()
 		})
 		if(BuildConfig.DEBUG)
+		{
 			quitReasonInjector = registerQuitReasonInjector()
+			padScriptReceiver = PadScriptReceiver({ viewModel.input }) {
+				viewModel.session.state.value.takeIf { it != StreamStateConnected }?.let { it::class.simpleName ?: "unknown" }
+			}
+		}
 		if(diagnosticsPreview || preferences.streamDiagnosticsOverlayEnabled)
 		{
 			val overlay = StreamDiagnosticsOverlay(this) {
@@ -608,6 +618,7 @@ class StreamActivity : AppCompatActivity()
 			binding.debandSurfaceView.requestRender()
 		}
 		viewModel.resume()
+		padScriptReceiver?.register(this)
 		registerDisplayListener()
 		// PLE-829: A/B the pad read off the main looper, and the probe that times it, while resumed.
 		val preferences = Preferences(this)
@@ -621,6 +632,7 @@ class StreamActivity : AppCompatActivity()
 	{
 		// PLE-829: the pad goes back to the main looper before the session pauses.
 		stopInputWindow()
+		padScriptReceiver?.unregister(this)
 		stopLatencyProbe()
 		unregisterDisplayListener()
 		configureWifiLock(false)

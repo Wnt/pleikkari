@@ -69,6 +69,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** PLE-739: debug builds only; VrApi input bits fed by [DEBUG_INPUT_ACTION], OR'd into the next poll. */
     private val debugInput = AtomicInteger(0)
     private var debugInputReceiver: BroadcastReceiver? = null
+    /** PLE-869: debug builds only, registered with [debugInputReceiver]; see [PadScriptReceiver]. */
+    private var padScriptReceiver: PadScriptReceiver? = null
     /** PLE-722: when the remote's Back went down, as Android saw it (a long press recentres). */
     @Volatile private var backDownMs = 0L
     /**
@@ -310,6 +312,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
      */
     private fun registerDebugInput() {
         if(debugInputReceiver != null) return
+        padScriptReceiver = PadScriptReceiver({ model?.input }) {
+            model?.session?.state?.value.takeIf { it != StreamStateConnected }?.let { it::class.simpleName ?: "unknown" }
+                ?: if(model == null) "no session" else null
+        }.also { it.register(this) }
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 intent.getStringExtra(EXTRA_DEBUG_PAD)?.let { pad ->
@@ -348,6 +354,8 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
         libraryFlow?.pause()
         debugInputReceiver?.let { unregisterReceiver(it) }
         debugInputReceiver = null
+        padScriptReceiver?.unregister(this)
+        padScriptReceiver = null
         stopCinema()
         super.onPause()
     }
