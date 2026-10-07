@@ -1,0 +1,33 @@
+device: ACQUIRED by ple-869; holder  ple-869 (pid 1717729, 0 min)
+== serial 192.168.1.107:5555 model SM-S908B sdk 36
+== backup
+app-state: /home/wnt/.config/pleikkari/backups/fork-app-20261007T195706Z-fi.madekivi.pleikkari/data.tar (595456 bytes)
+app-state: registered_host rows=1 nickname=PS5-466
+app-state: backup verified
+== install
+Performing Streamed Install
+Success
+    versionName=1.10.0
+    lastUpdateTime=2026-10-07 22:57:24
+== no stream activity open:
+Broadcast completed: result=0
+== top: 
+== preview, no console (expect not streaming):
+Broadcast completed: result=1, data="error: not streaming (StreamStateIdle)"
+== cancel:
+Broadcast completed: result=-1, data="ok cancelled"
+== timing of 5 round trips:
+  168 ms
+  146 ms
+  160 ms
+  149 ms
+  154 ms
+== logcat PadScript lines:
+10-07 22:57:26.461 I/PadScript(25159): listening for fi.madekivi.pleikkari.PAD
+10-07 22:57:31.002 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.167 I/PadScript(25159): ok cancelled
+10-07 22:57:31.337 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.485 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.648 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.800 I/PadScript(25159): error: not streaming (StreamStateIdle)
+10-07 22:57:31.951 I/PadScript(25159): error: not streaming (StreamStateIdle)
