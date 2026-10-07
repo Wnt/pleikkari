@@ -11,6 +11,7 @@ import android.content.IntentFilter
 import android.content.res.ColorStateList
 import android.hardware.display.DisplayManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
@@ -161,6 +162,7 @@ class StreamActivity : AppCompatActivity()
 	 * while resumed, so a stopped stream activity left in the back stack never answers.
 	 */
 	private var padScriptReceiver: PadScriptReceiver? = null
+	private var frameGrabReceiver: FrameGrabReceiver? = null
 	/**
 	 * PLE-829: with stream_pad_input_thread, the window that takes the pad's key and joystick events
 	 * off the main looper while the stream is resumed; null otherwise. Touch stays on main.
@@ -283,6 +285,9 @@ class StreamActivity : AppCompatActivity()
 			padScriptReceiver = PadScriptReceiver({ viewModel.input }) {
 				viewModel.session.state.value.takeIf { it != StreamStateConnected }?.let { it::class.simpleName ?: "unknown" }
 			}
+			frameGrabReceiver = FrameGrabReceiver(this,
+				{ viewModel.session.state.value.takeIf { it != StreamStateConnected }?.let { it::class.simpleName ?: "unknown" } },
+				::grabVideoFrame)
 		}
 		if(diagnosticsPreview || preferences.streamDiagnosticsOverlayEnabled)
 		{
@@ -402,6 +407,33 @@ class StreamActivity : AppCompatActivity()
 				null
 			viewModel.session.attachToSurfaceView(binding.surfaceView, frameRate)
 		}
+	}
+
+	/**
+	 * Debug-only (FrameGrabReceiver): the decoded frame at the stream's own size, no overlays. Only the
+	 * default SurfaceView path can: PixelCopy reads the surface's buffer the decoder renders into, so a
+	 * bitmap of the video size gets native pixels. The deband paths render a shader output at view size.
+	 */
+	private fun grabVideoFrame(onDone: (Bitmap?, String?) -> Unit)
+	{
+		if(debandRenderer != null)
+			return onDone(null, "grab not supported on deband (GLSurfaceView) renderer")
+		if(eglRenderer != null)
+			return onDone(null, "grab not supported on native EGL deband renderer")
+		val view = binding.surfaceView
+		if(!view.holder.surface.isValid)
+			return onDone(null, "video surface not ready")
+		val profile = viewModel.connectInfo.videoProfile
+		val bitmap = Bitmap.createBitmap(profile.width, profile.height, Bitmap.Config.ARGB_8888)
+		PixelCopy.request(view, bitmap, { result ->
+			if(result == PixelCopy.SUCCESS)
+				onDone(bitmap, null)
+			else
+			{
+				bitmap.recycle()
+				onDone(null, "PixelCopy failed (code $result)")
+			}
+		}, Handler(Looper.getMainLooper()))
 	}
 
 	private fun setupEglDebandOutput(prefs: Preferences)
@@ -619,6 +651,7 @@ class StreamActivity : AppCompatActivity()
 		}
 		viewModel.resume()
 		padScriptReceiver?.register(this)
+		frameGrabReceiver?.register()
 		registerDisplayListener()
 		// PLE-829: A/B the pad read off the main looper, and the probe that times it, while resumed.
 		val preferences = Preferences(this)
@@ -633,6 +666,7 @@ class StreamActivity : AppCompatActivity()
 		// PLE-829: the pad goes back to the main looper before the session pauses.
 		stopInputWindow()
 		padScriptReceiver?.unregister(this)
+		frameGrabReceiver?.unregister()
 		stopLatencyProbe()
 		unregisterDisplayListener()
 		configureWifiLock(false)

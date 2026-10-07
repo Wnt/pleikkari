@@ -8,7 +8,7 @@ debug-guard | source set: android/app/src/debug/java/fi/madekivi/pleikkari/regis
 # BuildConfig.DEBUG is true (checked at StreamActivity.onCreate before any receiver exists), so a
 # release build never registers the BroadcastReceiver and the action has no listener to reach;
 # unused, it costs one extra Log.w-free field and one skipped `if`. See docs/devtools-quit-injection.md.
-debug-guard | fi/madekivi/pleikkari/stream/StreamActivity.kt: if(BuildConfig.DEBUG) | debug-harness | PLE-422: gates registration of the adb-only QuitEvent injection receiver, and PLE-869's adb pad-script receiver (PadScriptReceiver); a release build never registers either, so neither broadcast action has a listener
+debug-guard | fi/madekivi/pleikkari/stream/StreamActivity.kt: if(BuildConfig.DEBUG) | debug-harness | PLE-422: gates registration of the adb-only QuitEvent injection receiver, and PLE-869's adb pad-script receiver (PadScriptReceiver); a release build never registers either, so neither broadcast action has a listener; the same block creates devtools' frame-grab receiver (FrameGrabReceiver, action fi.madekivi.pleikkari.GRAB), likewise never registered in a release build
 adb-only-extra | EXTRA_QUIT_REASON | debug-harness | PLE-422: int extra on the devtools-only INJECT_QUIT_REASON broadcast; set only by `adb shell am broadcast`, read only by the BuildConfig.DEBUG-gated receiver above
 
 default-off-pref | stream_senkusha_fallback_notice | measurement | PLE-509: one-shot toast when Senkusha fails and a fallback MTU/RTT is used; off so today's silence (PLE-490's flagged gap) stays the A/B baseline until the notice is measured worth keeping
@@ -64,3 +64,4 @@ adb-only-extra | EXTRA_SEQ | debug-harness | PLE-869: the pad sequence on the ad
 adb-only-extra | EXTRA_HOLD_MS | debug-harness | PLE-869: default press hold for the EXTRA_SEQ pad sequence above; same debug-only, adb-only receiver
 adb-only-extra | EXTRA_GAP_MS | debug-harness | PLE-869: default release gap for the EXTRA_SEQ pad sequence above; same debug-only, adb-only receiver
 adb-only-extra | EXTRA_CANCEL | debug-harness | PLE-869: stops a playing EXTRA_SEQ pad sequence and releases the pad; same debug-only, adb-only receiver
+adb-only-extra | EXTRA_NAME | debug-harness | devtools: optional PNG file name (plain name ending in .png, default latest.png) on the adb-only fi.madekivi.pleikkari.GRAB broadcast (scripts/scratch/grab.sh) that saves the decoded video frame at stream resolution; read only by FrameGrabReceiver, which only BuildConfig.DEBUG-gated code registers, and only from a sender holding android.permission.DUMP
