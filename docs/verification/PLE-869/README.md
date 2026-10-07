@@ -21,8 +21,26 @@ back through `goAsync`. The diagnostics preview never opens a session
 (`externallyManaged`), so nothing contacted the PS5. PS5-HOLD was in place
 (since 2026-09-27).
 
-**Not yet run:** presses reaching a live PS5 session. That needs the operator to
-lift PS5-HOLD. Until then, the press path is proven only by host tests:
-`PadScriptTest` (the grammar and the runner's order, release and cancel) and
-`StreamInputScriptedTest` (the scripted layer merges with a physical pad's
-state, and neither clears the other).
+## Live PS5 (operator lifted PS5-HOLD), 2026-10-07 23:05 local
+
+S22 `192.168.1.107:5555` streamed to PS5-466 (`192.168.1.164`) after a debug
+`am start ... -e auto_connect_host 192.168.1.164`. The console was running
+Gran Turismo 7 (`live-0-gt7.jpg`). Each step was one `scripts/dev/pad.sh` call,
+with a screenshot taken after it. `s22-live-logcat.txt` holds the `PadScript`
+lines.
+
+| Call | App reply (round trip) | On the console |
+|---|---|---|
+| `wait:50` probes while connecting | `not streaming (StreamStateConnecting)` x3, then `ok 0/0` about 4 s after `am start` | |
+| `pad.sh ps` | `ok 1/1 presses in 202 ms` (330 ms) | the control centre opens over the game: `live-1-ps-control-centre.jpg` |
+| `pad.sh right*2` | `ok 2/2 presses in 402 ms` (532 ms) | focus moves two cards, Official news to GT7: `live-2-right-x2.jpg` |
+| `pad.sh circle` | `ok 1/1 presses in 201 ms` (317 ms) | the control centre closes and the game is back: `live-3-circle-closed.jpg` |
+| `input keyevent 4` (BACK), then a probe | `result=0` | the stream ended and the receiver is gone with the activity |
+
+### Found and fixed on the device
+
+The first live attempt was answered by a stopped diagnostics-preview
+`StreamActivity` left in the back stack (`not streaming (StreamStateIdle)`),
+because the phone registered the receiver from `onCreate` to `onDestroy`. It now
+registers only while resumed, as the Go activity already did. The last probe in
+the table above is the proof.

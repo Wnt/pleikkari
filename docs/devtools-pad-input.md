@@ -7,8 +7,8 @@ on the on-screen gamepad (PLE-453). This is the devtools affordance that does.
 
 ## What it does
 
-In a **debug build** (`BuildConfig.DEBUG`), `StreamActivity` (phone, created to
-destroyed) and `StreamVrActivity` (Go, resumed to paused) register
+In a **debug build** (`BuildConfig.DEBUG`), `StreamActivity` (phone) and
+`StreamVrActivity` (Go) register, while resumed,
 `PadScriptReceiver` for `fi.madekivi.pleikkari.PAD`. A broadcast carries a whole
 sequence of presses. `PadScriptRunner` plays it on its own thread into
 `StreamInput.scriptedControllerState`, a layer of the controller state of its

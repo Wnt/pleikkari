@@ -1,0 +1,15 @@
+10-07 23:05:43.379 I/PadScript(28316): listening for fi.madekivi.pleikkari.PAD
+10-07 23:05:43.802 I/PadScript(28316): error: not streaming (StreamStateConnecting)
+10-07 23:05:45.066 I/PadScript(28316): error: not streaming (StreamStateConnecting)
+10-07 23:05:46.213 I/PadScript(28316): error: not streaming (StreamStateConnecting)
+10-07 23:05:47.319 I/PadScript(28316): play 'wait:50': 0 presses, 50 ms
+10-07 23:05:47.371 I/PadScript(28316): ok 0/0 presses in 50 ms
+10-07 23:06:12.712 I/PadScript(28316): play 'ps': 1 presses, 200 ms
+10-07 23:06:12.915 I/PadScript(28316): ok 1/1 presses in 202 ms
+10-07 23:06:28.147 I/PadScript(28316): play 'right*2': 2 presses, 400 ms
+10-07 23:06:28.551 I/PadScript(28316): ok 2/2 presses in 402 ms
+10-07 23:06:39.353 I/PadScript(28316): play 'circle': 1 presses, 200 ms
+10-07 23:06:39.555 I/PadScript(28316): ok 1/1 presses in 201 ms
+10-07 23:07:10.900 I/Chiaki  (28316): Session has quit
+10-07 23:07:10.900 I/Chiaki  (28316): Session quit: reason=stopped remote_reason=""
+10-07 23:07:11.091 I/Chiaki  (28316): JNI Session has quit
