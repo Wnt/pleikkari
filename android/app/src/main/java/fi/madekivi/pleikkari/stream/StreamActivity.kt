@@ -156,6 +156,8 @@ class StreamActivity : AppCompatActivity()
 	private var lastWindowInsets: WindowInsetsCompat? = null
 	private var lastLayoutBoundsLog: String? = null
 	private var quitReasonInjector: BroadcastReceiver? = null
+	/** PLE-869: debug builds only; adb drives the console's pad, see [PadScriptReceiver]. */
+	private var padScriptReceiver: PadScriptReceiver? = null
 	/**
 	 * PLE-829: with stream_pad_input_thread, the window that takes the pad's key and joystick events
 	 * off the main looper while the stream is resumed; null otherwise. Touch stays on main.
@@ -273,7 +275,12 @@ class StreamActivity : AppCompatActivity()
 			updateConnectOverlay()
 		})
 		if(BuildConfig.DEBUG)
+		{
 			quitReasonInjector = registerQuitReasonInjector()
+			padScriptReceiver = PadScriptReceiver({ viewModel.input }) {
+				viewModel.session.state.value.takeIf { it != StreamStateConnected }?.let { it::class.simpleName ?: "unknown" }
+			}.also { it.register(this) }
+		}
 		if(diagnosticsPreview || preferences.streamDiagnosticsOverlayEnabled)
 		{
 			val overlay = StreamDiagnosticsOverlay(this) {
@@ -710,6 +717,8 @@ class StreamActivity : AppCompatActivity()
 	{
 		quitReasonInjector?.let { unregisterReceiver(it) }
 		quitReasonInjector = null
+		padScriptReceiver?.unregister(this)
+		padScriptReceiver = null
 		uiVisibilityHandler.removeCallbacks(connectProgressTick)
 		diagnosticsOverlay?.destroy()
 		diagnosticsOverlay = null
