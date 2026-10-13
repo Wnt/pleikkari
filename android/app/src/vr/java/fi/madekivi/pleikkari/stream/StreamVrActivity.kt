@@ -677,7 +677,10 @@ class StreamVrActivity : ComponentActivity(), SurfaceHolder.Callback {
      * [StreamInput] locks its own state. [libraryFlow] belongs to the main thread, but it is null
      * whenever [inputWindow] runs: a Library launch drops it before its session attaches.
      */
-    private fun routeKey(event: KeyEvent): Boolean {
+    private fun routeKey(received: KeyEvent): Boolean {
+        // PLE-876: the Go has no DualSense key layout; the VR menu, the chooser and the stream all
+        // read its buttons by their DualSense names.
+        val event = DualSenseGenericLayout.shared.normalize(received)
         // Bluetooth pads retain the existing StreamInput mapping, including their Back key.
         val gamepad = event.isFromSource(InputDevice.SOURCE_GAMEPAD) || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
         val ui = cinema?.ui

@@ -29,7 +29,12 @@ import fi.madekivi.pleikkari.lib.LatencyProbe
  * looper. Each looper has its own [FlushScheduler]; a flush sends only if [controllerStateDirty] is
  * still set under [stateLock], so two schedulers never send the same change twice.
  */
-class StreamInput(val context: Context, val preferences: Preferences)
+class StreamInput(
+	val context: Context,
+	val preferences: Preferences,
+	private val padLayout: DualSenseGenericLayout = DualSenseGenericLayout.shared,
+	private val deviceConnected: (Int) -> Boolean = { InputDevice.getDevice(it) != null }
+)
 {
 	companion object
 	{
@@ -52,7 +57,8 @@ class StreamInput(val context: Context, val preferences: Preferences)
 				MotionEvent.AXIS_GAS
 			).associateWith { axis -> device?.getMotionRange(axis)?.range }
 		},
-		fallbackForReportedRanges = preferences.gamepadTriggerFallbackEnabled
+		fallbackForReportedRanges = preferences.gamepadTriggerFallbackEnabled,
+		centredRxRyForDevice = padLayout::isGeneric
 	)
 	private val mainHandler = Handler(Looper.getMainLooper())
 	private val flushOnInputThread = preferences.goVrInputThreadFlush
@@ -105,6 +111,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 
 	private fun mergedControllerState(): ControllerState
 	{
+		val motionControllerState = motionControllerStates.values.fold(ControllerState()) { a, b -> a or b }
 		val controllerState = sensorControllerState or keyControllerState or motionControllerState
 
 		when(displayRotation)
@@ -132,7 +139,12 @@ class StreamInput(val context: Context, val preferences: Preferences)
 
 	private val sensorControllerState = ControllerState() // from Motion Sensors
 	private val keyControllerState = ControllerState() // from KeyEvents
-	private val motionControllerState = ControllerState() // from MotionEvents
+	/**
+	 * From MotionEvents, one per pad (PLE-876): each event carries every axis of its own pad, so with
+	 * two pads paired one shared state let the idle pad's stick noise reset the other's held trigger
+	 * and stick. Merged like the other layers: the larger deflection wins.
+	 */
+	private val motionControllerStates = HashMap<Int, ControllerState>()
 	var touchControllerState = ControllerState()
 		get() = synchronized(stateLock) { field }
 		set(value)
@@ -292,7 +304,8 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		if(event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP)
 			return false
 
-		val keyCode = event.keyCode
+		// PLE-876: a DualSense on the Go's generic layout names its buttons in HID order.
+		val keyCode = padLayout.normalize(event).keyCode
 		val action = event.action == KeyEvent.ACTION_DOWN
 
 		// Check for L2/R2 (can be digital or analog, here we handle digital key event)
@@ -342,7 +355,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	 */
 	fun releasePad() = synchronized(stateLock)
 	{
-		for(state in listOf(keyControllerState, motionControllerState))
+		for(state in listOf(keyControllerState) + motionControllerStates.values)
 		{
 			state.buttons = 0U
 			state.l2State = 0U
@@ -386,13 +399,20 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			return false
 		fun Float.signedAxis() = (this * Short.MAX_VALUE).toInt().toShort()
 		fun Float.unsignedAxis() = (this * UByte.MAX_VALUE.toFloat()).toUInt().toUByte()
+		// A pad that went away keeps no stick or trigger held; checked only while another pad is in use.
+		if(motionControllerStates.keys.any { it != event.deviceId })
+			motionControllerStates.keys.retainAll { it == event.deviceId || deviceConnected(it) }
+		val motionControllerState = motionControllerStates.getOrPut(event.deviceId) { ControllerState() }
 		motionControllerState.leftX = event.getAxisValue(MotionEvent.AXIS_X).signedAxis()
 		motionControllerState.leftY = event.getAxisValue(MotionEvent.AXIS_Y).signedAxis()
 		motionControllerState.rightX = event.getAxisValue(MotionEvent.AXIS_Z).signedAxis()
 		motionControllerState.rightY = event.getAxisValue(MotionEvent.AXIS_RZ).signedAxis()
 		val triggerAxes = triggerAxisResolver.axesFor(event.deviceId)
-		motionControllerState.l2State = event.getAxisValue(triggerAxes.l2).unsignedAxis()
-		motionControllerState.r2State = event.getAxisValue(triggerAxes.r2).unsignedAxis()
+		fun trigger(axis: Int) = event.getAxisValue(axis).let {
+			if(triggerAxes.centred) ((it + 1f) / 2f).coerceIn(0f, 1f) else it
+		}.unsignedAxis()
+		motionControllerState.l2State = trigger(triggerAxes.l2)
+		motionControllerState.r2State = trigger(triggerAxes.r2)
 		motionControllerState.buttons = motionControllerState.buttons.let {
 			val dpadX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
 			val dpadY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
