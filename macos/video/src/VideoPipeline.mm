@@ -251,8 +251,12 @@ CGColorSpaceRef copyColorSpace(const ColorInfo &c, HdrOutput mode)
 	else if(c.transfer == Transfer::HLG) name = kCGColorSpaceITUR_2100_HLG;
 	else if(c.primaries == Primaries::BT2020) name = kCGColorSpaceITUR_2020;
 	else if(c.primaries == Primaries::P3) name = kCGColorSpaceDisplayP3;
-	else if(c.transfer == Transfer::SRGB) name = kCGColorSpaceSRGB;
-	else name = kCGColorSpaceITUR_709;
+	// An SDR BT.709 picture is shown with its code values taken as sRGB, which is what the
+	// console's picture looks like on a computer display and what the Qt client's OpenGL path
+	// shows. Tagged kCGColorSpaceITUR_709, macOS decodes it with a pure 2.4 power curve where
+	// sRGB has a linear toe: a code value of 10 % comes out 2.5 times darker, 5 % five times,
+	// 2 % nineteen times (measured with ColorSync on macOS 27), and shadow detail disappears.
+	else name = kCGColorSpaceSRGB;
 	return CGColorSpaceCreateWithName(name);
 }
 
@@ -1560,7 +1564,7 @@ std::unique_ptr<VideoPipeline> VideoPipeline::create(void *metalLayer, const Pip
 	layer.maximumDrawableCount = config.maxDrawables == 2 ? 2 : 3;
 	layer.allowsNextDrawableTimeout = YES;
 	layer.presentsWithTransaction = NO;
-	CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
+	CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB); // see copyColorSpace()
 	layer.colorspace = cs;
 	CGColorSpaceRelease(cs);
 	[CATransaction commit];
