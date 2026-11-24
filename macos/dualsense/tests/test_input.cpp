@@ -3,7 +3,8 @@
 // Input report and feature report parsing: synthetic reports with known values
 // (layouts from SDL's PS5StatePacket_t / PS5SimpleStatePacket_t and Linux
 // hid-playstation), and real reports captured read-only from a DualSense over
-// Bluetooth (tests/fixtures, see the README there).
+// Bluetooth (tests/fixtures; each file's header says how it was captured). Feature
+// report 0x09 holds the controller's MAC and is never stored as a fixture.
 
 #include "Protocol.h"
 #include "test.h"
@@ -326,4 +327,134 @@ TEST(firmware_info_parse)
 	BtCrcStore(kCrcSeedFeature, r.data(), r.size());
 	CHECK(ParseFirmwareInfo(r.data(), r.size(), true, &f));
 	CHECK(!ParseFirmwareInfo(r.data(), 40, false, &f));
+}
+
+// ---------------------------------------------------------------------------
+// Real reports, captured read-only over Bluetooth (macOS, firmware update 0x0641).
+
+namespace {
+
+// Independent decoding straight from the byte offsets (payload = report + 2).
+int16_t S16At(const std::vector<uint8_t> &r, size_t payload_offset)
+{
+	return (int16_t)(r[2 + payload_offset] | (r[2 + payload_offset + 1] << 8));
+}
+uint32_t U32At(const std::vector<uint8_t> &r, size_t payload_offset)
+{
+	uint32_t v = 0;
+	for(int i = 3; i >= 0; i--)
+		v = (v << 8) | r[2 + payload_offset + (size_t)i];
+	return v;
+}
+
+Calibration FixtureCalibration()
+{
+	Calibration cal;
+	auto lines = t::LoadFixture("bt_feature_0x05.hex");
+	if(lines.size() == 1)
+		ParseCalibration(lines[0].bytes.data(), lines[0].bytes.size(), true, &cal);
+	return cal;
+}
+
+} // namespace
+
+TEST(fixture_bt_calibration_is_valid)
+{
+	auto lines = t::LoadFixture("bt_feature_0x05.hex");
+	CHECK_EQ(lines.size(), (size_t)1);
+	if(lines.size() != 1)
+		return;
+	const auto &r = lines[0].bytes;
+	CHECK_EQ(r.size(), kCalibrationSize);
+	CHECK_EQ(r[0], kFeatureIdCalibration);
+	// bluetoothd passes the feature reply through with its CRC (seed 0xA3) intact.
+	CHECK(BtCrcValid(kCrcSeedFeature, r.data(), r.size()));
+	Calibration cal;
+	CHECK(ParseCalibration(r.data(), r.size(), true, &cal));
+	CHECK(cal.valid);
+	for(int i = 0; i < 3; i++)
+	{
+		CHECK(std::fabs(cal.axis[i].sensitivity - 64.0f) < 4.0f);  // ~64: raw * 64/1024 deg/s
+		CHECK(std::fabs(cal.axis[3 + i].sensitivity - 1.0f) < 0.05f);
+	}
+	auto bad = r;
+	bad[10] ^= 0x01;
+	Calibration rejected;
+	CHECK(!ParseCalibration(bad.data(), bad.size(), true, &rejected));
+	CHECK(!rejected.valid);
+}
+
+TEST(fixture_bt_reports_parse_and_match_offsets)
+{
+	auto lines = t::LoadFixture("bt_input_0x31.hex");
+	CHECK(lines.size() >= 100);
+	const Calibration cal = FixtureCalibration();
+	CHECK(cal.valid);
+	InputParser parser;
+	InputState prev;
+	double accel_mag_sum = 0, gyro_mag_max = 0;
+	uint64_t ticks = 0;
+	for(size_t i = 0; i < lines.size(); i++)
+	{
+		const auto &r = lines[i].bytes;
+		CHECK_EQ(r.size(), kBtInputSize);
+		CHECK_EQ(r[0], kReportIdBtInput);
+		CHECK(BtCrcValid(kCrcSeedInput, r.data(), r.size()));
+		InputState s;
+		CHECK(parser.Parse(r.data(), r.size(), true, cal, &s) == ParseResult::Ok);
+		CHECK(s.mode == ReportMode::Enhanced);
+		CHECK_EQ(s.bt_header, r[1]);
+		CHECK_EQ(s.raw_left_x, r[2]);
+		CHECK_EQ(s.raw_left_y, r[3]);
+		CHECK_EQ(s.raw_right_x, r[4]);
+		CHECK_EQ(s.raw_right_y, r[5]);
+		CHECK_EQ(s.left_x, (int16_t)(r[2] * 257 - 32768));
+		CHECK_EQ(s.l2_state, r[6]);
+		CHECK_EQ(s.r2_state, r[7]);
+		CHECK_EQ(s.counter, r[8]);
+		CHECK_EQ(s.sequence, U32At(r, 11));
+		for(int a = 0; a < 3; a++)
+		{
+			CHECK_EQ(s.raw_gyro[a], S16At(r, 15 + 2 * (size_t)a));
+			CHECK_EQ(s.raw_accel[a], S16At(r, 21 + 2 * (size_t)a));
+		}
+		CHECK_EQ(s.sensor_timestamp, U32At(r, 27));
+		// Controller at rest, nothing pressed: hat 8 (released), no buttons, no touch.
+		CHECK_EQ(r[9] & 0x0F, 0x08);
+		CHECK_EQ(s.buttons, (uint32_t)0);
+		CHECK_EQ(s.extra_buttons, (uint32_t)0);
+		CHECK(!s.touches[0].active);
+		CHECK(!s.touches[1].active);
+		CHECK(s.battery_valid);
+		CHECK(s.motion_valid);
+
+		const double am = std::sqrt((double)s.accel_x * s.accel_x + (double)s.accel_y * s.accel_y
+			+ (double)s.accel_z * s.accel_z);
+		accel_mag_sum += am;
+		const double gm = std::sqrt((double)s.gyro_x * s.gyro_x + (double)s.gyro_y * s.gyro_y
+			+ (double)s.gyro_z * s.gyro_z);
+		gyro_mag_max = std::max(gyro_mag_max, gm);
+
+		if(i > 0)
+		{
+			// Every report is the next one: the 32-bit sequence and the header nibble
+			// both step by one (the capture had no losses), the sensor clock moves
+			// forward by one or a few connection intervals.
+			CHECK_EQ(s.sequence - prev.sequence, (uint32_t)1);
+			CHECK_EQ(((s.bt_header >> 4) - (prev.bt_header >> 4)) & 0x0F, 1);
+			CHECK_EQ(s.bt_header & 0x0F, 0x01);
+			const uint32_t dt = s.sensor_timestamp - prev.sensor_timestamp;
+			CHECK(dt > 3 * 5000 && dt < 3 * 100000);
+			ticks += dt;
+			CHECK_EQ(s.sensor_time_us - prev.sensor_time_us, (uint64_t)((ticks / 3) - ((ticks - dt) / 3)));
+		}
+		prev = s;
+	}
+	// Sensor clock vs the host's HID timestamps over the whole capture: same rate
+	// within 1% (the probe measured 3.003 ticks/us).
+	const double host_span_us = (double)(lines.back().time_us - lines.front().time_us);
+	CHECK(std::fabs((double)ticks / 3.0 / host_span_us - 1.0) < 0.01);
+	// Calibrated accelerometer at rest reads 1 g, the gyro reads near zero.
+	CHECK_NEAR(accel_mag_sum / (double)lines.size(), 1.0, 0.03);
+	CHECK(gyro_mag_max < 0.05);
 }

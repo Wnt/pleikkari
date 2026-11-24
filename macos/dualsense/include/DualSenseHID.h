@@ -40,7 +40,10 @@
 // (kIOHIDOptionsTypeNone), so another process (the Qt app, SDL) keeps working.
 // Opening reads feature reports 0x20 (firmware) and 0x05 (IMU calibration); over
 // Bluetooth that read is also what switches a controller from the simple report to
-// the enhanced 0x31 report, so no output report is needed for that.
+// the enhanced 0x31 report, so no output report is needed for that (SDL and Linux
+// rely on this; not observed here, the test controller was already in 0x31 mode).
+// bluetoothd passes feature replies through with their CRC: 0x05 validated with the
+// 0xA3 seed on a real controller.
 //
 // HAPTICS OVER USB are not handled here: on USB the DualSense exposes a 4-channel
 // USB audio device whose channels 3 and 4 drive the actuators. That path stays with
@@ -115,8 +118,12 @@ struct InputState {
 	uint64_t host_time = 0;  // mach_absolute_time() when the report reached the callback
 	uint8_t report_id = 0;
 	ReportMode mode = ReportMode::Enhanced;
-	uint8_t counter = 0;     // per-report counter: enhanced byte 7 (8 bit), simple: 6 bit
-	uint8_t bt_header = 0;   // Bluetooth 0x31 byte 1 (high nibble: report sequence)
+	uint32_t sequence = 0;   // enhanced payload bytes 11..14: +1 per report (SDL's
+	                         // rgucPacketSequence); use this to count lost reports
+	uint8_t counter = 0;     // enhanced payload byte 6 (SDL's ucCounter); constant 0x01
+	                         // over Bluetooth on firmware 0x0641. Simple report: 6-bit
+	                         // counter in the third button byte.
+	uint8_t bt_header = 0;   // Bluetooth 0x31 byte 1: high nibble +1 per report, low 0x1
 	uint32_t sensor_timestamp = 0;  // controller clock, 1/3 us per tick, wraps every ~1431 s
 	uint64_t sensor_time_us = 0;    // the same, unwrapped and in microseconds since open
 	                                // (enhanced reports only)
@@ -139,8 +146,8 @@ struct InputState {
 	bool battery_valid = false;
 	uint8_t battery_percent = 0;
 	BatteryStatus battery_status = BatteryStatus::Unknown;
-	bool headphones = false;       // status byte 54 bit 0
-	bool microphone = false;       // status byte 54 bit 1 (external mic on the jack)
+	bool headphones = false;       // enhanced payload byte 53 bit 0
+	bool microphone = false;       // enhanced payload byte 53 bit 1 (mic on the jack)
 };
 
 struct DeviceInfo {
@@ -152,16 +159,16 @@ struct DeviceInfo {
 	std::string product_name;
 	// Feature report 0x20
 	bool firmware_valid = false;
-	uint16_t update_version = 0;   // what SDL calls firmware_version (bytes 44..45)
-	uint32_t hardware_version = 0; // bytes 24..27
-	uint32_t firmware_version = 0; // bytes 28..31
+	uint16_t update_version = 0;   // what SDL calls firmware_version (feature 0x20 bytes 44..45)
+	uint32_t hardware_version = 0; // feature 0x20 bytes 24..27
+	uint32_t firmware_version = 0; // feature 0x20 bytes 28..31
 	std::string build_date;        // e.g. "Jun 12 2024"
 	std::string build_time;
 	// Feature report 0x05
 	bool calibration_valid = false; // false: raw IMU values are scaled with nominal factors
 	// Effects
-	bool rumble_v2 = false;        // "improved rumble emulation" (byte 39 bit 2) instead of
-	                               // the halved legacy rumble (byte 1 bit 0); see Protocol.h
+	bool rumble_v2 = false;        // "improved rumble emulation" (effects block[38] bit 2) instead of
+	                               // the halved legacy rumble (block[0] bit 0); see Protocol.h
 	size_t max_input_report_size = 0;
 	size_t max_output_report_size = 0;
 	// Raw feature reports as read at open (0x05 and 0x20 only; 0x09 is never read).

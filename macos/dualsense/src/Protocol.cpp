@@ -261,6 +261,7 @@ ParseResult InputParser::Parse(const uint8_t *report, size_t size, bool bluetoot
 		if(s[6] & 0x01) out->buttons |= kButtonPS;
 		if(s[6] & 0x02) out->buttons |= kButtonTouchpad;
 		out->counter = s[6] >> 2;
+		out->sequence = 0;
 		DecodeSticksAndTriggers(s, s[7], s[8], out);
 		out->motion_valid = false;
 		out->touches[0] = Touch();
@@ -280,12 +281,13 @@ ParseResult InputParser::Parse(const uint8_t *report, size_t size, bool bluetoot
 		return ParseResult::Unsupported;
 
 	// Enhanced payload (SDL PS5StatePacket_t, Linux struct dualsense_input_report):
-	//  0..3 sticks, 4..5 triggers, 6 counter, 7..10 buttons, 11..14 ?, 15..20 gyro,
-	//  21..26 accel, 27..30 sensor timestamp, 31 temperature, 32..39 touch points,
-	//  40..51 ?, 52 battery, 53 status.
+	//  0..3 sticks, 4..5 triggers, 6 counter, 7..10 buttons, 11..14 report sequence,
+	//  15..20 gyro, 21..26 accel, 27..30 sensor timestamp, 31 temperature,
+	//  32..39 touch points, 40..51 ?, 52 battery, 53 status.
 	out->report_id = id;
 	out->mode = ReportMode::Enhanced;
 	out->counter = p[6];
+	out->sequence = Le32(p + 11);
 	out->extra_buttons = 0;
 	out->buttons = DecodeButtons(p[7], p[8], &out->extra_buttons);
 	const uint8_t b3 = p[9];
