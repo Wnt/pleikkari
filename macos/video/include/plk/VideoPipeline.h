@@ -148,6 +148,7 @@ struct Stats {
 	int width = 0, height = 0, bitDepth = 0;
 	bool hdr = false, hardwareDecoder = false;
 	std::string codec, pixelFormat, colorDescription, scaler, pacing;
+	std::string hdrMetadata;  // what CAEDRMetadata was built from (SEI values or defaults)
 	int targetWidth = 0, targetHeight = 0;
 };
 

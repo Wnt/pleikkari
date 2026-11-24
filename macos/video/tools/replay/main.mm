@@ -303,7 +303,7 @@ void printStats(const video::Stats &s, const std::string &label, bool json)
 	printf("== %s ==\n", label.c_str());
 	printf("  stream: %s %dx%d %d-bit %s, decoder output %s, hardware decoder %s\n", s.codec.c_str(), s.width, s.height,
 			s.bitDepth, s.hdr ? "HDR" : "SDR", s.pixelFormat.c_str(), s.hardwareDecoder ? "yes" : "NO");
-	printf("  colour: %s\n", s.colorDescription.c_str());
+	printf("  colour: %s%s%s\n", s.colorDescription.c_str(), s.hdr ? "; EDR metadata " : "", s.hdr ? s.hdrMetadata.c_str() : "");
 	printf("  render: pacing %s, scaler %s, target %dx%d\n", s.pacing.c_str(), s.scaler.c_str(), s.targetWidth, s.targetHeight);
 	printf("  frames: submitted %llu decoded %llu rendered %llu presented %llu | superseded %llu not-presented %llu "
 	       "skipped-awaiting-idr %llu\n",
@@ -588,6 +588,18 @@ done:
 				(now - _phaseStartUs) / 1e6 - _o.warmup, _o.warmup, _framesFed.load());
 		printScreenInfo("during");
 		printf("window: %s\n", (_window.occlusionState & NSWindowOcclusionStateVisible) ? "visible" : "OCCLUDED");
+		if(!_o.offW)
+		{
+			CFStringRef csName = _layer.colorspace ? CGColorSpaceCopyName(_layer.colorspace) : nullptr;
+			const char *fmt = _layer.pixelFormat == MTLPixelFormatBGR10A2Unorm ? "BGR10A2Unorm"
+				: _layer.pixelFormat == MTLPixelFormatRGBA16Float ? "RGBA16Float"
+				: _layer.pixelFormat == MTLPixelFormatBGRA8Unorm ? "BGRA8Unorm" : "other";
+			printf("layer: %s, colorspace %s, wantsEDR %d, EDRMetadata %s, displaySync %d, drawables %lu\n", fmt,
+					csName ? [(__bridge NSString *)csName UTF8String] : "nil", _layer.wantsExtendedDynamicRangeContent,
+					_layer.EDRMetadata ? "set" : "nil", _layer.displaySyncEnabled, (unsigned long)_layer.maximumDrawableCount);
+			if(csName)
+				CFRelease(csName);
+		}
 		printStats(_pipeline->stats(), label, _o.json);
 		if(!allEnd && _phase + 1 < _phases.size())
 		{

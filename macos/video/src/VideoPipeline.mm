@@ -332,7 +332,7 @@ struct Shared {
 		// keep stream info
 		fresh.width = c.width; fresh.height = c.height; fresh.bitDepth = c.bitDepth; fresh.hdr = c.hdr;
 		fresh.hardwareDecoder = c.hardwareDecoder; fresh.codec = c.codec; fresh.pixelFormat = c.pixelFormat;
-		fresh.colorDescription = c.colorDescription; fresh.scaler = c.scaler; fresh.pacing = c.pacing;
+		fresh.colorDescription = c.colorDescription; fresh.hdrMetadata = c.hdrMetadata; fresh.scaler = c.scaler; fresh.pacing = c.pacing;
 		fresh.targetWidth = c.targetWidth; fresh.targetHeight = c.targetHeight;
 		c = fresh;
 		for(auto *w : {&submitCall, &decode, &queue, &renderCpu, &renderGpu, &submitToPresented, &readyToPresented,
@@ -1148,13 +1148,35 @@ struct VideoPipeline::Impl {
 			return nil;
 		if(c.transfer == Transfer::HLG)
 			return [CAEDRMetadata HLGMetadata];
-		if(hdr && (hdr->sei.hasMasteringDisplay || hdr->sei.hasContentLightLevel))
+		// All-zero values mean "unknown" in both SEI messages; treat as absent.
+		bool hasMd = hdr && hdr->sei.hasMasteringDisplay
+			&& (hdr->sei.masteringDisplay[16] | hdr->sei.masteringDisplay[17] | hdr->sei.masteringDisplay[18] | hdr->sei.masteringDisplay[19]);
+		bool hasCll = hdr && hdr->sei.hasContentLightLevel
+			&& (hdr->sei.contentLightLevel[0] | hdr->sei.contentLightLevel[1] | hdr->sei.contentLightLevel[2] | hdr->sei.contentLightLevel[3]);
+		if(hasMd || hasCll)
 		{
-			NSData *mdcv = hdr->sei.hasMasteringDisplay ? [NSData dataWithBytes:hdr->sei.masteringDisplay.data() length:24] : nil;
-			NSData *cll = hdr->sei.hasContentLightLevel ? [NSData dataWithBytes:hdr->sei.contentLightLevel.data() length:4] : nil;
+			const auto &md = hdr->sei.masteringDisplay;
+			const auto &cl = hdr->sei.contentLightLevel;
+			char desc[160];
+			// MDCV luminance fields are in 0.0001 cd/m2 units (D.2.28).
+			snprintf(desc, sizeof desc, "SEI: mastering %s%.4f-%.0f nits, CLL %s%u/%u nits",
+					hasMd ? "" : "(none) ",
+					hasMd ? ((md[20] << 24 | md[21] << 16 | md[22] << 8 | md[23]) / 10000.0) : 0.0,
+					hasMd ? ((uint32_t)(md[16] << 24 | md[17] << 16 | md[18] << 8 | md[19]) / 10000.0) : 0.0,
+					hasCll ? "" : "(none) ", (unsigned)(cl[0] << 8 | cl[1]), (unsigned)(cl[2] << 8 | cl[3]));
+			{
+				std::lock_guard<std::mutex> sl(shared->m);
+				shared->c.hdrMetadata = desc;
+			}
+			NSData *mdcv = hasMd ? [NSData dataWithBytes:md.data() length:24] : nil;
+			NSData *cll = hasCll ? [NSData dataWithBytes:cl.data() length:4] : nil;
 			return [CAEDRMetadata HDR10MetadataWithDisplayInfo:mdcv contentInfo:cll opticalOutputScale:100.0f];
 		}
 		// No SEI: PS5-like defaults (1000-nit mastering display).
+		{
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.hdrMetadata = "defaults: mastering 0.005-1000 nits";
+		}
 		return [CAEDRMetadata HDR10MetadataWithMinLuminance:0.005f maxLuminance:1000.0f opticalOutputScale:100.0f];
 	}
 
