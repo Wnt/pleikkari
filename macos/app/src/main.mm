@@ -171,7 +171,15 @@ int runHeadless(const Options &o)
 		[NSApp activateIgnoringOtherApps:YES];
 	[NSCursor setHiddenUntilMouseMoves:YES];
 	if(_options.fullscreen)
-		[_window toggleFullScreen:nil];
+	{
+		// After the window is on screen: a toggle on a window still being ordered in can be
+		// dropped.
+		PLKStreamWindow *window = _window;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if(!(window.styleMask & NSWindowStyleMaskFullScreen))
+				[window toggleFullScreen:nil];
+		});
+	}
 
 	PLKAppDelegate *__weak weakSelf = self;
 	const bool started = _runner->start([weakSelf] {

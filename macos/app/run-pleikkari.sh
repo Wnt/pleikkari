@@ -12,6 +12,9 @@
 #   DUMP=1      also record the video samples to <run>/video.plkv (not for latency runs)
 #   COLLECT=1   also run build/mac/profile/collect.sh (top, ping, nettop, GPU) for SECONDS
 #   SECONDS_TO_COLLECT  collect.sh duration (default 300)
+#   DIRECT=1    exec the binary from this shell instead of `open` (by default the app goes
+#               through LaunchServices, so it is activated, frontmost, and asks for the
+#               local network permission under its own name)
 #
 # The run directory gets session.log (the app's log: lib, [frame] lines, stats) and
 # stdout.log. The stream ends from the app (Cmd-Q, closing the window) or the console.
@@ -57,9 +60,23 @@ ARGS+=("$@")
 printf '%q ' "$BIN" "${ARGS[@]}" > "$RUN/command"
 echo >> "$RUN/command"
 
-nohup "$BIN" "${ARGS[@]}" > "$RUN/stdout.log" 2>&1 &
-PID=$!
-disown
+if [ "${DIRECT:-0}" = 1 ]; then
+	nohup "$BIN" "${ARGS[@]}" > "$RUN/stdout.log" 2>&1 &
+	PID=$!
+	disown
+else
+	open -n -a "$APP" --env CHIAKI_TRIGGER_LOG=1 --stdout "$RUN/stdout.log" --stderr "$RUN/stdout.log" \
+		--args "${ARGS[@]}"
+	PID=
+	for _ in $(seq 1 20); do
+		PID=$(pgrep -n -f "$BIN") && break
+		perl -e 'select(undef,undef,undef,0.25)'
+	done
+	if [ -z "$PID" ]; then
+		echo "the app did not start; see $RUN/stdout.log" >&2
+		exit 1
+	fi
+fi
 echo "$PID" > "$RUN/pid"
 
 # Up within 25 s (the app's own retry window is 20 s) means frames are arriving.
