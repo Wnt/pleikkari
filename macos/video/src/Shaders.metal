@@ -36,16 +36,28 @@ struct Params {
 	float2 uvScale;      // visible (clean) rect size / luma texture size
 	float2 uvOffset;     // visible rect origin / luma texture size
 	float2 chromaShift;  // chroma siting correction, in chroma texels
-	float2 pad;
+	float2 linearize;    // x > 0.5: decode PQ to linear light, times y (HdrOutput::ExtendedLinear)
 };
 
 constexpr sampler kLinear(filter::linear, address::clamp_to_edge, coord::normalized);
 constexpr sampler kNearest(filter::nearest, address::clamp_to_edge, coord::normalized);
 
+// SMPTE ST 2084 EOTF: PQ code value -> linear light, 1.0 = 10000 nits.
+static inline float3 pq_eotf(float3 e)
+{
+	const float m1 = 2610.0 / 16384.0, m2 = 2523.0 / 4096.0 * 128.0;
+	const float c1 = 3424.0 / 4096.0, c2 = 2413.0 / 4096.0 * 32.0, c3 = 2392.0 / 4096.0 * 32.0;
+	float3 p = pow(e, 1.0 / m2);
+	return pow(max(p - c1, 0.0) / (c2 - c3 * p), 1.0 / m1);
+}
+
 static inline float4 to_rgb(float y, float2 c, constant Params &p)
 {
 	float4 v = float4(y, c, 1.0);
-	return float4(saturate(float3(dot(p.r0, v), dot(p.r1, v), dot(p.r2, v))), 1.0);
+	float3 rgb = saturate(float3(dot(p.r0, v), dot(p.r1, v), dot(p.r2, v)));
+	if(p.linearize.x > 0.5)
+		rgb = pq_eotf(rgb) * p.linearize.y;
+	return float4(rgb, 1.0);
 }
 
 static inline float2 chroma_uv(float2 uv, constant Params &p)

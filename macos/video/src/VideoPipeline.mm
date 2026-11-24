@@ -193,7 +193,7 @@ ColorInfo colorInfoFor(CVPixelBufferRef buf)
 
 struct alignas(16) ShaderParams {
 	simd_float4 r0, r1, r2;
-	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, pad;
+	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize;
 };
 static_assert(sizeof(ShaderParams) == 96, "must match Params in Shaders.metal");
 
@@ -241,10 +241,13 @@ void colorRows(const ColorInfo &c, ShaderParams &p)
 	}
 }
 
-CGColorSpaceRef copyColorSpace(const ColorInfo &c)
+bool linearOutput(const ColorInfo &c, HdrOutput mode) { return mode == HdrOutput::ExtendedLinear && c.transfer == Transfer::PQ; }
+
+CGColorSpaceRef copyColorSpace(const ColorInfo &c, HdrOutput mode)
 {
 	CFStringRef name;
-	if(c.transfer == Transfer::PQ) name = kCGColorSpaceITUR_2100_PQ;
+	if(linearOutput(c, mode)) name = c.primaries == Primaries::P3 ? kCGColorSpaceExtendedLinearDisplayP3 : kCGColorSpaceExtendedLinearITUR_2020;
+	else if(c.transfer == Transfer::PQ) name = kCGColorSpaceITUR_2100_PQ;
 	else if(c.transfer == Transfer::HLG) name = kCGColorSpaceITUR_2100_HLG;
 	else if(c.primaries == Primaries::BT2020) name = kCGColorSpaceITUR_2020;
 	else if(c.primaries == Primaries::P3) name = kCGColorSpaceDisplayP3;
@@ -253,10 +256,12 @@ CGColorSpaceRef copyColorSpace(const ColorInfo &c)
 	return CGColorSpaceCreateWithName(name);
 }
 
-MTLPixelFormat outputFormatFor(const ColorInfo &c)
+MTLPixelFormat outputFormatFor(const ColorInfo &c, HdrOutput mode)
 {
 	// HDR: 10 bits per channel, PQ/HLG code values; the compositor tone maps
 	// to the panel's current EDR headroom using CAEDRMetadata. SDR: 8 bits.
+	if(linearOutput(c, mode))
+		return MTLPixelFormatRGBA16Float;
 	return c.hdr() ? MTLPixelFormatBGR10A2Unorm : MTLPixelFormatBGRA8Unorm;
 }
 
@@ -530,7 +535,10 @@ struct VideoPipeline::Impl {
 		}
 		bool full = CMFormatDescriptionGetExtension(format, kCMFormatDescriptionExtension_FullRangeVideo) == kCFBooleanTrue;
 
-		bool tryCompressed = useCompressedOutput && !compressedUnsupported.load();
+		// Lossless-compressed output only for 8-bit: &8v0 planes read correctly
+		// through R8/RG8 views (verified by read-back), but &xv0 is packed
+		// 10-bit without padding and has no public Metal pixel format.
+		bool tryCompressed = useCompressedOutput && !compressedUnsupported.load() && bits == 8;
 		for(int attempt = 0; attempt < 2; attempt++)
 		{
 			bool compressed = tryCompressed && attempt == 0;
@@ -985,10 +993,9 @@ struct VideoPipeline::Impl {
 		@autoreleasepool
 		{
 			double t0 = nowUs();
-			for(MTLPixelFormat fmt : {MTLPixelFormatBGRA8Unorm, MTLPixelFormatBGR10A2Unorm})
+			for(MTLPixelFormat fmt : {MTLPixelFormatBGRA8Unorm, MTLPixelFormatBGR10A2Unorm, MTLPixelFormatRGBA16Float})
 				for(Frag f : {FragBilinear, FragBicubic, FragLanczos, FragCopy})
 					pipelineFor(f, fmt);
-			pipelineFor(FragBilinear, MTLPixelFormatRGBA16Float);
 			NSLog(@"plk-video: pipeline states built in %.1f ms", (nowUs() - t0) / 1000.0);
 		}
 		while(!renderStop.load())
@@ -1121,10 +1128,10 @@ struct VideoPipeline::Impl {
 
 	void configureLayer(const ColorInfo &c, const std::shared_ptr<const HdrMeta> &hdr)
 	{
-		CGColorSpaceRef cs = copyColorSpace(c);
+		CGColorSpaceRef cs = copyColorSpace(c, cfg.hdrOutput);
 		[CATransaction begin];
 		[CATransaction setDisableActions:YES];
-		layer.pixelFormat = outputFormatFor(c);
+		layer.pixelFormat = outputFormatFor(c, cfg.hdrOutput);
 		layer.colorspace = cs;
 		layer.wantsExtendedDynamicRangeContent = c.hdr();
 		layer.EDRMetadata = edrMetadataFor(c, hdr);
@@ -1196,7 +1203,8 @@ struct VideoPipeline::Impl {
 		rec->renderStartUs = nowUs();
 		CVPixelBufferRef buf = f.buf;
 		ColorInfo ci = colorInfoFor(buf);
-		MTLPixelFormat outFmt = outputFormatFor(ci);
+		MTLPixelFormat outFmt = outputFormatFor(ci, cfg.hdrOutput);
+		bool linear = linearOutput(ci, cfg.hdrOutput);
 		bool off = offscreenMode();
 
 		if(!off)
@@ -1205,7 +1213,10 @@ struct VideoPipeline::Impl {
 				configureLayer(ci, rec->hdr);
 			else if(ci.hdr() && rec->hdr != layerHdr)
 			{
+				[CATransaction begin];
+				[CATransaction setDisableActions:YES];
 				layer.EDRMetadata = edrMetadataFor(ci, rec->hdr);
+				[CATransaction commit];
 				layerHdr = rec->hdr;
 			}
 			if(drawable && drawable.texture.pixelFormat != outFmt)
@@ -1257,6 +1268,8 @@ struct VideoPipeline::Impl {
 		// Left-sited chroma sits 1/4 chroma texel left of where a centred
 		// sampler assumes it; shift the lookup right by that much.
 		params.chromaShift = simd_make_float2(ci.chromaLeft ? 0.25f : 0.0f, ci.chromaTop ? 0.25f : 0.0f);
+		// ExtendedLinear: 1.0 = 100 nits, matching opticalOutputScale 100.
+		params.linearize = simd_make_float2(linear ? 1.0f : 0.0f, 100.0f);
 
 		// Target.
 		id<MTLTexture> target;
@@ -1295,7 +1308,7 @@ struct VideoPipeline::Impl {
 		if(eff == Scaler::MetalFX)
 		{
 			encoded = encodeMetalFX(cb, target, dest, texY, texC, params, (NSUInteger)clean.size.width,
-					(NSUInteger)clean.size.height);
+					(NSUInteger)clean.size.height, linear);
 			if(!encoded)
 				eff = Scaler::Bilinear;
 		}
@@ -1350,10 +1363,13 @@ struct VideoPipeline::Impl {
 	}
 
 	bool encodeMetalFX(id<MTLCommandBuffer> cb, id<MTLTexture> target, MTLRegion dest, id<MTLTexture> texY,
-			id<MTLTexture> texC, const ShaderParams &params, NSUInteger srcW, NSUInteger srcH)
+			id<MTLTexture> texC, const ShaderParams &params, NSUInteger srcW, NSUInteger srcH, bool linear)
 	{
 		NSUInteger dw = dest.size.width, dh = dest.size.height;
-		if(!fx || fx.inputWidth != srcW || fx.inputHeight != srcH || fx.outputWidth != dw || fx.outputHeight != dh)
+		MTLFXSpatialScalerColorProcessingMode mode =
+			linear ? MTLFXSpatialScalerColorProcessingModeHDR : MTLFXSpatialScalerColorProcessingModePerceptual;
+		if(!fx || fx.inputWidth != srcW || fx.inputHeight != srcH || fx.outputWidth != dw || fx.outputHeight != dh
+			|| fx.colorProcessingMode != mode)
 		{
 			fx = nil;
 			fxIn = nil;
@@ -1367,8 +1383,8 @@ struct VideoPipeline::Impl {
 			d.outputHeight = dh;
 			d.colorTextureFormat = MTLPixelFormatRGBA16Float;
 			d.outputTextureFormat = MTLPixelFormatRGBA16Float;
-			// Inputs are non-linear (BT.709 gamma or PQ) code values.
-			d.colorProcessingMode = MTLFXSpatialScalerColorProcessingModePerceptual;
+			// Non-linear (BT.709 gamma or PQ) code values, or linear HDR light.
+			d.colorProcessingMode = mode;
 			fx = [d newSpatialScalerWithDevice:device];
 			if(!fx)
 				return false;
@@ -1414,6 +1430,14 @@ struct VideoPipeline::Impl {
 				rgba[1] = ((v >> 10) & 1023) / 1023.0f;
 				rgba[0] = ((v >> 20) & 1023) / 1023.0f;
 				rgba[3] = (v >> 30) / 3.0f;
+				return true;
+			}
+			case MTLPixelFormatRGBA16Float:
+			{
+				__fp16 h[4];
+				std::memcpy(h, p, 8);
+				for(int i = 0; i < 4; i++)
+					rgba[i] = (float)h[i];
 				return true;
 			}
 			default:

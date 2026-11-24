@@ -76,10 +76,23 @@ struct Error {
 };
 using ErrorCallback = std::function<void(const Error &)>;
 
+enum class HdrOutput {
+	// BT.2020 + PQ code values in a BGR10A2 drawable, layer colour space
+	// ITU-R 2100 PQ, CAEDRMetadata HDR10: the compositor tone maps to the
+	// panel's current EDR headroom. No transfer math in the shader.
+	PQ,
+	// The shader decodes PQ to linear light (1.0 = 100 nits) into an
+	// RGBA16Float drawable tagged extended-linear BT.2020, still with HDR10
+	// CAEDRMetadata (opticalOutputScale 100). Alternative compositing path,
+	// kept for A/B latency measurements.
+	ExtendedLinear,
+};
+
 struct PipelineConfig {
 	Codec codec = Codec::Auto;          // Auto: detected from the parameter sets
 	PacingMode pacing = PacingMode::Immediate;
 	Scaler scaler = Scaler::Bilinear;
+	HdrOutput hdrOutput = HdrOutput::PQ;
 	float displayRefreshHz = 120.0f;    // DisplayLink frame rate range (min=max=preferred)
 	// DisplayLink only: if no new frame is waiting when the display link fires,
 	// wait for one until (targetTimestamp - latchMarginUs) before giving up on
@@ -90,9 +103,9 @@ struct PipelineConfig {
 	// After a decode error or a rebuilt session, drop P-frames until the next
 	// IDR instead of showing a corrupted picture.
 	bool waitForIdrAfterError = true;
-	// Request the decoder's lossless-compressed output formats (&8v0 / &xv0)
-	// instead of plain bi-planar 420v / x420. Experimental: falls back to the
-	// plain formats if Metal cannot wrap the compressed planes.
+	// Request the decoder's lossless-compressed 8-bit output (&8v0) instead
+	// of plain 420v. 10-bit streams always use x420 (&xv0 is packed and has
+	// no Metal view format). Falls back to 420v if Metal cannot wrap it.
 	bool compressedDecoderOutput = false;
 	// > 0: render into a private offscreen texture of this size instead of the
 	// layer's drawables and never present (GPU-time benchmarks at panel size
