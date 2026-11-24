@@ -982,6 +982,15 @@ static void ctrl_message_received_login_pin_req(ChiakiCtrl *ctrl, uint8_t *paylo
 	chiaki_cond_signal(&ctrl->session->state_cond);
 }
 
+static void ctrl_notify_cantdisplay(ChiakiCtrl *ctrl, bool cant_display)
+{
+	// The display sink is optional: only the Qt GUI sets one. Android, the CLI and Switch
+	// leave it zeroed by chiaki_session_init(), and calling it unchecked crashed them as
+	// soon as the console reported content that cannot be streamed (or rp_prohibit).
+	if(ctrl->session->display_sink.cantdisplay_cb)
+		ctrl->session->display_sink.cantdisplay_cb(ctrl->session->display_sink.user, cant_display);
+}
+
 static void ctrl_message_received_displaya(ChiakiCtrl *ctrl, uint8_t *payload, size_t payload_size)
 {
 	if(payload[0] == 0x1)
@@ -992,7 +1001,7 @@ static void ctrl_message_received_displaya(ChiakiCtrl *ctrl, uint8_t *payload, s
 	{
 		ctrl->cant_displaya = false;
 		CHIAKI_LOGI(ctrl->session->log, "Ctrl received message that the stream can now display.");
-		ctrl->session->display_sink.cantdisplay_cb(ctrl->session->display_sink.user, false);
+		ctrl_notify_cantdisplay(ctrl, false);
 	}
 }
 
@@ -1002,7 +1011,7 @@ static void ctrl_message_received_displayb(ChiakiCtrl *ctrl, uint8_t *payload, s
 	{
 		if(!(payload[0] == 0x01 && payload[1] == 0xff) && !ctrl->cant_displayb)
 		{
-			ctrl->session->display_sink.cantdisplay_cb(ctrl->session->display_sink.user, true);
+			ctrl_notify_cantdisplay(ctrl, true);
 			CHIAKI_LOGI(ctrl->session->log, "Ctrl received message that the stream can't display due to displaying some content that can't be streamed.");
 			ctrl->cant_displayb = true;
 		}
@@ -1470,7 +1479,7 @@ static ChiakiErrorCode ctrl_connect(ChiakiCtrl *ctrl)
 		CHIAKI_LOGE(session->log, "No valid Server Type in ctrl response");
 
 	if(response.rp_prohibit)
-		ctrl->session->display_sink.cantdisplay_cb(ctrl->session->display_sink.user, true);
+		ctrl_notify_cantdisplay(ctrl, true);
 
 	// if we already got more data than the header, put the rest in the buffer.
 	ctrl->recv_buf_size = received_size - header_size;
