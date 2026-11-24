@@ -297,12 +297,38 @@ struct Shared {
 	}
 	mutable std::mutex m;
 	Stats c;  // counters and stream info only
+	// Per-frame callback; cleared under cbMutex by ~VideoPipeline so that it is never
+	// called after the destructor returns (presented handlers can outlive the Impl).
+	std::mutex cbMutex;
+	FrameCallback onFrame;
 	detail::RollingWindow submitCall, decode, queue, renderCpu, renderGpu, submitToPresented, readyToPresented,
 		decodedToPresented, submitInterval, presentInterval, linkLead, linkDeadline, presentVsTarget;
 	double lastSubmitUs = 0, lastPresentedUs = 0;
 
+	void report(const FrameRecord &r)
+	{
+		std::lock_guard<std::mutex> cl(cbMutex);
+		if(!onFrame)
+			return;
+		FrameTiming t;
+		t.frameIndex = r.frameIndex;
+		t.keyframe = r.keyframe;
+		t.offscreen = !r.presentExpected;
+		t.presented = r.presentExpected && r.presentedUs > 0;
+		t.readyUs = r.readyUs;
+		t.submitUs = r.submitUs;
+		t.decodedUs = r.decodedUs;
+		t.renderStartUs = r.renderStartUs;
+		t.committedUs = r.committedUs;
+		t.gpuStartUs = r.gpuStartUs;
+		t.gpuEndUs = r.gpuEndUs;
+		t.presentedUs = t.presented ? r.presentedUs : 0;
+		onFrame(t);
+	}
+
 	void finish(const FrameRecord &r)
 	{
+		report(r);
 		std::lock_guard<std::mutex> lk(m);
 		if(r.gpuEndUs > r.gpuStartUs && r.gpuStartUs > 0)
 			renderGpu.add((r.gpuEndUs - r.gpuStartUs) / 1000.0);
@@ -346,6 +372,15 @@ struct Shared {
 constexpr double kIdrRequestMinIntervalUs = 100000.0;
 
 }  // namespace
+
+double hostTimeUs() { return nowUs(); }
+
+double monotonicToHostUs(uint64_t t)
+{
+	if(!t)
+		return 0;
+	return (double)t - (monotonicUs() - nowUs());
+}
 
 const char *toString(PacingMode m)
 {
@@ -1497,6 +1532,7 @@ std::unique_ptr<VideoPipeline> VideoPipeline::create(void *metalLayer, const Pip
 	impl->cfg = config;
 	impl->onError = std::move(onError);
 	impl->shared = std::make_shared<Shared>(config.statsWindow);
+	impl->shared->onFrame = config.onFrame;
 	impl->scaler = config.scaler;
 	impl->useCompressedOutput = config.compressedDecoderOutput;
 	impl->latchMarginUs.store(config.latchMarginUs);
@@ -1550,6 +1586,10 @@ VideoPipeline::~VideoPipeline()
 	{
 		std::lock_guard<std::mutex> lk(d->decMutex);
 		d->destroySession();
+	}
+	{
+		std::lock_guard<std::mutex> cl(d->shared->cbMutex);
+		d->shared->onFrame = nullptr;
 	}
 	d->renderStop.store(true);
 	d->slotCv.notify_all();

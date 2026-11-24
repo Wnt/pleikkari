@@ -70,6 +70,33 @@ enum class ErrorKind {
 	NoConfig,             // a frame arrived before any usable parameter sets
 };
 
+// One rendered frame's path through the pipeline. Times are mach_absolute_time in
+// microseconds (hostTimeUs(), the CACurrentMediaTime base); 0 = not reached.
+struct FrameTiming {
+	uint16_t frameIndex = 0;
+	bool keyframe = false;
+	bool offscreen = false;    // rendered into the offscreen target, never presented
+	bool presented = false;    // the drawable reported a presentation time
+	double readyUs = 0;        // frame_ready_us of submitFrame(), translated to this clock
+	double submitUs = 0;       // submitFrame() entry
+	double decodedUs = 0;      // decoder output callback
+	double renderStartUs = 0;  // render thread took the frame
+	double committedUs = 0;    // command buffer committed (with presentDrawable)
+	double gpuStartUs = 0;     // command buffer GPUStartTime
+	double gpuEndUs = 0;       // command buffer GPUEndTime
+	double presentedUs = 0;    // MTLDrawable.presentedTime (on glass), 0 if not presented
+};
+// Called once per rendered frame when both its GPU completion and its presentation
+// (or the lack of one) are known, on a Metal callback thread. Must return quickly and
+// must not call into the pipeline. Never called after ~VideoPipeline() has returned.
+using FrameCallback = std::function<void(const FrameTiming &)>;
+
+// mach_absolute_time() in microseconds: the clock of FrameTiming and Stats.
+double hostTimeUs();
+// A CLOCK_MONOTONIC microsecond time (chiaki's frame_ready_us; on macOS it includes
+// sleep) translated to hostTimeUs(), the way submitFrame() does it.
+double monotonicToHostUs(uint64_t monotonicUs);
+
 struct Error {
 	ErrorKind kind;
 	int32_t status;       // OSStatus when applicable, else 0
@@ -116,6 +143,7 @@ struct PipelineConfig {
 	int offscreenWidth = 0;
 	int offscreenHeight = 0;
 	uint32_t statsWindow = 36000;       // samples kept per distribution (rolling)
+	FrameCallback onFrame;              // optional per-frame timeline (see FrameTiming)
 };
 
 struct Distribution {
