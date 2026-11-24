@@ -310,8 +310,15 @@ void Runner::shutdownWorkers()
 
 void Runner::shutdownVideo()
 {
+	if(video_down_)
+		return;
+	video_down_ = true;
 	if(pipeline_)
 		logStats(true);
+	// Nothing submits any more (shutdownWorkers() joined the session or the replay). The
+	// pipeline goes first: its error callback may still reach session_ until it is gone.
+	video_path_.reset();
+	pipeline_.reset();
 	session_.reset();
 	replay_.reset();
 	controller_.reset();
@@ -320,8 +327,6 @@ void Runner::shutdownVideo()
 		installPacketTrace(nullptr);
 		trace_installed_ = false;
 	}
-	video_path_.reset();
-	pipeline_.reset();
 	if(audio_)
 	{
 		audio_->stop();

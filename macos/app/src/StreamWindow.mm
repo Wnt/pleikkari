@@ -107,7 +107,9 @@ NSCursor *blankCursor()
 
 - (void)reportDrawableSize
 {
-	if(!self.window)
+	// Nothing is remembered until someone listens: the first report after the callback is
+	// set must always get through.
+	if(!self.window || !self.onDrawableSize)
 		return;
 	const NSSize px = [self convertSizeToBacking:self.bounds.size];
 	const int w = (int)lround(px.width), h = (int)lround(px.height);
@@ -115,8 +117,7 @@ NSCursor *blankCursor()
 		return;
 	_lastWidth = w;
 	_lastHeight = h;
-	if(self.onDrawableSize)
-		self.onDrawableSize(w, h);
+	self.onDrawableSize(w, h);
 }
 
 @end

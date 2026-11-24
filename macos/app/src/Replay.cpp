@@ -12,8 +12,6 @@
 #include <pthread.h>
 #include <pthread/qos.h>
 
-#include <mach/mach_time.h>
-
 #include <algorithm>
 #include <chrono>
 #include <thread>

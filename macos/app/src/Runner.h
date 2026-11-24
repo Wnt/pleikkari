@@ -89,6 +89,7 @@ private:
 	bool stats_stop_ = false;
 	std::thread seconds_thread_;
 	bool workers_down_ = false;
+	bool video_down_ = false;
 };
 
 } // namespace plk::app

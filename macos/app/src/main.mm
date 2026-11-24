@@ -188,7 +188,7 @@ int runHeadless(const Options &o)
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app
 {
-	return YES;
+	return NO; // windowWillClose: asks for termination itself, exactly once
 }
 
 - (void)windowWillClose:(NSNotification *)note
