@@ -695,6 +695,11 @@ static const PlaceboPreset placebo_preset_default = PlaceboPreset::HighQuality;
 
 PlaceboPreset Settings::GetPlaceboPreset() const
 {
+	// CHIAKI_PLACEBO_PRESET=fast|default|high_quality|... picks the renderer preset for one run
+	// without touching the stored setting, to compare what each costs on the GPU.
+	const QString override_preset = qEnvironmentVariable("CHIAKI_PLACEBO_PRESET").toLower();
+	if (!override_preset.isEmpty() && placebo_preset_values.values().contains(override_preset))
+		return placebo_preset_values.key(override_preset);
 	auto v = settings.value("settings/placebo_preset", placebo_preset_values[placebo_preset_default]).toString();
 	return placebo_preset_values.key(v, placebo_preset_default);
 }
