@@ -37,6 +37,7 @@ public:
 	struct Config {
 		bool bluetooth = false;
 		bool rumble_v2 = true;
+		bool time_constraint = false; // Manager::Options::realtime_threads
 	};
 
 	EffectsWriter(OutputSink *sink, Config config);

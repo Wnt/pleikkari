@@ -181,7 +181,7 @@ bool EffectsWriter::SendableLocked() const
 
 void EffectsWriter::Run()
 {
-	SetCurrentThreadRealtimeish("plk.ds.out");
+	SetupDriverThread("plk.ds.out", config_.time_constraint, 0, kWriterThreadComputationNs, kWriterThreadConstraintNs);
 	uint8_t report[kBtOutputSize];
 	std::unique_lock<std::mutex> lk(mutex_);
 	for(;;)

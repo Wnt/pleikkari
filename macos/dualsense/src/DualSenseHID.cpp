@@ -149,6 +149,7 @@ struct Device::Impl {
 	DeviceInfo info;
 	IOHIDDeviceRef ref;
 	const bool allow_output;
+	bool realtime_threads = false;
 	bool bluetooth = false;
 
 	// HID thread only
@@ -270,7 +271,7 @@ bool Device::StartHaptics(const HapticsConfig &config)
 		return true;
 	if(impl_->haptics)
 		impl_->haptics->Stop();
-	impl_->haptics = std::make_unique<HapticsSender>(&impl_->sink, config);
+	impl_->haptics = std::make_unique<HapticsSender>(&impl_->sink, config, impl_->realtime_threads);
 	impl_->haptics->Start();
 	return true;
 }
@@ -377,7 +378,7 @@ void Manager::Impl::Log(const char *fmt, ...)
 
 void Manager::Impl::ThreadMain()
 {
-	SetCurrentThreadRealtimeish("plk.ds.hid");
+	SetupDriverThread("plk.ds.hid", options.realtime_threads, 0, kHidThreadComputationNs, kHidThreadConstraintNs);
 	run_loop = CFRunLoopGetCurrent();
 	CFRetain(run_loop);
 
@@ -452,6 +453,7 @@ void Manager::Impl::OnMatched(IOHIDDeviceRef ref)
 
 	auto impl = std::make_unique<Device::Impl>(ref, options.allow_output);
 	Device::Impl &d = *impl;
+	d.realtime_threads = options.realtime_threads;
 	d.callbacks = &callbacks;
 	d.run_loop = run_loop;
 	DeviceInfo &info = d.info;
@@ -507,6 +509,7 @@ void Manager::Impl::OnMatched(IOHIDDeviceRef ref)
 		EffectsWriter::Config wc;
 		wc.bluetooth = d.bluetooth;
 		wc.rumble_v2 = info.rumble_v2;
+		wc.time_constraint = options.realtime_threads;
 		d.writer = std::make_unique<EffectsWriter>(&d.sink, wc);
 		d.writer->Start();
 	}

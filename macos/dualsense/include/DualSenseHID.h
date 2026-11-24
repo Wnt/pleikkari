@@ -11,7 +11,8 @@
 //
 // THREADING CONTRACT
 //
-//  * Manager owns one HID thread ("plk.ds.hid", QOS_CLASS_USER_INTERACTIVE) with its
+//  * Manager owns one HID thread ("plk.ds.hid", QOS_CLASS_USER_INTERACTIVE, optionally
+//    real-time, see Options::realtime_threads) with its
 //    own CFRunLoop. Discovery, hotplug and every input report are handled there, and
 //    every Manager::Callbacks function runs there, one at a time, in report order.
 //    Callbacks must return quickly (a slow callback delays the next report), must not
@@ -270,6 +271,16 @@ class Manager {
 public:
 	struct Options {
 		bool allow_output = false; // see "OUTPUT IS OFF BY DEFAULT" above
+		// Put the HID, writer and haptics threads under the Mach time-constraint
+		// (real-time) policy on top of user-interactive QoS. A QoS request can be
+		// clamped by the process context and its timers are coalesced: measured from a
+		// background shell, a user-interactive thread ran at priority 31 and its 2 ms
+		// timers fired p50 0.40 / p99 3.1 / max 7.9 ms late; the same thread under the
+		// time-constraint policy ran at priority 97, p50 5 / p99 27 / max 44 us
+		// (plk-dualsense-probe --sched-test). Off by default so the effect can be A/B
+		// tested in the client; the kernel demotes a real-time thread that overruns its
+		// budget, so a slow callback cannot starve the system.
+		bool realtime_threads = false;
 	};
 	struct Callbacks {
 		// All run on the HID thread (see THREADING CONTRACT).

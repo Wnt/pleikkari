@@ -34,6 +34,7 @@ target_compile_options(plk_dualsense PRIVATE ${PLK_DS_WARNINGS})
 target_link_libraries(plk_dualsense PUBLIC plk_dualsense_core "-framework IOKit" "-framework CoreFoundation")
 
 add_executable(plk-dualsense-probe tools/probe.cpp)
+target_include_directories(plk-dualsense-probe PRIVATE src) # ThreadUtil.h
 target_compile_options(plk-dualsense-probe PRIVATE ${PLK_DS_WARNINGS})
 target_link_libraries(plk-dualsense-probe PRIVATE plk_dualsense)
 
@@ -45,7 +46,8 @@ if(BUILD_TESTING)
 		tests/test_output.cpp
 		tests/test_input.cpp
 		tests/test_writer.cpp
-		tests/test_haptics.cpp)
+		tests/test_haptics.cpp
+		tests/test_thread.cpp)
 	target_include_directories(plk-dualsense-tests PRIVATE src tests)
 	target_compile_options(plk-dualsense-tests PRIVATE ${PLK_DS_WARNINGS})
 	target_compile_definitions(plk-dualsense-tests PRIVATE

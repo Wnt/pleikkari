@@ -108,7 +108,10 @@ private:
 
 class HapticsSender {
 public:
-	HapticsSender(OutputSink *sink, const HapticsConfig &config);
+	// time_constraint: Manager::Options::realtime_threads. The paced sleeps are where
+	// it matters most: at user-interactive QoS a timer may fire up to 1/8 of its
+	// interval late (kern.timer_coalesce_tier0_scale = 3, capped at 1 ms).
+	HapticsSender(OutputSink *sink, const HapticsConfig &config, bool time_constraint = false);
 	~HapticsSender();
 
 	void Start();
@@ -130,6 +133,7 @@ private:
 
 	OutputSink *const sink_;
 	const HapticsConfig config_;
+	const bool time_constraint_;
 
 	mutable std::mutex mutex_;
 	std::condition_variable cond_;

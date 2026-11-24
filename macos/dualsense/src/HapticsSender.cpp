@@ -142,8 +142,8 @@ void HapticsPacer::Sent(Nanos now)
 
 // ---------------------------------------------------------------------------
 
-HapticsSender::HapticsSender(OutputSink *sink, const HapticsConfig &config)
-	: sink_(sink), config_(config), pacer_(config), last_nonsilent_ms_(kNoNonSilent)
+HapticsSender::HapticsSender(OutputSink *sink, const HapticsConfig &config, bool time_constraint)
+	: sink_(sink), config_(config), time_constraint_(time_constraint), pacer_(config), last_nonsilent_ms_(kNoNonSilent)
 {
 }
 
@@ -242,7 +242,8 @@ HapticsStats HapticsSender::stats() const
 
 void HapticsSender::Run()
 {
-	SetCurrentThreadRealtimeish("plk.ds.haptics");
+	SetupDriverThread("plk.ds.haptics", time_constraint_, (uint64_t)pacer_.period(), kHapticsThreadComputationNs,
+		kHapticsThreadConstraintNs);
 	std::vector<uint8_t> block(pacer_.report_bytes());
 	std::unique_lock<std::mutex> lk(mutex_);
 	while(!stop_)
