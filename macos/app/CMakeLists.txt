@@ -10,6 +10,12 @@ add_library(plk-app-core STATIC
 	src/Controller.h
 	src/FrameTelemetry.cpp
 	src/FrameTelemetry.h
+	src/GamepadMapper.cpp
+	src/GamepadMapper.h
+	src/GamepadRumble.cpp
+	src/GamepadRumble.h
+	src/Gamepads.h
+	src/Gamepads.mm
 	src/Log.cpp
 	src/Log.h
 	src/Options.cpp
@@ -32,7 +38,9 @@ add_library(plk-app-core STATIC
 set_target_properties(plk-app-core PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 target_include_directories(plk-app-core PUBLIC src PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../video/tools/replay")
 target_compile_options(plk-app-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
-target_link_libraries(plk-app-core PUBLIC plk-host plkvideo plk_dualsense)
+set_source_files_properties(src/Gamepads.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+set_target_properties(plk-app-core PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON)
+target_link_libraries(plk-app-core PUBLIC plk-host plkvideo plk_dualsense "-framework GameController" "-framework CoreHaptics" "-framework Foundation")
 
 set(PLK_APP_PLIST "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
 configure_file(bundle/Info.plist.in "${PLK_APP_PLIST}" @ONLY)
@@ -57,9 +65,18 @@ add_custom_command(TARGET Pleikkari POST_BUILD
 	VERBATIM)
 
 # The host module's test harness (PLK_TEST, CHECK, REQUIRE).
+# What the gamepad support sees and whether the motors run, without a window or a stream.
+add_executable(plk-gamepad-probe tools/GamepadProbe.mm)
+set_target_properties(plk-gamepad-probe PROPERTIES CXX_STANDARD 20 OBJCXX_STANDARD 20)
+target_compile_options(plk-gamepad-probe PRIVATE -fobjc-arc -Wall -Wextra -Wno-unused-parameter)
+target_include_directories(plk-gamepad-probe PRIVATE src)
+target_link_libraries(plk-gamepad-probe PRIVATE plk-app-core)
+
 add_executable(plk-app-tests
 	"${CMAKE_CURRENT_SOURCE_DIR}/../host/tests/main.cpp"
 	tests/ControllerTests.cpp
+	tests/GamepadMapperTests.cpp
+	tests/GamepadRumbleTests.cpp
 	tests/LogTests.cpp
 	tests/OptionsTests.cpp
 	tests/PadMapperTests.cpp

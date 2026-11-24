@@ -29,6 +29,7 @@
 namespace plk::app {
 
 class ControllerHub;
+class GamepadHub;
 class VideoPath;
 
 class StreamSession : public SessionDelegate
@@ -44,7 +45,7 @@ public:
 	using FinishedFn = std::function<void(ChiakiQuitReason reason, const std::string &text)>;
 
 	/** video, audio and controller may be null; they must outlive the session. */
-	StreamSession(VideoPath *video, PcmSink *audio, ControllerHub *controller);
+	StreamSession(VideoPath *video, PcmSink *audio, ControllerHub *controller, GamepadHub *gamepads = nullptr);
 	~StreamSession() override;
 	StreamSession(const StreamSession &) = delete;
 	StreamSession &operator=(const StreamSession &) = delete;
@@ -96,6 +97,8 @@ private:
 	void run();
 
 	ControllerHub *const controller_;
+	GamepadHub *const gamepads_;
+	void setControllersActive(bool active);
 	SessionHost host_;
 	Config config_;
 	FinishedFn finished_;

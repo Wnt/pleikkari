@@ -33,6 +33,7 @@ namespace plk::app {
 
 class ControllerHub;
 class FrameLogger;
+class GamepadHub;
 class Replay;
 class StreamSession;
 class VideoPath;
@@ -101,6 +102,13 @@ private:
 	std::unique_ptr<VideoPath> video_path_;
 	std::unique_ptr<AudioOutput> audio_;
 	std::unique_ptr<ControllerHub> controller_;
+	std::unique_ptr<GamepadHub> gamepads_;
+	// The DualSense hub and the gamepad hub each report the union of their own
+	// controllers; the console gets the union of the two.
+	void pushControllerState(bool from_gamepads, const ChiakiControllerState &state);
+	std::mutex pad_state_mutex_;
+	ChiakiControllerState dualsense_state_;
+	ChiakiControllerState gamepad_state_;
 	std::unique_ptr<StreamSession> session_;
 	std::unique_ptr<Replay> replay_;
 	bool trace_installed_ = false;

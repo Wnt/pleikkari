@@ -3,6 +3,7 @@
 #include "StreamSession.h"
 
 #include "Controller.h"
+#include "Gamepads.h"
 #include "Log.h"
 #include "VideoPath.h"
 
@@ -23,8 +24,8 @@ double steadySeconds()
 
 } // namespace
 
-StreamSession::StreamSession(VideoPath *video, PcmSink *audio, ControllerHub *controller)
-	: controller_(controller), host_(this, video, audio)
+StreamSession::StreamSession(VideoPath *video, PcmSink *audio, ControllerHub *controller, GamepadHub *gamepads)
+	: controller_(controller), gamepads_(gamepads), host_(this, video, audio)
 {
 	dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
 	idr_queue_ = dispatch_queue_create("plk.idr", attr);
@@ -100,8 +101,7 @@ void StreamSession::run()
 		ever_connected_ = false;
 		attempt = 0;
 		restarts_.fetch_add(1, std::memory_order_relaxed);
-		if(controller_)
-			controller_->setSessionActive(false);
+		setControllersActive(false);
 		PLK_LOGI("Session restarting with codec %s", chiaki_codec_name(config_.settings.codec));
 		return true;
 	};
@@ -148,8 +148,7 @@ void StreamSession::run()
 			break;
 		take_restart();
 	}
-	if(controller_)
-		controller_->setSessionActive(false);
+	setControllersActive(false);
 	PLK_LOGI("Session finished: %s%s%s", chiaki_quit_reason_string(reason), text.empty() ? "" : ", ", text.c_str());
 	running_ = false;
 	if(finished_)
@@ -181,8 +180,7 @@ void StreamSession::onConnected(const ChiakiConnectedEvent &info)
 	PLK_LOGI("Session connected%s to %s:%u, mtu %u, rtt %.2f ms%s", info.relay ? " over the PSN relay" : "",
 			info.peer_host[0] ? info.peer_host : "?", (unsigned)info.peer_port, (unsigned)info.mtu_in,
 			info.rtt_us / 1000.0, info.measured ? "" : " (fallback, not measured)");
-	if(controller_)
-		controller_->setSessionActive(true);
+	setControllersActive(true);
 }
 
 void StreamSession::onQuit(ChiakiQuitReason reason, const char *reason_str)
@@ -213,10 +211,20 @@ void StreamSession::onStreamStats(const ChiakiStreamStatsEvent &s)
 			s.measured_throughput_bps / 1000);
 }
 
+void StreamSession::setControllersActive(bool active)
+{
+	if(controller_)
+		controller_->setSessionActive(active);
+	if(gamepads_)
+		gamepads_->setSessionActive(active);
+}
+
 void StreamSession::onRumble(const ChiakiRumbleEvent &rumble)
 {
 	if(controller_)
 		controller_->onRumble(rumble.left, rumble.right);
+	if(gamepads_)
+		gamepads_->onRumble(rumble.left, rumble.right);
 }
 
 void StreamSession::onTriggerEffects(const ChiakiTriggerEffectsEvent &effects)
@@ -229,6 +237,8 @@ void StreamSession::onHapticIntensity(ChiakiDualSenseEffectIntensity intensity)
 {
 	if(controller_)
 		controller_->onHapticIntensity(intensity);
+	if(gamepads_)
+		gamepads_->onHapticIntensity(intensity);
 }
 
 void StreamSession::onTriggerIntensity(ChiakiDualSenseEffectIntensity intensity)
@@ -259,6 +269,8 @@ void StreamSession::onHapticsFrame(const uint8_t *buf, size_t size)
 {
 	if(controller_)
 		controller_->onHapticsFrame(buf, size);
+	if(gamepads_)
+		gamepads_->onHapticsFrame(buf, size);
 }
 
 void StreamSession::onVideoFecFailure(const ChiakiVideoFecFailureEvent &failure)

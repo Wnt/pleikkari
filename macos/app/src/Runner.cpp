@@ -5,6 +5,7 @@
 #include "AudioOutput.h"
 #include "Controller.h"
 #include "FrameTelemetry.h"
+#include "Gamepads.h"
 #include "Log.h"
 #include "Registration.h"
 #include "Replay.h"
@@ -43,7 +44,24 @@ bool envSet(const char *name)
 
 } // namespace
 
-Runner::Runner(const Options &options) : options_(options), secrets_(std::make_unique<RunnerSecrets>()) {}
+Runner::Runner(const Options &options) : options_(options), secrets_(std::make_unique<RunnerSecrets>())
+{
+	chiaki_controller_state_set_idle(&dualsense_state_);
+	chiaki_controller_state_set_idle(&gamepad_state_);
+}
+
+void Runner::pushControllerState(bool from_gamepads, const ChiakiControllerState &state)
+{
+	ChiakiControllerState merged;
+	{
+		std::lock_guard<std::mutex> lk(pad_state_mutex_);
+		(from_gamepads ? gamepad_state_ : dualsense_state_) = state;
+		// The DualSense first: it is the one with motion.
+		chiaki_controller_state_or(&merged, &dualsense_state_, &gamepad_state_);
+	}
+	if(session_)
+		session_->setControllerState(merged);
+}
 
 Runner::~Runner()
 {
@@ -279,7 +297,11 @@ bool Runner::start(std::function<void()> finished)
 		// either starts, and the session is shut down before the hub stops.
 		if(options_.controller)
 			controller_ = std::make_unique<ControllerHub>();
-		session_ = std::make_unique<StreamSession>(video_path_.get(), audio_.get(), controller_.get());
+		// Every other kind of controller. Not headless: the framework needs the app's main
+		// run loop.
+		if(options_.controller && !options_.headless)
+			gamepads_ = std::make_unique<GamepadHub>();
+		session_ = std::make_unique<StreamSession>(video_path_.get(), audio_.get(), controller_.get(), gamepads_.get());
 		if(controller_)
 		{
 			ControllerHub::Config cc;
@@ -290,12 +312,18 @@ bool Runner::start(std::function<void()> finished)
 			cc.haptic_gain = stream_config_.haptic_gain;
 			cc.keep_rumble_with_haptics = envSet("CHIAKI_BT_HAPTICS_KEEP_RUMBLE");
 			cc.trigger_log = getenv("CHIAKI_TRIGGER_LOG") != nullptr;
-			StreamSession *session = session_.get();
 			const bool ok = controller_->start(cc,
-					[session](const ChiakiControllerState &state) { session->setControllerState(state); },
+					[this](const ChiakiControllerState &state) { pushControllerState(false, state); },
 					[](char level, const std::string &message) { Log::instance().write(level, message.c_str()); });
 			if(!ok)
 				PLK_LOGW("Continuing without the DualSense");
+		}
+		if(gamepads_)
+		{
+			GamepadHub::Config gc;
+			gc.output = options_.controller_output;
+			gamepads_->start(gc, [this](const ChiakiControllerState &state) { pushControllerState(true, state); },
+					[](char level, const std::string &message) { Log::instance().write(level, message.c_str()); });
 		}
 		StreamSession::Config sc;
 		sc.target = secrets_->target;
@@ -356,6 +384,8 @@ void Runner::shutdownWorkers()
 		replay_->join();
 	}
 	// 2. The controllers: haptics stop, effects off, devices closed.
+	if(gamepads_)
+		gamepads_->stop();
 	if(controller_)
 		controller_->stop();
 	// 3. Stats and the --seconds timer.
@@ -383,7 +413,12 @@ void Runner::shutdownVideo()
 	// pipeline goes first: its error callback may still reach session_ until it is gone.
 	video_path_.reset();
 	pipeline_.reset();
+	// The gamepad hub and the session call into each other: the hub is silenced, the
+	// session goes, then the hub.
+	if(gamepads_)
+		gamepads_->stop();
 	session_.reset();
+	gamepads_.reset();
 	replay_.reset();
 	controller_.reset();
 	if(trace_installed_)
@@ -464,6 +499,8 @@ void Runner::logStats(bool final_report)
 	}
 	if(controller_)
 		Log::instance().write('I', controller_->statsLine().c_str());
+	if(gamepads_)
+		Log::instance().write('I', gamepads_->statsLine().c_str());
 	if(frame_logger_)
 		PLK_LOGI("frames: logged=%llu not_presented=%llu", (unsigned long long)frame_logger_->logged(),
 				(unsigned long long)frame_logger_->notPresented());

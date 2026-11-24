@@ -15,6 +15,7 @@ The data paths have no queues or timers between the stages:
 - **Audio.** On the Takion thread: Opus, then a lock-free ring, then the CoreAudio IO thread.
 - **Controller.** On the DualSense HID thread, each input report becomes `ChiakiControllerState` and goes to `SessionHost::setControllerState`.
 - **Feedback.** On the Takion thread, console events go to the `DualSenseHID` setters, then to the writer thread. Changes within 2 ms leave as one report.
+- **Other controllers.** An Xbox controller, a DualShock 4, a Switch Pro controller or an MFi pad comes through GameController (`Gamepads.mm`); the DualSense stays with the HID driver. Each change is mapped by position (A is Cross, B Circle, X Square, Y Triangle, Menu is Options, View is Create, the Xbox button is PS, Share is the touchpad click) on a queue of its own and merged with the DualSense's state. The system's shortcuts on the Home, Menu, View and Share buttons are turned off for the app. Rumble: the console's rumble events drive the heavy motor (left handle) and the light one (right handle) through CoreHaptics; a PS5 game's haptics stream cannot be played by a rumble motor, so its loudness drives both, with the Qt app's formula (`GamepadRumble.h`). Adaptive trigger effects, motion and the touchpad surface have no counterpart on these controllers.
 
 ## Build
 
@@ -169,13 +170,16 @@ A value of -1 means the stage was not measured. With `--headless` nothing is pre
 - `video:` the stream format and frame counters, with p50/p95/p99/max in ms of the submit call, decode, queue, render CPU and GPU, frame-ready to presented, and the present interval (all for that window);
 - `audio:` frames in, underruns, silence, hard drops, ring fill, playout margin, drift, and device latency;
 - `controller:` input reports and their rate, the largest motion step on the sensor clock, and console rumble and trigger events (applied, dropped or suppressed). Per device it adds reports in, CRC errors, effect reports written, reports merged by the 2 ms window, write times, and Bluetooth haptics reports and underruns;
+- `gamepads:` controllers other than the DualSense, the input changes they reported, their rumble motors, how often a motor level was changed (and refused), and haptics-stream packets seen;
 - `frames:` the number of lines logged and of frames not presented.
 
 `--diagnostics` adds the lib's per-second `stream:` line: frames, loss, jitter, FEC, and feedback gaps.
 
 ## Tests
 
-`plk-app-tests` covers option parsing and settings precedence, input mapping (buttons, touches, motion on the sensor clock, motion reset), the motor-power encoding, the frame-line format against frames.py's parser, and the log format against triggers.py's pattern. `build.sh` runs it together with `plk-host-tests`, `plk-dualsense-tests` and the video module's tests. None of them needs a console, a window or a controller.
+`plk-app-tests` covers option parsing and settings precedence, input mapping (buttons, touches, motion on the sensor clock, motion reset), the mapping of other controllers and their rumble levels, the motor-power encoding, the frame-line format against frames.py's parser, and the log format against triggers.py's pattern. `build.sh` runs it together with `plk-host-tests`, `plk-dualsense-tests` and the video module's tests. None of them needs a console, a window or a controller.
+
+`plk-gamepad-probe` (next to the app in the build directory) shows what the gamepad support sees with no window, stream or console: the controllers, whether their rumble engines start, and every mapped change. `--pulse` runs the motors for 2.5 s: heavy, light, then the haptics-stream path. `--seconds N`, `--quiet`.
 
 The Video menu can be driven with no console and no hands: `--keys` makes the app press keys itself, through its own event queue, so it needs no permission to control the computer. This replays a dump in a window, picks Lanczos at 2 s, vivid at 4 s, opens the menu at 6 s and picks its second item with the arrow keys:
 
