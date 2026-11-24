@@ -38,3 +38,6 @@ the default output device.
   latency CoreAudio reports.
 - `loadRegisteredConsoles(qtSettingsPlistPath(), consoles)`: never print anything from a
   `RegisteredConsole` but `nickname` and `consoleTypeName()`.
+- `loadQtStreamSettings(qtSettingsPlistPath(), settings)`: the Qt app's non-secret stream
+  settings for a PS5 on the LAN (resolution, fps, bitrate, codec, haptics gain, Bluetooth
+  haptics, reported packet loss); nothing else is read.

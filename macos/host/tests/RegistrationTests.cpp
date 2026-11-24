@@ -208,3 +208,62 @@ PLK_TEST(registration_plist_path)
 	const std::string qsuffix = "/Library/Preferences/com.chiaki.Chiaki-work.plist";
 	CHECK(q.size() > qsuffix.size() && q.compare(q.size() - qsuffix.size(), qsuffix.size(), qsuffix) == 0);
 }
+
+PLK_TEST(stream_settings_defaults_when_absent)
+{
+	plk::QtStreamSettings st;
+	REQUIRE(plk::loadQtStreamSettings(fixturePath(), st));
+	CHECK(st.has_bitrate && st.bitrate_kbps == 0); // the fixture has bitrate_local_ps5 = 0
+	CHECK(!st.has_resolution && st.resolution == "1080p");
+	CHECK(!st.has_fps && st.fps == 60);
+	CHECK(!st.has_codec && st.codec == "h265");
+	CHECK(!st.has_haptic_gain && st.haptic_gain == 1.0f);
+	CHECK(!st.has_bt_haptics && st.bt_haptics);
+	CHECK(!st.has_packet_loss_max);
+}
+
+PLK_TEST(stream_settings_values)
+{
+	const std::string path = plktest::tempDir() + "/stream-settings.plist";
+	REQUIRE(writeText(path, kPlistHead +
+		"<dict>"
+		"<key>settings.resolution_local_ps5</key><string>720p</string>"
+		"<key>settings.fps_local_ps5</key><integer>30</integer>"
+		"<key>settings.bitrate_local_ps5</key><integer>25000</integer>"
+		"<key>settings.codec_local_ps5</key><string>h265_hdr</string>"
+		"<key>settings.haptic_override</key><real>0.5</real>"
+		"<key>settings.dualsense_bt_haptics</key><false/>"
+		"<key>settings.packet_loss_reported_max</key><string>0.10</string>"
+		"<key>settings.resolution_remote_ps5</key><string>360p</string>"
+		"</dict>\n" + kPlistTail));
+	plk::QtStreamSettings st;
+	REQUIRE(plk::loadQtStreamSettings(path, st));
+	CHECK(st.has_resolution && st.resolution == "720p");
+	CHECK(st.has_fps && st.fps == 30);
+	CHECK(st.has_bitrate && st.bitrate_kbps == 25000);
+	CHECK(st.has_codec && st.codec == "h265_hdr");
+	CHECK(st.has_haptic_gain && st.haptic_gain == 0.5f);
+	CHECK(st.has_bt_haptics && !st.bt_haptics);
+	CHECK(st.has_packet_loss_max && st.packet_loss_max > 0.0999 && st.packet_loss_max < 0.1001);
+}
+
+PLK_TEST(stream_settings_rejects_unknown_values)
+{
+	const std::string path = plktest::tempDir() + "/stream-settings-bad.plist";
+	REQUIRE(writeText(path, kPlistHead +
+		"<dict>"
+		"<key>settings.resolution_local_ps5</key><string>4k</string>"
+		"<key>settings.fps_local_ps5</key><integer>120</integer>"
+		"<key>settings.codec_local_ps5</key><string>av1</string>"
+		"<key>settings.packet_loss_max</key><string>lots</string>"
+		"</dict>\n" + kPlistTail));
+	plk::QtStreamSettings st;
+	REQUIRE(plk::loadQtStreamSettings(path, st));
+	CHECK(!st.has_resolution && st.resolution == "1080p");
+	CHECK(!st.has_fps && st.fps == 60);
+	CHECK(!st.has_codec && st.codec == "h265");
+	CHECK(!st.has_packet_loss_max);
+	std::string error;
+	CHECK(!plk::loadQtStreamSettings(plktest::tempDir() + "/missing.plist", st, &error));
+	CHECK(!error.empty());
+}

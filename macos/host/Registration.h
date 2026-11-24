@@ -19,7 +19,8 @@
 //   ap_ssid/ap_bssid/ap_key/ap_name/console_pin (strings, not used here).
 //
 // THE FILE HOLDS SECRETS (registration keys, PSN tokens). This loader only reads the
-// registered_hosts array, never writes, and never logs a value. Callers must not print
+// registered_hosts array and the named stream settings of QtStreamSettings, never writes,
+// and never logs a value. Callers must not print
 // anything from a RegisteredConsole except nickname and console type.
 
 #ifndef PLK_HOST_REGISTRATION_H
@@ -60,6 +61,33 @@ struct RegisteredConsole
 	/** "PS5" or "PS4": the only thing besides the nickname that may be printed. */
 	const char *consoleTypeName() const { return isPS5() ? "PS5" : "PS4"; }
 };
+
+/**
+ * The Qt app's non-secret stream settings for a PS5 on the LAN (Settings::GetVideoProfileLocalPS5()
+ * and the DualSense settings), so a native client can start with what the user chose there.
+ * Only these keys are read; a key that is missing or unreadable leaves its has_ flag false and
+ * the field at the Qt app's default.
+ */
+struct QtStreamSettings
+{
+	bool has_resolution = false;
+	std::string resolution = "1080p";      // settings/resolution_local_ps5: "360p", "540p", "720p", "1080p"
+	bool has_fps = false;
+	int fps = 60;                          // settings/fps_local_ps5: 30 or 60
+	bool has_bitrate = false;
+	unsigned bitrate_kbps = 0;             // settings/bitrate_local_ps5: 0 = the resolution preset's
+	bool has_codec = false;
+	std::string codec = "h265";            // settings/codec_local_ps5: "h264", "h265", "h265_hdr"
+	bool has_haptic_gain = false;
+	float haptic_gain = 1.0f;              // settings/haptic_override
+	bool has_bt_haptics = false;
+	bool bt_haptics = true;                // settings/dualsense_bt_haptics
+	bool has_packet_loss_max = false;
+	double packet_loss_max = 0.05;         // settings/packet_loss_reported_max (or the older packet_loss_max)
+};
+
+/** Read QtStreamSettings from a QSettings plist; false only if the file is not a readable dictionary. */
+bool loadQtStreamSettings(const std::string &plist_path, QtStreamSettings &out, std::string *error = nullptr);
 
 /** $HOME/Library/Preferences/com.chiaki.Chiaki.plist, or ...Chiaki-<profile>.plist. */
 std::string qtSettingsPlistPath(const std::string &profile = std::string());

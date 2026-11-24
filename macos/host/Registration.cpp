@@ -153,6 +153,65 @@ bool readInt(CFTypeRef v, long long &out)
 	return false;
 }
 
+/** A float/double value: CFNumber, or a decimal string (QSettings writes some floats as QString). */
+bool readDouble(CFTypeRef v, double &out)
+{
+	if(!v)
+		return false;
+	CFTypeID t = CFGetTypeID(v);
+	if(t == CFNumberGetTypeID())
+		return CFNumberGetValue((CFNumberRef)v, kCFNumberDoubleType, &out);
+	if(t == CFStringGetTypeID())
+	{
+		std::string s;
+		if(!cfStringToUtf8((CFStringRef)v, s) || s.empty())
+			return false;
+		errno = 0;
+		char *end = nullptr;
+		double d = strtod(s.c_str(), &end);
+		if(errno || !end || *end)
+			return false;
+		out = d;
+		return true;
+	}
+	return false;
+}
+
+/** A bool value: CFBoolean, CFNumber, or the strings QVariant::toBool() accepts. */
+bool readBool(CFTypeRef v, bool &out)
+{
+	if(!v)
+		return false;
+	CFTypeID t = CFGetTypeID(v);
+	if(t == CFBooleanGetTypeID())
+	{
+		out = CFBooleanGetValue((CFBooleanRef)v);
+		return true;
+	}
+	if(t == CFNumberGetTypeID())
+	{
+		long long n = 0;
+		if(!CFNumberGetValue((CFNumberRef)v, kCFNumberLongLongType, &n))
+			return false;
+		out = n != 0;
+		return true;
+	}
+	if(t == CFStringGetTypeID())
+	{
+		std::string s;
+		if(!cfStringToUtf8((CFStringRef)v, s))
+			return false;
+		if(s == "true" || s == "1")
+			out = true;
+		else if(s == "false" || s == "0" || s.empty())
+			out = false;
+		else
+			return false;
+		return true;
+	}
+	return false;
+}
+
 bool readFile(const std::string &path, std::vector<uint8_t> &out, std::string *error)
 {
 	std::ifstream f(path, std::ios::binary);
@@ -194,12 +253,14 @@ std::string qtSettingsPlistPath(const std::string &profile)
 	return home + "/Library/Preferences/" + domain + ".plist";
 }
 
-bool loadRegisteredConsoles(const std::string &plist_path, std::vector<RegisteredConsole> &out, std::string *error)
+namespace {
+
+/** The plist as a dictionary (caller releases), or nullptr with *error set (never quoting the file). */
+CFDictionaryRef loadPlistDictionary(const std::string &plist_path, std::string *error)
 {
-	out.clear();
 	std::vector<uint8_t> raw;
 	if(!readFile(plist_path, raw, error))
-		return false;
+		return nullptr;
 
 	CFHolder<CFDataRef> data(CFDataCreate(kCFAllocatorDefault, raw.data(), (CFIndex)raw.size()));
 	wipe(raw.data(), raw.size());
@@ -207,21 +268,34 @@ bool loadRegisteredConsoles(const std::string &plist_path, std::vector<Registere
 	{
 		if(error)
 			*error = "out of memory";
-		return false;
+		return nullptr;
 	}
 
 	CFErrorRef cf_error = nullptr;
-	CFHolder<CFPropertyListRef> plist(CFPropertyListCreateWithData(kCFAllocatorDefault, data.ref,
-			kCFPropertyListImmutable, nullptr, &cf_error));
+	CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data.ref,
+			kCFPropertyListImmutable, nullptr, &cf_error);
 	if(cf_error)
 		CFRelease(cf_error); // its description could quote file content, so it is not passed on
-	if(!plist.ref || CFGetTypeID(plist.ref) != CFDictionaryGetTypeID())
+	if(!plist || CFGetTypeID(plist) != CFDictionaryGetTypeID())
 	{
+		if(plist)
+			CFRelease(plist);
 		if(error)
 			*error = plist_path + " is not a property list dictionary";
-		return false;
+		return nullptr;
 	}
-	CFDictionaryRef dict = (CFDictionaryRef)plist.ref;
+	return (CFDictionaryRef)plist;
+}
+
+} // namespace
+
+bool loadRegisteredConsoles(const std::string &plist_path, std::vector<RegisteredConsole> &out, std::string *error)
+{
+	out.clear();
+	CFHolder<CFDictionaryRef> plist(loadPlistDictionary(plist_path, error));
+	if(!plist.ref)
+		return false;
+	CFDictionaryRef dict = plist.ref;
 
 	long long count = 0;
 	if(!readInt(lookup(dict, "registered_hosts.size"), count) || count < 0)
@@ -262,6 +336,59 @@ bool loadRegisteredConsoles(const std::string &plist_path, std::vector<Registere
 		wipe(bytes.data(), bytes.size());
 
 		out.push_back(c);
+	}
+	return true;
+}
+
+bool loadQtStreamSettings(const std::string &plist_path, QtStreamSettings &out, std::string *error)
+{
+	out = QtStreamSettings();
+	CFHolder<CFDictionaryRef> plist(loadPlistDictionary(plist_path, error));
+	if(!plist.ref)
+		return false;
+	CFDictionaryRef dict = plist.ref;
+
+	std::string str;
+	if(readString(lookup(dict, "settings.resolution_local_ps5"), str)
+		&& (str == "360p" || str == "540p" || str == "720p" || str == "1080p"))
+	{
+		out.resolution = str;
+		out.has_resolution = true;
+	}
+	long long n = 0;
+	if(readInt(lookup(dict, "settings.fps_local_ps5"), n) && (n == 30 || n == 60))
+	{
+		out.fps = (int)n;
+		out.has_fps = true;
+	}
+	if(readInt(lookup(dict, "settings.bitrate_local_ps5"), n) && n >= 0 && n <= 1000000)
+	{
+		out.bitrate_kbps = (unsigned)n;
+		out.has_bitrate = true;
+	}
+	if(readString(lookup(dict, "settings.codec_local_ps5"), str) && (str == "h264" || str == "h265" || str == "h265_hdr"))
+	{
+		out.codec = str;
+		out.has_codec = true;
+	}
+	double d = 0;
+	if(readDouble(lookup(dict, "settings.haptic_override"), d) && d >= 0.0 && d <= 10.0)
+	{
+		out.haptic_gain = (float)d;
+		out.has_haptic_gain = true;
+	}
+	bool b = false;
+	if(readBool(lookup(dict, "settings.dualsense_bt_haptics"), b))
+	{
+		out.bt_haptics = b;
+		out.has_bt_haptics = true;
+	}
+	// Settings::GetPacketLossReportedMax(): the newer key wins over the older one.
+	if((readDouble(lookup(dict, "settings.packet_loss_reported_max"), d) || readDouble(lookup(dict, "settings.packet_loss_max"), d))
+		&& d >= 0.0 && d <= 1.0)
+	{
+		out.packet_loss_max = d;
+		out.has_packet_loss_max = true;
 	}
 	return true;
 }
