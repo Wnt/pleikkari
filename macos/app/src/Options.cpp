@@ -120,7 +120,15 @@ std::string usageText()
 		"  --fullscreen            start in native fullscreen (Cmd-F toggles)\n"
 		"  --pacing immediate|immediate-vsync|displaylink   (default immediate)\n"
 		"  --scaler bilinear|bicubic|lanczos|metalfx         (default bilinear)\n"
+		"  --color accurate|vivid  SDR picture: the console's colours, or stretched to the\n"
+		"                          display's full gamut (default accurate)\n"
+		"  --hdr on|off            HDR stream (h265-hdr) or not, whatever the codec setting says\n"
 		"  --hdr-output pq|linear  (default pq)\n"
+		"                          These four are also in the Video menu while the stream runs\n"
+		"                          (right click or M; keys 1-4, A, V, H, P, L). A choice made\n"
+		"                          there is remembered for the next run that does not give the\n"
+		"                          option.\n"
+		"  --no-saved-choices      neither use nor remember the menu's choices\n"
 		"  --headless              no window: render offscreen, controller read-only\n"
 		"  --offscreen WxH         headless render size (default 3456x2234)\n"
 		"controller\n"
@@ -141,7 +149,9 @@ std::string usageText()
 		"  --seconds S             end after S seconds\n"
 		"  --retry-window S        restart a session that fails before it connects, for S seconds\n"
 		"                          (default 20, as the Qt app; 0 = no retry)\n"
-		"  --loop                  replay: start over at the end of the dump\n";
+		"  --loop                  replay: start over at the end of the dump\n"
+		"  --keys LIST             test tool: the app presses keys itself, \"2:3,4.5:v,6:m\" is\n"
+		"                          key 3 at 2 s, V at 4.5 s, M at 6 s\n";
 }
 
 bool parseOptions(int argc, const char *const *argv, Options &o, std::string *error)
@@ -243,14 +253,40 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 		}
 		else if(a == "--scaler")
 		{
-			if(!value(&v) || !video::parseScaler(v, &o.scaler))
+			video::Scaler scaler;
+			if(!value(&v) || !video::parseScaler(v, &scaler))
 				return fail("--scaler wants bilinear, bicubic, lanczos or metalfx");
+			o.scaler = scaler;
+		}
+		else if(a == "--color" || a == "--colour")
+		{
+			video::SdrColor color;
+			if(!value(&v) || !video::parseSdrColor(v, &color))
+				return fail("--color wants accurate or vivid");
+			o.sdr_color = color;
+		}
+		else if(a == "--hdr")
+		{
+			if(!value(&v) || (v != "on" && v != "off"))
+				return fail("--hdr wants on or off");
+			o.hdr = v == "on";
 		}
 		else if(a == "--hdr-output")
 		{
-			if(!value(&v) || (v != "pq" && v != "linear"))
+			video::HdrOutput output;
+			if(!value(&v) || !video::parseHdrOutput(v, &output))
 				return fail("--hdr-output wants pq or linear");
-			o.hdr_linear = v == "linear";
+			o.hdr_output = output;
+		}
+		else if(a == "--no-saved-choices")
+			o.saved_choices = false;
+		else if(a == "--keys")
+		{
+			std::vector<KeyPress> presses;
+			std::string why;
+			if(!value(&v) || !parseKeyScript(v, presses, &why))
+				return fail("--keys wants a list like 2:3,4.5:v" + (why.empty() ? "" : " (" + why + ")"));
+			o.keys = v;
 		}
 		else if(a == "--headless")
 			o.headless = true;
@@ -357,6 +393,73 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 	return true;
 }
 
+bool parseKeyScript(const std::string &list, std::vector<KeyPress> &out, std::string *error)
+{
+	out.clear();
+	size_t pos = 0;
+	while(pos <= list.size())
+	{
+		size_t end = list.find(',', pos);
+		if(end == std::string::npos)
+			end = list.size();
+		const std::string entry = list.substr(pos, end - pos);
+		pos = end + 1;
+		if(entry.empty())
+			continue;
+		const size_t colon = entry.find(':');
+		KeyPress press;
+		char *rest = nullptr;
+		if(colon == std::string::npos || colon == 0 || colon + 1 >= entry.size())
+		{
+			if(error)
+				*error = "\"" + entry + "\" is not seconds:key";
+			return false;
+		}
+		const std::string seconds = entry.substr(0, colon);
+		press.at_s = strtod(seconds.c_str(), &rest);
+		if(!rest || *rest || press.at_s < 0)
+		{
+			if(error)
+				*error = "\"" + seconds + "\" is not a time in seconds";
+			return false;
+		}
+		press.key = entry.substr(colon + 1);
+		static const char *const names[] = { "up", "down", "left", "right", "enter", "esc", "space" };
+		bool known = press.key.size() == 1;
+		for(const char *name : names)
+			known = known || press.key == name;
+		if(!known)
+		{
+			if(error)
+				*error = "\"" + press.key + "\" is not a key";
+			return false;
+		}
+		out.push_back(press);
+	}
+	return true;
+}
+
+ViewChoices resolveViewChoices(const Options &o)
+{
+	ViewChoices v;
+	if(o.scaler)
+		v.scaler = *o.scaler;
+	if(o.sdr_color)
+		v.sdr_color = *o.sdr_color;
+	if(o.hdr_output)
+		v.hdr_output = *o.hdr_output;
+	return v;
+}
+
+ChiakiCodec codecWithHdr(ChiakiCodec codec, bool hdr, ChiakiCodec sdr_codec)
+{
+	if(hdr)
+		return CHIAKI_CODEC_H265_HDR;
+	if(codec != CHIAKI_CODEC_H265_HDR)
+		return codec;
+	return sdr_codec == CHIAKI_CODEC_H265_HDR ? CHIAKI_CODEC_H265 : sdr_codec;
+}
+
 StreamConfig resolveStreamConfig(const Options &o, const QtStreamSettings *qt)
 {
 	StreamConfig c;
@@ -400,6 +503,9 @@ StreamConfig resolveStreamConfig(const Options &o, const QtStreamSettings *qt)
 		codec = *o.codec, codec_from = "command line";
 	else if(qt && qt->has_codec && parseCodec(qt->codec, &codec))
 		codec_from = "Qt settings";
+	// HDR on or off on top of that: the menu's choice or --hdr.
+	if(o.hdr && *o.hdr != (codec == CHIAKI_CODEC_H265_HDR))
+		codec = codecWithHdr(codec, *o.hdr), codec_from = "HDR choice";
 	note("codec", codec_from);
 
 	s.resolution = res;

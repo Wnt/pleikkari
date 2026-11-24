@@ -21,6 +21,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace plk::app {
 
@@ -49,8 +50,14 @@ struct Options
 	// Window and video.
 	bool fullscreen = false;
 	video::PacingMode pacing = video::PacingMode::Immediate;
-	video::Scaler scaler = video::Scaler::Bilinear;
-	bool hdr_linear = false;         // HDR to an extended-linear drawable instead of PQ
+	// The four below can also be changed while the stream runs (the Video menu). A choice
+	// made there is remembered and used by the next run that does not give the option.
+	std::optional<video::Scaler> scaler;        // default bilinear
+	std::optional<video::SdrColor> sdr_color;   // default accurate
+	std::optional<video::HdrOutput> hdr_output; // default PQ
+	std::optional<bool> hdr;         // HDR on or off, whatever --codec, Qt settings or default say
+	bool saved_choices = true;       // read and remember the menu's choices
+	std::string keys;                // test tool: "seconds:key,..." pressed by the app itself
 	bool headless = false;           // no window, no NSApplication: video renders offscreen
 	int offscreen_width = 3456;      // headless target size (the panel's)
 	int offscreen_height = 2234;
@@ -80,6 +87,27 @@ struct Options
 /** false with *error set on a malformed command line. */
 bool parseOptions(int argc, const char *const *argv, Options &out, std::string *error);
 std::string usageText();
+
+/** One key of --keys: a character ("3", "v") or one of up, down, left, right, enter, esc, space. */
+struct KeyPress
+{
+	double at_s = 0;
+	std::string key;
+};
+/** "2:3,4.5:v,6:down" as presses in the order given; false with *error on a malformed list. */
+bool parseKeyScript(const std::string &list, std::vector<KeyPress> &out, std::string *error);
+
+/** What the Video menu changes, as the run starts with it. */
+struct ViewChoices
+{
+	video::Scaler scaler = video::Scaler::Bilinear;
+	video::SdrColor sdr_color = video::SdrColor::Accurate;
+	video::HdrOutput hdr_output = video::HdrOutput::PQ;
+};
+ViewChoices resolveViewChoices(const Options &options);
+
+/** The codec with HDR switched on or off: h265-hdr, or the SDR codec the stream had (h265 if it had none). */
+ChiakiCodec codecWithHdr(ChiakiCodec codec, bool hdr, ChiakiCodec sdr_codec = CHIAKI_CODEC_H265);
 
 /** Everything the session needs, after merging command line, Qt settings and defaults. */
 struct StreamConfig

@@ -78,6 +78,16 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 - Cmd-F toggles native fullscreen. In fullscreen, macOS Game Mode turns on and halves the DualSense's Bluetooth report interval.
 - The cursor is hidden over the video.
 - The app holds `NSActivityLatencyCritical | NSActivityUserInitiated` and keeps the display awake.
+- The **Video menu** changes the picture while the stream runs. It is in the menu bar, under a right click on the picture, and under the M key, where the arrow keys and Return work in it. Each choice also has a key of its own, pressed without a modifier (the keyboard is free: the DualSense is the input device). A line over the picture says for two seconds what changed.
+
+| key | choice | |
+|---|---|---|
+| 1, 2, 3, 4 | scaling: bilinear, bicubic, Lanczos, MetalFX | with the next frame |
+| A, V | colour of an SDR picture: accurate (the console's colours), vivid (stretched to the display's full gamut, as a renderer without colour management shows it) | with the next frame; an HDR picture is not affected |
+| H | HDR stream on or off | **reconnects**: the console fixes the codec when a session starts, so the app ends the session and starts a new one. Window, video pipeline, audio output and controller stay; the picture is gone for a few seconds. PS5 only |
+| P, L | HDR output: PQ code values tone mapped by macOS, or linear light decoded in the shader | with the next frame; an SDR picture is not affected |
+
+What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) and used by the next run that does not give the matching option; `--no-saved-choices` neither uses nor remembers it. Headless runs never use it.
 
 | option | default | |
 |---|---|---|
@@ -90,7 +100,11 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 | `--no-reorder` | reordering on | the lib does not wait up to 16 ms for a missing video packet |
 | `--log PATH` | stderr | |
 | `--pacing immediate\|immediate-vsync\|displaylink` | immediate | |
-| `--scaler bilinear\|bicubic\|lanczos\|metalfx` | bilinear | |
+| `--scaler bilinear\|bicubic\|lanczos\|metalfx` | the menu's choice, else bilinear | |
+| `--color accurate\|vivid` | the menu's choice, else accurate | colour of an SDR picture |
+| `--hdr on\|off` | the menu's choice, else what the codec says | HDR stream or not, on top of `--codec` and the Qt setting |
+| `--hdr-output pq\|linear` | the menu's choice, else pq | |
+| `--no-saved-choices` | | neither use nor remember the Video menu's choices |
 | `--stats-interval S` | 10 | 0 = off |
 | `--no-frame-log` | per-frame lines on | |
 | `--no-controller`, `--no-controller-output`, `--no-realtime-controller` | | |
@@ -162,6 +176,15 @@ A value of -1 means the stage was not measured. With `--headless` nothing is pre
 ## Tests
 
 `plk-app-tests` covers option parsing and settings precedence, input mapping (buttons, touches, motion on the sensor clock, motion reset), the motor-power encoding, the frame-line format against frames.py's parser, and the log format against triggers.py's pattern. `build.sh` runs it together with `plk-host-tests`, `plk-dualsense-tests` and the video module's tests. None of them needs a console, a window or a controller.
+
+The Video menu can be driven with no console and no hands: `--keys` makes the app press keys itself, through its own event queue, so it needs no permission to control the computer. This replays a dump in a window, picks Lanczos at 2 s, vivid at 4 s, opens the menu at 6 s and picks its second item with the arrow keys:
+
+```sh
+$APP replay <dump.plkv> --loop --seconds 12 --no-saved-choices --stats-interval 2 --log /tmp/m.log \
+    --keys "2:3,4:v,6:m,7:down,7.4:down,8.2:enter" && grep 'keys\|Video:\|scaler=' /tmp/m.log
+```
+
+The `video:` statistics line names the scaler in use and the colour space the layer is tagged with.
 
 To exercise the whole video path and telemetry with no console, replay a dump headless:
 

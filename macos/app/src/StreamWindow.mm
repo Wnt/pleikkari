@@ -2,6 +2,8 @@
 
 #import "StreamWindow.h"
 
+#include <plk/VideoPipeline.h>
+
 namespace {
 
 NSCursor *blankCursor()
@@ -25,6 +27,9 @@ NSCursor *blankCursor()
 {
 	int _lastWidth;
 	int _lastHeight;
+	NSView *_noticeBox;
+	NSTextField *_noticeLabel;
+	NSUInteger _noticeSerial;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame
@@ -70,9 +75,77 @@ NSCursor *blankCursor()
 	return YES;
 }
 
-// The controller is the input device: keys and mouse clicks go nowhere (and do not beep).
+// The controller is the input device. Keys: the Video menu's own (1-4, A, V, H, P, L), M opens
+// that menu; everything else goes nowhere (and does not beep).
 - (void)keyDown:(NSEvent *)event
 {
+	if(event.isARepeat)
+		return;
+	const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask
+			& (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption);
+	if(mods)
+		return;
+	if([NSApp.mainMenu performKeyEquivalent:event])
+		return;
+	if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"m"])
+		[self popUpVideoMenuWithEvent:nil];
+}
+
+- (void)rightMouseDown:(NSEvent *)event
+{
+	[self popUpVideoMenuWithEvent:event];
+}
+
+- (void)popUpVideoMenuWithEvent:(NSEvent *)event
+{
+	NSMenu *menu = PLKMakeVideoMenu();
+	NSPoint at;
+	if(event)
+		at = [self convertPoint:event.locationInWindow fromView:nil];
+	else
+	{
+		// From the keyboard: in the middle of the picture, top edge a little above it.
+		const NSSize size = menu.size;
+		at = NSMakePoint(NSMidX(self.bounds) - size.width / 2, NSMidY(self.bounds) + size.height / 2);
+	}
+	// The view's cursor is blank; the menu needs one.
+	[NSCursor.arrowCursor push];
+	[NSCursor unhide];
+	[menu popUpMenuPositioningItem:nil atLocation:at inView:self];
+	[NSCursor pop];
+	[self.window invalidateCursorRectsForView:self];
+}
+
+- (void)showNotice:(NSString *)text
+{
+	if(!_noticeBox)
+	{
+		_noticeBox = [[NSView alloc] initWithFrame:NSZeroRect];
+		_noticeBox.wantsLayer = YES;
+		_noticeBox.layer.backgroundColor = [NSColor colorWithWhite:0.0 alpha:0.72].CGColor;
+		_noticeBox.layer.cornerRadius = 10;
+		_noticeLabel = [NSTextField labelWithString:@""];
+		_noticeLabel.font = [NSFont systemFontOfSize:17 weight:NSFontWeightMedium];
+		_noticeLabel.textColor = NSColor.whiteColor;
+		[_noticeBox addSubview:_noticeLabel];
+	}
+	_noticeLabel.stringValue = text;
+	[_noticeLabel sizeToFit];
+	const NSSize label = _noticeLabel.frame.size;
+	const CGFloat padX = 18, padY = 10;
+	const NSSize box = NSMakeSize(label.width + 2 * padX, label.height + 2 * padY);
+	_noticeLabel.frame = NSMakeRect(padX, padY, label.width, label.height);
+	_noticeBox.frame = NSMakeRect(round(NSMidX(self.bounds) - box.width / 2), round(self.bounds.size.height * 0.08),
+			box.width, box.height);
+	_noticeBox.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMaxYMargin;
+	if(_noticeBox.superview != self)
+		[self addSubview:_noticeBox];
+	// Off the picture again afterwards: nothing but the video layer is composited then.
+	const NSUInteger serial = ++_noticeSerial;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		if(serial == self->_noticeSerial)
+			[self->_noticeBox removeFromSuperview];
+	});
 }
 
 - (void)keyUp:(NSEvent *)event
@@ -169,6 +242,52 @@ NSCursor *blankCursor()
 
 @end
 
+namespace {
+
+void addHeader(NSMenu *menu, NSString *title)
+{
+	if(menu.numberOfItems)
+		[menu addItem:NSMenuItem.separatorItem];
+	if(@available(macOS 14.0, *))
+		[menu addItem:[NSMenuItem sectionHeaderWithTitle:title]];
+	else
+	{
+		NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+		item.enabled = NO;
+		[menu addItem:item];
+	}
+}
+
+// A choice with a key of its own, pressed without a modifier.
+void addChoice(NSMenu *menu, NSString *title, SEL action, NSInteger tag, NSString *key)
+{
+	NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:key];
+	item.keyEquivalentModifierMask = 0;
+	item.tag = tag;
+	[menu addItem:item];
+}
+
+} // namespace
+
+NSMenu *PLKMakeVideoMenu(void)
+{
+	using namespace plk::video;
+	NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Video"];
+	addHeader(menu, @"Scaling");
+	addChoice(menu, @"Bilinear (fastest)", @selector(plkSelectScaler:), (NSInteger)Scaler::Bilinear, @"1");
+	addChoice(menu, @"Bicubic", @selector(plkSelectScaler:), (NSInteger)Scaler::Bicubic, @"2");
+	addChoice(menu, @"Lanczos (sharpest)", @selector(plkSelectScaler:), (NSInteger)Scaler::Lanczos, @"3");
+	addChoice(menu, @"MetalFX upscaler", @selector(plkSelectScaler:), (NSInteger)Scaler::MetalFX, @"4");
+	addHeader(menu, @"Colour of an SDR picture");
+	addChoice(menu, @"Accurate", @selector(plkSelectSdrColor:), (NSInteger)SdrColor::Accurate, @"a");
+	addChoice(menu, @"Vivid (the display's full gamut)", @selector(plkSelectSdrColor:), (NSInteger)SdrColor::Vivid, @"v");
+	addHeader(menu, @"HDR");
+	addChoice(menu, @"HDR stream (reconnects)", @selector(plkToggleHdr:), 0, @"h");
+	addChoice(menu, @"Output as PQ, tone mapped by macOS", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::PQ, @"p");
+	addChoice(menu, @"Output as linear light", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::ExtendedLinear, @"l");
+	return menu;
+}
+
 NSMenu *PLKMakeMainMenu(NSString *appName)
 {
 	NSMenu *main = [[NSMenu alloc] initWithTitle:@"Main"];
@@ -187,6 +306,10 @@ NSMenu *PLKMakeMainMenu(NSString *appName)
 	[viewMenu addItemWithTitle:@"Toggle Full Screen" action:@selector(toggleFullScreen:) keyEquivalent:@"f"];
 	viewItem.submenu = viewMenu;
 	[main addItem:viewItem];
+
+	NSMenuItem *videoItem = [[NSMenuItem alloc] initWithTitle:@"Video" action:nil keyEquivalent:@""];
+	videoItem.submenu = PLKMakeVideoMenu();
+	[main addItem:videoItem];
 
 	NSMenuItem *windowItem = [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
 	NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];

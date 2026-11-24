@@ -22,6 +22,7 @@
 #include <dispatch/dispatch.h>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -51,6 +52,16 @@ public:
 	bool start(const Config &config, FinishedFn finished);
 	/** Any thread, non-blocking, idempotent: end the session (no retry). */
 	void requestStop();
+	/**
+	 * Any thread, non-blocking: end the running session and start a new one with these
+	 * settings, on the same sinks. The console fixes the codec when a session starts, so
+	 * switching HDR on or off is a new session. The retry window starts over: right after
+	 * the old session ended the console may still answer "in use". finished() is not
+	 * called for the session that is replaced.
+	 * @return false when the stream has already ended or is being stopped
+	 */
+	bool restart(const StreamSettings &settings);
+	uint64_t restarts() const { return restarts_.load(); }
 	/** Wait for the lifecycle thread (the session is shut down after this). */
 	void join();
 	bool running() const { return running_.load(); }
@@ -95,6 +106,10 @@ private:
 	std::atomic<bool> ever_connected_{false};
 	std::mutex wait_mutex_;
 	std::condition_variable wait_cond_;
+	std::mutex restart_mutex_;
+	std::optional<StreamSettings> restart_settings_; // under restart_mutex_
+	std::atomic<bool> restart_requested_{false};
+	std::atomic<uint64_t> restarts_{0};
 
 	dispatch_queue_t idr_queue_ = nullptr;
 	std::atomic<bool> idr_pending_{false};

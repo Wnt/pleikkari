@@ -243,7 +243,7 @@ void colorRows(const ColorInfo &c, ShaderParams &p)
 
 bool linearOutput(const ColorInfo &c, HdrOutput mode) { return mode == HdrOutput::ExtendedLinear && c.transfer == Transfer::PQ; }
 
-CGColorSpaceRef copyColorSpace(const ColorInfo &c, HdrOutput mode)
+CFStringRef colorSpaceName(const ColorInfo &c, HdrOutput mode, SdrColor sdr)
 {
 	CFStringRef name;
 	if(linearOutput(c, mode)) name = c.primaries == Primaries::P3 ? kCGColorSpaceExtendedLinearDisplayP3 : kCGColorSpaceExtendedLinearITUR_2020;
@@ -256,8 +256,9 @@ CGColorSpaceRef copyColorSpace(const ColorInfo &c, HdrOutput mode)
 	// shows. Tagged kCGColorSpaceITUR_709, macOS decodes it with a pure 2.4 power curve where
 	// sRGB has a linear toe: a code value of 10 % comes out 2.5 times darker, 5 % five times,
 	// 2 % nineteen times (measured with ColorSync on macOS 27), and shadow detail disappears.
-	else name = kCGColorSpaceSRGB;
-	return CGColorSpaceCreateWithName(name);
+	// Vivid: the same transfer curve with the P3 primaries (see SdrColor).
+	else name = sdr == SdrColor::Vivid ? kCGColorSpaceDisplayP3 : kCGColorSpaceSRGB;
+	return name;
 }
 
 MTLPixelFormat outputFormatFor(const ColorInfo &c, HdrOutput mode)
@@ -363,6 +364,7 @@ struct Shared {
 		fresh.width = c.width; fresh.height = c.height; fresh.bitDepth = c.bitDepth; fresh.hdr = c.hdr;
 		fresh.hardwareDecoder = c.hardwareDecoder; fresh.codec = c.codec; fresh.pixelFormat = c.pixelFormat;
 		fresh.colorDescription = c.colorDescription; fresh.hdrMetadata = c.hdrMetadata; fresh.scaler = c.scaler; fresh.pacing = c.pacing;
+		fresh.layerColorSpace = c.layerColorSpace;
 		fresh.targetWidth = c.targetWidth; fresh.targetHeight = c.targetHeight;
 		c = fresh;
 		for(auto *w : {&submitCall, &decode, &queue, &renderCpu, &renderGpu, &submitToPresented, &readyToPresented,
@@ -408,11 +410,25 @@ const char *toString(Scaler s)
 	return "?";
 }
 const char *toString(Codec c) { return c == Codec::H264 ? "h264" : c == Codec::HEVC ? "hevc" : "auto"; }
+const char *toString(SdrColor c) { return c == SdrColor::Vivid ? "vivid" : "accurate"; }
+const char *toString(HdrOutput o) { return o == HdrOutput::ExtendedLinear ? "linear" : "pq"; }
 bool parsePacingMode(const std::string &s, PacingMode *out)
 {
 	if(s == "immediate" || s == "arrival") { *out = PacingMode::Immediate; return true; }
 	if(s == "immediate-vsync") { *out = PacingMode::ImmediateVsync; return true; }
 	if(s == "displaylink" || s == "vsync") { *out = PacingMode::DisplayLink; return true; }
+	return false;
+}
+bool parseSdrColor(const std::string &s, SdrColor *out)
+{
+	if(s == "accurate" || s == "srgb") { *out = SdrColor::Accurate; return true; }
+	if(s == "vivid" || s == "p3") { *out = SdrColor::Vivid; return true; }
+	return false;
+}
+bool parseHdrOutput(const std::string &s, HdrOutput *out)
+{
+	if(s == "pq") { *out = HdrOutput::PQ; return true; }
+	if(s == "linear") { *out = HdrOutput::ExtendedLinear; return true; }
 	return false;
 }
 bool parseScaler(const std::string &s, Scaler *out)
@@ -1167,7 +1183,8 @@ struct VideoPipeline::Impl {
 
 	void configureLayer(const ColorInfo &c, const std::shared_ptr<const HdrMeta> &hdr)
 	{
-		CGColorSpaceRef cs = copyColorSpace(c, cfg.hdrOutput);
+		CFStringRef csName = colorSpaceName(c, cfg.hdrOutput, cfg.sdrColor);
+		CGColorSpaceRef cs = CGColorSpaceCreateWithName(csName);
 		[CATransaction begin];
 		[CATransaction setDisableActions:YES];
 		layer.pixelFormat = outputFormatFor(c, cfg.hdrOutput);
@@ -1179,6 +1196,8 @@ struct VideoPipeline::Impl {
 		layerColor = c;
 		layerHdr = hdr;
 		layerConfigured = true;
+		std::lock_guard<std::mutex> sl(shared->m);
+		shared->c.layerColorSpace = ((__bridge NSString *)csName).UTF8String;
 	}
 
 	CAEDRMetadata *edrMetadataFor(const ColorInfo &c, const std::shared_ptr<const HdrMeta> &hdr)
@@ -1564,7 +1583,7 @@ std::unique_ptr<VideoPipeline> VideoPipeline::create(void *metalLayer, const Pip
 	layer.maximumDrawableCount = config.maxDrawables == 2 ? 2 : 3;
 	layer.allowsNextDrawableTimeout = YES;
 	layer.presentsWithTransaction = NO;
-	CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB); // see copyColorSpace()
+	CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB); // see colorSpaceName()
 	layer.colorspace = cs;
 	CGColorSpaceRelease(cs);
 	[CATransaction commit];
@@ -1638,6 +1657,30 @@ void VideoPipeline::setScaler(Scaler scaler)
 {
 	Impl *d = impl_.get();
 	d->post([d, scaler] { d->scaler = scaler; });
+}
+
+// The layer's colour space and pixel format follow from these two: the next frame sets the
+// layer up again (renderFrame()), on the render thread like every other change to it.
+void VideoPipeline::setSdrColor(SdrColor color)
+{
+	Impl *d = impl_.get();
+	d->post([d, color] {
+		if(d->cfg.sdrColor == color)
+			return;
+		d->cfg.sdrColor = color;
+		d->layerConfigured = false;
+	});
+}
+
+void VideoPipeline::setHdrOutput(HdrOutput output)
+{
+	Impl *d = impl_.get();
+	d->post([d, output] {
+		if(d->cfg.hdrOutput == output)
+			return;
+		d->cfg.hdrOutput = output;
+		d->layerConfigured = false;
+	});
 }
 
 void VideoPipeline::setLatchMarginUs(uint32_t marginUs) { impl_->latchMarginUs.store(marginUs); }

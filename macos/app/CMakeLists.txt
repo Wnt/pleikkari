@@ -20,6 +20,8 @@ add_library(plk-app-core STATIC
 	src/Replay.h
 	src/Runner.cpp
 	src/Runner.h
+	src/SavedChoices.cpp
+	src/SavedChoices.h
 	src/StreamSession.cpp
 	src/StreamSession.h
 	src/UsbHaptics.cpp
@@ -61,6 +63,7 @@ add_executable(plk-app-tests
 	tests/LogTests.cpp
 	tests/OptionsTests.cpp
 	tests/PadMapperTests.cpp
+	tests/SavedChoicesTests.cpp
 	tests/TelemetryTests.cpp)
 set_target_properties(plk-app-tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 target_compile_options(plk-app-tests PRIVATE -Wall -Wextra -Wno-unused-parameter)

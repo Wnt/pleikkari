@@ -73,6 +73,7 @@ bool Runner::prepare(int *exit_code)
 		}
 	}
 	PLK_LOGI("Pleikkari starting: %s", options_.command == Command::Replay ? "replay" : "stream");
+	view_ = resolveViewChoices(options_);
 
 	if(options_.command == Command::Replay)
 	{
@@ -115,6 +116,13 @@ bool Runner::prepare(int *exit_code)
 	const bool have_qt = loadQtStreamSettings(plist, qt, nullptr);
 	stream_config_ = resolveStreamConfig(options_, have_qt ? &qt : nullptr);
 	const StreamSettings &s = stream_config_.session;
+	ps5_ = console->isPS5();
+	// HDR off goes back to the codec the settings name, if that is an SDR one.
+	{
+		Options without_hdr = options_;
+		without_hdr.hdr.reset();
+		sdr_codec_ = codecWithHdr(resolveStreamConfig(without_hdr, have_qt ? &qt : nullptr).session.codec, false);
+	}
 	PLK_LOGI("Console \"%s\" (%s) at %s", console->nickname.c_str(), console->consoleTypeName(), options_.host.c_str());
 	PLK_LOGI("Stream: %dx%d (%s) at %d fps, %u kbit/s, codec %s, feedback interval %s ms, packet reordering %s, "
 			"packet loss max %.2f, IDR on FEC failure %s",
@@ -134,8 +142,9 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 	video::PipelineConfig pc;
 	pc.codec = video::Codec::Auto;
 	pc.pacing = options_.pacing;
-	pc.scaler = options_.scaler;
-	pc.hdrOutput = options_.hdr_linear ? video::HdrOutput::ExtendedLinear : video::HdrOutput::PQ;
+	pc.scaler = view_.scaler;
+	pc.hdrOutput = view_.hdr_output;
+	pc.sdrColor = view_.sdr_color;
 	pc.displayRefreshHz = display_refresh_hz > 0 ? display_refresh_hz : 120.0f;
 	if(options_.headless)
 	{
@@ -157,9 +166,9 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 		exit_code_ = 1;
 		return false;
 	}
-	PLK_LOGI("Video: pacing %s, scaler %s, HDR output %s, display %.0f Hz%s", video::toString(options_.pacing),
-			video::toString(options_.scaler), options_.hdr_linear ? "extended linear" : "PQ", pc.displayRefreshHz,
-			options_.headless ? ", headless (offscreen)" : "");
+	PLK_LOGI("Video: pacing %s, scaler %s, SDR colour %s, HDR output %s, display %.0f Hz%s",
+			video::toString(options_.pacing), video::toString(view_.scaler), video::toString(view_.sdr_color),
+			video::toString(view_.hdr_output), pc.displayRefreshHz, options_.headless ? ", headless (offscreen)" : "");
 	video_path_ = std::make_unique<VideoPath>(pipeline_.get());
 	if(!options_.dump_path.empty())
 	{
@@ -175,6 +184,61 @@ void Runner::setDrawableSize(int width, int height)
 {
 	if(pipeline_ && width > 0 && height > 0)
 		pipeline_->setDrawableSize(width, height);
+}
+
+Runner::ViewState Runner::viewState() const
+{
+	ViewState v;
+	v.scaler = view_.scaler;
+	v.sdr_color = view_.sdr_color;
+	v.hdr_output = view_.hdr_output;
+	v.hdr = stream_config_.session.codec == CHIAKI_CODEC_H265_HDR && options_.command == Command::Stream;
+	v.hdr_switchable = options_.command == Command::Stream && ps5_ && session_ && !stop_requested_.load();
+	return v;
+}
+
+void Runner::setScaler(video::Scaler scaler)
+{
+	view_.scaler = scaler;
+	if(pipeline_)
+		pipeline_->setScaler(scaler);
+	PLK_LOGI("Video: scaler %s", video::toString(scaler));
+}
+
+void Runner::setSdrColor(video::SdrColor color)
+{
+	view_.sdr_color = color;
+	if(pipeline_)
+		pipeline_->setSdrColor(color);
+	PLK_LOGI("Video: SDR colour %s", video::toString(color));
+}
+
+void Runner::setHdrOutput(video::HdrOutput output)
+{
+	view_.hdr_output = output;
+	if(pipeline_)
+		pipeline_->setHdrOutput(output);
+	PLK_LOGI("Video: HDR output %s", video::toString(output));
+}
+
+bool Runner::setHdr(bool on)
+{
+	if(!viewState().hdr_switchable)
+		return false;
+	StreamSettings settings = stream_config_.session;
+	settings.codec = codecWithHdr(settings.codec, on, sdr_codec_);
+	if(settings.codec == stream_config_.session.codec)
+		return true;
+	PLK_LOGI("HDR %s: restarting the session with codec %s", on ? "on" : "off", codecName(settings.codec));
+	if(!session_->restart(settings))
+		return false;
+	stream_config_.session = settings;
+	return true;
+}
+
+bool Runner::pictureIsHdr() const
+{
+	return pipeline_ && pipeline_->stats().hdr;
 }
 
 bool Runner::start(std::function<void()> finished)
@@ -359,10 +423,11 @@ void Runner::logStats(bool final_report)
 		const video::Stats s = pipeline_->stats();
 		char buf[512];
 		snprintf(buf, sizeof(buf),
-				"video%s: %dx%d %s %s%s %s -> %dx%d submitted=%llu decoded=%llu rendered=%llu presented=%llu "
-				"superseded=%llu not_presented=%llu lost=%llu errors=%llu idr=%llu awaiting_idr=%llu",
+				"video%s: %dx%d %s %s%s %s -> %dx%d scaler=%s layer=%s submitted=%llu decoded=%llu rendered=%llu "
+				"presented=%llu superseded=%llu not_presented=%llu lost=%llu errors=%llu idr=%llu awaiting_idr=%llu",
 				final_report ? " (last window)" : "", s.width, s.height, s.codec.c_str(), s.pixelFormat.c_str(),
 				s.hdr ? " HDR" : "", s.hardwareDecoder ? "hw" : "sw?", s.targetWidth, s.targetHeight,
+				s.scaler.empty() ? "-" : s.scaler.c_str(), s.layerColorSpace.empty() ? "-" : s.layerColorSpace.c_str(),
 				(unsigned long long)s.framesSubmitted, (unsigned long long)s.framesDecoded,
 				(unsigned long long)s.framesRendered, (unsigned long long)s.framesPresented,
 				(unsigned long long)s.framesSuperseded, (unsigned long long)s.framesNotPresented,

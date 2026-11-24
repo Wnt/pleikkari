@@ -59,6 +59,20 @@ void StreamSession::requestStop()
 	wait_cond_.notify_all();
 }
 
+bool StreamSession::restart(const StreamSettings &settings)
+{
+	if(!running_.load() || stop_requested_.load())
+		return false;
+	{
+		std::lock_guard<std::mutex> lk(restart_mutex_);
+		restart_settings_ = settings;
+	}
+	restart_requested_ = true;
+	host_.stop();
+	wait_cond_.notify_all();
+	return true;
+}
+
 void StreamSession::join()
 {
 	if(thread_.joinable() && thread_.get_id() != std::this_thread::get_id())
@@ -68,10 +82,29 @@ void StreamSession::join()
 void StreamSession::run()
 {
 	pthread_setname_np("plk.session");
-	const double first_start = steadySeconds();
+	double first_start = steadySeconds();
 	ChiakiQuitReason reason = CHIAKI_QUIT_REASON_STOPPED;
 	std::string text;
 	int attempt = 0;
+	// A restart() that is waiting: take its settings and begin again as a new stream.
+	auto take_restart = [&]() {
+		if(stop_requested_.load() || !restart_requested_.exchange(false))
+			return false;
+		{
+			std::lock_guard<std::mutex> lk(restart_mutex_);
+			if(restart_settings_)
+				config_.settings = *restart_settings_;
+			restart_settings_.reset();
+		}
+		first_start = steadySeconds();
+		ever_connected_ = false;
+		attempt = 0;
+		restarts_.fetch_add(1, std::memory_order_relaxed);
+		if(controller_)
+			controller_->setSessionActive(false);
+		PLK_LOGI("Session restarting with codec %s", chiaki_codec_name(config_.settings.codec));
+		return true;
+	};
 	for(;;)
 	{
 		attempt++;
@@ -87,17 +120,19 @@ void StreamSession::run()
 		if(attempt > 1)
 			PLK_LOGI("Session attempt %d started", attempt);
 		// stop() before the session existed did nothing: repeat it now that it does.
-		if(stop_requested_.load())
+		if(stop_requested_.load() || restart_requested_.load())
 			host_.stop();
 		while(!host_.waitForQuit(std::chrono::milliseconds(200)))
 		{
-			if(stop_requested_.load())
+			if(stop_requested_.load() || restart_requested_.load())
 				host_.stop();
 		}
 		reason = host_.quitReason();
 		text = host_.quitReasonText();
 		host_.shutdown();
 		connected_ = false;
+		if(take_restart())
+			continue;
 
 		const bool retry = !stop_requested_.load() && !ever_connected_.load() && chiaki_quit_reason_is_error(reason)
 				&& steadySeconds() - first_start + config_.retry_delay_s < config_.retry_window_s;
@@ -106,9 +141,12 @@ void StreamSession::run()
 		PLK_LOGW("Session ended before it connected (%s), retrying in %.0f s", chiaki_quit_reason_string(reason),
 				config_.retry_delay_s);
 		std::unique_lock<std::mutex> lk(wait_mutex_);
-		wait_cond_.wait_for(lk, std::chrono::duration<double>(config_.retry_delay_s), [this] { return stop_requested_.load(); });
+		wait_cond_.wait_for(lk, std::chrono::duration<double>(config_.retry_delay_s),
+				[this] { return stop_requested_.load() || restart_requested_.load(); });
+		lk.unlock();
 		if(stop_requested_.load())
 			break;
+		take_restart();
 	}
 	if(controller_)
 		controller_->setSessionActive(false);

@@ -296,8 +296,15 @@ void ControllerHub::setSessionActive(bool active)
 			continue;
 		if(active)
 			startHapticsLocked(*o);
-		else if(o->device->haptics_running())
-			o->device->StopHaptics();
+		else
+		{
+			if(o->device->haptics_running())
+				o->device->StopHaptics();
+			// Nothing updates the effects while no session runs (a restart for HDR takes
+			// seconds): a rumble or trigger effect that was on would stay on.
+			o->device->ClearEffects();
+			o->rumble_suppressed = false;
+		}
 	}
 	updateUsbHapticsLocked();
 }

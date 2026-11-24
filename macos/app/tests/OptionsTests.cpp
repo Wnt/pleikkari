@@ -158,3 +158,77 @@ PLK_TEST(options_codec_names)
 	CHECK(std::string(resolutionName(CHIAKI_VIDEO_RESOLUTION_PRESET_360p)) == "360p");
 	CHECK(!usageText().empty());
 }
+
+PLK_TEST(options_view_choices_and_hdr_switch)
+{
+	Options o;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164" }, o));
+	CHECK(!o.scaler && !o.sdr_color && !o.hdr_output && !o.hdr);
+	CHECK(o.saved_choices);
+	ViewChoices v = resolveViewChoices(o);
+	CHECK(v.scaler == video::Scaler::Bilinear);
+	CHECK(v.sdr_color == video::SdrColor::Accurate);
+	CHECK(v.hdr_output == video::HdrOutput::PQ);
+
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--scaler", "metalfx", "--color", "vivid", "--hdr-output", "linear",
+						  "--hdr", "on", "--no-saved-choices" },
+			o));
+	CHECK(!o.saved_choices);
+	v = resolveViewChoices(o);
+	CHECK(v.scaler == video::Scaler::MetalFX);
+	CHECK(v.sdr_color == video::SdrColor::Vivid);
+	CHECK(v.hdr_output == video::HdrOutput::ExtendedLinear);
+	// --hdr on makes the default H.265 an HDR stream.
+	CHECK(resolveStreamConfig(o, nullptr).session.codec == CHIAKI_CODEC_H265_HDR);
+
+	// --hdr off takes HDR out of whatever names it, and leaves an SDR codec alone.
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--hdr", "off", "--codec", "h265-hdr" }, o));
+	CHECK(resolveStreamConfig(o, nullptr).session.codec == CHIAKI_CODEC_H265);
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--hdr", "off" }, o));
+	QtStreamSettings qt;
+	qt.has_codec = true;
+	qt.codec = "h265_hdr";
+	CHECK(resolveStreamConfig(o, &qt).session.codec == CHIAKI_CODEC_H265);
+	qt.codec = "h264";
+	CHECK(resolveStreamConfig(o, &qt).session.codec == CHIAKI_CODEC_H264);
+
+	std::string err;
+	CHECK(!parse({ "stream", "a", "b", "--color", "loud" }, o, &err));
+	CHECK(!parse({ "stream", "a", "b", "--hdr", "maybe" }, o, &err));
+	CHECK(!parse({ "stream", "a", "b", "--hdr-output", "hlg" }, o, &err));
+}
+
+PLK_TEST(options_codec_with_hdr)
+{
+	CHECK(codecWithHdr(CHIAKI_CODEC_H265, true) == CHIAKI_CODEC_H265_HDR);
+	CHECK(codecWithHdr(CHIAKI_CODEC_H264, true) == CHIAKI_CODEC_H265_HDR);
+	CHECK(codecWithHdr(CHIAKI_CODEC_H265_HDR, true) == CHIAKI_CODEC_H265_HDR);
+	// Off: back to the SDR codec the stream had, H.265 when it never had one.
+	CHECK(codecWithHdr(CHIAKI_CODEC_H265_HDR, false) == CHIAKI_CODEC_H265);
+	CHECK(codecWithHdr(CHIAKI_CODEC_H265_HDR, false, CHIAKI_CODEC_H264) == CHIAKI_CODEC_H264);
+	CHECK(codecWithHdr(CHIAKI_CODEC_H265_HDR, false, CHIAKI_CODEC_H265_HDR) == CHIAKI_CODEC_H265);
+	CHECK(codecWithHdr(CHIAKI_CODEC_H264, false) == CHIAKI_CODEC_H264);
+}
+
+PLK_TEST(options_key_script)
+{
+	std::vector<KeyPress> keys;
+	std::string err;
+	REQUIRE(parseKeyScript("2:3,4.5:v,6:down,7:enter", keys, &err));
+	REQUIRE(keys.size() == 4);
+	CHECK(keys[0].at_s == 2.0 && keys[0].key == "3");
+	CHECK(keys[1].at_s == 4.5 && keys[1].key == "v");
+	CHECK(keys[2].key == "down");
+	CHECK(keys[3].at_s == 7.0 && keys[3].key == "enter");
+	CHECK(parseKeyScript("", keys, &err) && keys.empty());
+	CHECK(!parseKeyScript("3", keys, &err));
+	CHECK(!parseKeyScript("x:3", keys, &err));
+	CHECK(!parseKeyScript("2:", keys, &err));
+	CHECK(!parseKeyScript("2:sideways", keys, &err));
+	CHECK(!parseKeyScript("-1:a", keys, &err));
+
+	Options o;
+	REQUIRE(parse({ "replay", "/tmp/x.plkv", "--keys", "1:2,2:m" }, o));
+	CHECK(o.keys == "1:2,2:m");
+	CHECK(!parse({ "replay", "/tmp/x.plkv", "--keys", "soon:2" }, o, &err));
+}

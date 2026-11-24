@@ -56,6 +56,30 @@ public:
 	void shutdownWorkers();
 	void shutdownVideo();
 
+	// What the Video menu changes while the run goes on. All of it from one thread (the
+	// app's main thread). The first three take effect with the next frame.
+	struct ViewState
+	{
+		video::Scaler scaler = video::Scaler::Bilinear;
+		video::SdrColor sdr_color = video::SdrColor::Accurate;
+		video::HdrOutput hdr_output = video::HdrOutput::PQ;
+		bool hdr = false;            // the stream is asked for in HDR
+		bool hdr_switchable = false; // a PS5 stream: setHdr() can change that
+	};
+	ViewState viewState() const;
+	void setScaler(video::Scaler scaler);
+	void setSdrColor(video::SdrColor color);
+	void setHdrOutput(video::HdrOutput output);
+	/**
+	 * HDR on or off. The console fixes the codec when a session starts, so this ends the
+	 * session and starts a new one (a few seconds without picture); window, video pipeline,
+	 * audio output and controller stay.
+	 * @return false when this is not a PS5 stream or the stream has ended
+	 */
+	bool setHdr(bool on);
+	/** The picture being shown is HDR (false until the first frame). */
+	bool pictureIsHdr() const;
+
 	int exitCode() const { return exit_code_.load(); }
 	const Options &options() const { return options_; }
 	const StreamConfig &streamConfig() const { return stream_config_; }
@@ -67,6 +91,9 @@ private:
 
 	const Options options_;
 	StreamConfig stream_config_;
+	ViewChoices view_;
+	bool ps5_ = false;
+	ChiakiCodec sdr_codec_ = CHIAKI_CODEC_H265; // what HDR off goes back to
 	std::unique_ptr<struct RunnerSecrets> secrets_;
 
 	std::unique_ptr<FrameLogger> frame_logger_;

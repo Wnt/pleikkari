@@ -117,11 +117,25 @@ enum class HdrOutput {
 	ExtendedLinear,
 };
 
+// How an SDR (BT.709) picture's colours are shown. HDR pictures are not affected.
+enum class SdrColor {
+	// The code values are taken as sRGB and colour-managed to the display: the colours
+	// the console means.
+	Accurate,
+	// The code values are taken as Display P3: on a wide-gamut panel (every recent
+	// MacBook and Apple display) each primary lands on the panel's own, more saturated
+	// one. This is what a renderer without colour management shows: the Qt client's
+	// OpenGL path, where a game picture measured about 12 % more saturated than the
+	// accurate one. On an sRGB display the two look the same.
+	Vivid,
+};
+
 struct PipelineConfig {
 	Codec codec = Codec::Auto;          // Auto: detected from the parameter sets
 	PacingMode pacing = PacingMode::Immediate;
 	Scaler scaler = Scaler::Bilinear;
 	HdrOutput hdrOutput = HdrOutput::PQ;
+	SdrColor sdrColor = SdrColor::Accurate;
 	float displayRefreshHz = 120.0f;    // DisplayLink frame rate range (min=max=preferred)
 	// DisplayLink only: if no new frame is waiting when the display link fires,
 	// wait for one until (targetTimestamp - latchMarginUs) before giving up on
@@ -179,6 +193,7 @@ struct Stats {
 	int width = 0, height = 0, bitDepth = 0;
 	bool hdr = false, hardwareDecoder = false;
 	std::string codec, pixelFormat, colorDescription, scaler, pacing;
+	std::string layerColorSpace;  // what the layer was last tagged with (a CGColorSpace name)
 	std::string hdrMetadata;  // what CAEDRMetadata was built from (SEI values or defaults)
 	int targetWidth = 0, targetHeight = 0;
 };
@@ -206,8 +221,11 @@ public:
 	bool submitFrame(const uint8_t *data, size_t size, uint16_t frameIndex, uint64_t frameReadyUs,
 			bool recovered, int32_t framesLost = 0);
 
+	// These three take effect with the next frame; none of them touches the decoder.
 	void setPacingMode(PacingMode mode);
 	void setScaler(Scaler scaler);
+	void setSdrColor(SdrColor color);
+	void setHdrOutput(HdrOutput output);
 	void setLatchMarginUs(uint32_t marginUs);
 	void setDrawableSize(int widthPixels, int heightPixels);
 
@@ -229,7 +247,11 @@ private:
 const char *toString(PacingMode mode);
 const char *toString(Scaler scaler);
 const char *toString(Codec codec);
+const char *toString(SdrColor color);
+const char *toString(HdrOutput output);
 bool parsePacingMode(const std::string &s, PacingMode *out);
 bool parseScaler(const std::string &s, Scaler *out);
+bool parseSdrColor(const std::string &s, SdrColor *out);
+bool parseHdrOutput(const std::string &s, HdrOutput *out);
 
 }  // namespace plk::video

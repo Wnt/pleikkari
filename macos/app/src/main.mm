@@ -9,6 +9,7 @@
 #include "Options.h"
 #include "Registration.h"
 #include "Runner.h"
+#include "SavedChoices.h"
 
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -108,14 +109,16 @@ int runHeadless(const Options &o)
 
 } // namespace
 
-@interface PLKAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
-- (instancetype)initWithOptions:(const Options &)options;
+@interface PLKAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation, PLKVideoMenuActions>
+/** savedNote: which of the menu's remembered choices this run starts with, for the log. */
+- (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote;
 @property(nonatomic, readonly) int exitCode;
 @end
 
 @implementation PLKAppDelegate
 {
 	Options _options;
+	std::string _savedNote;
 	std::unique_ptr<Runner> _runner;
 	PLKStreamWindow *_window;
 	id<NSObject> _activity;
@@ -124,10 +127,13 @@ int runHeadless(const Options &o)
 	int _exitCode;
 }
 
-- (instancetype)initWithOptions:(const Options &)options
+- (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
 {
 	if((self = [super init]))
+	{
 		_options = options;
+		_savedNote = savedNote;
+	}
 	return self;
 }
 
@@ -148,6 +154,8 @@ int runHeadless(const Options &o)
 		return;
 	}
 	_activity = [NSProcessInfo.processInfo beginActivityWithOptions:kStreamActivity reason:@"Pleikkari stream"];
+	if(!_savedNote.empty())
+		PLK_LOGI("Remembered from the Video menu: %s", _savedNote.c_str());
 
 	const StreamConfig &sc = _runner->streamConfig();
 	const CGFloat aspect = sc.height > 0 ? (CGFloat)sc.width / (CGFloat)sc.height : 16.0 / 9.0;
@@ -191,8 +199,154 @@ int runHeadless(const Options &o)
 		});
 	});
 	if(!started)
+	{
 		[NSApp terminate:nil];
+		return;
+	}
+	[self scheduleKeyScript];
 }
+
+#pragma mark - Video menu
+
+- (BOOL)validateMenuItem:(NSMenuItem *)item
+{
+	const SEL action = item.action;
+	const bool ours = action == @selector(plkSelectScaler:) || action == @selector(plkSelectSdrColor:)
+			|| action == @selector(plkSelectHdrOutput:) || action == @selector(plkToggleHdr:);
+	if(!ours)
+		return YES;
+	if(!_runner || _terminating || _cleanedUp)
+		return NO;
+	const Runner::ViewState v = _runner->viewState();
+	bool on = false, enabled = true;
+	if(action == @selector(plkSelectScaler:))
+		on = (NSInteger)v.scaler == item.tag;
+	else if(action == @selector(plkSelectSdrColor:))
+		on = (NSInteger)v.sdr_color == item.tag;
+	else if(action == @selector(plkSelectHdrOutput:))
+		on = (NSInteger)v.hdr_output == item.tag;
+	else
+	{
+		on = v.hdr;
+		enabled = v.hdr_switchable;
+	}
+	item.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+	return enabled;
+}
+
+- (void)plkSelectScaler:(id)sender
+{
+	const auto scaler = (video::Scaler)[sender tag];
+	_runner->setScaler(scaler);
+	if(_options.saved_choices)
+		saveScaler(scaler);
+	[_window.videoView showNotice:[@"Scaling: " stringByAppendingString:[sender title]]];
+}
+
+- (void)plkSelectSdrColor:(id)sender
+{
+	const auto color = (video::SdrColor)[sender tag];
+	_runner->setSdrColor(color);
+	if(_options.saved_choices)
+		saveSdrColor(color);
+	NSString *text = [@"Colour: " stringByAppendingString:[sender title]];
+	if(_runner->pictureIsHdr())
+		text = [text stringByAppendingString:@" - for an SDR picture; this one is HDR"];
+	[_window.videoView showNotice:text];
+}
+
+- (void)plkSelectHdrOutput:(id)sender
+{
+	const auto output = (video::HdrOutput)[sender tag];
+	_runner->setHdrOutput(output);
+	if(_options.saved_choices)
+		saveHdrOutput(output);
+	NSString *text = [@"HDR: " stringByAppendingString:[sender title]];
+	if(!_runner->pictureIsHdr())
+		text = [text stringByAppendingString:@" - for an HDR picture; this one is SDR"];
+	[_window.videoView showNotice:text];
+}
+
+- (void)plkToggleHdr:(id)sender
+{
+	const bool on = !_runner->viewState().hdr;
+	if(!_runner->setHdr(on))
+	{
+		[_window.videoView showNotice:@"HDR can be switched in a stream of a PS5 only"];
+		return;
+	}
+	if(_options.saved_choices)
+		saveHdr(on);
+	[_window.videoView showNotice:on ? @"HDR on: reconnecting" : @"HDR off: reconnecting"];
+}
+
+#pragma mark - --keys (test tool)
+
+// The app presses the keys itself: the events go through the application's own queue, the
+// way a key on the keyboard does, so this needs no permission to control the computer.
+- (void)scheduleKeyScript
+{
+	std::vector<KeyPress> presses;
+	if(_options.keys.empty() || !parseKeyScript(_options.keys, presses, nullptr))
+		return;
+	PLKAppDelegate *__weak weakSelf = self;
+	for(const KeyPress &press : presses)
+	{
+		NSString *key = @(press.key.c_str());
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(press.at_s * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+			[weakSelf pressKey:key];
+		});
+	}
+}
+
+- (void)pressKey:(NSString *)name
+{
+	if(_terminating || !_window)
+		return;
+	struct Special { const char *name; unichar character; unsigned short code; };
+	static const Special specials[] = {
+		{ "up", NSUpArrowFunctionKey, 126 }, { "down", NSDownArrowFunctionKey, 125 }, { "left", NSLeftArrowFunctionKey, 123 },
+		{ "right", NSRightArrowFunctionKey, 124 }, { "enter", '\r', 36 }, { "esc", 0x1b, 53 }, { "space", ' ', 49 },
+	};
+	// ANSI key codes of the characters the menu uses; any other character goes out with the
+	// code of a key that types nothing (kVK_F20), which only the characters then identify.
+	static const struct { char character; unsigned short code; } codes[] = {
+		{ '1', 18 }, { '2', 19 }, { '3', 20 }, { '4', 21 }, { 'a', 0 }, { 'v', 9 }, { 'h', 4 }, { 'p', 35 },
+		{ 'l', 37 }, { 'm', 46 }, { 'f', 3 },
+	};
+	NSString *characters = name;
+	unsigned short code = 90;
+	NSEventModifierFlags flags = 0;
+	for(const Special &s : specials)
+		if([name isEqualToString:@(s.name)])
+		{
+			characters = [NSString stringWithCharacters:&s.character length:1];
+			code = s.code;
+			if(s.character >= 0xF700)
+				flags = NSEventModifierFlagFunction | NSEventModifierFlagNumericPad;
+		}
+	if(name.length == 1)
+		for(const auto &c : codes)
+			if([name characterAtIndex:0] == (unichar)c.character)
+				code = c.code;
+	PLK_LOGI("--keys: %s%s", name.UTF8String, _window.isKeyWindow ? "" : " (the window is not the key window)");
+	for(const NSEventType type : { NSEventTypeKeyDown, NSEventTypeKeyUp })
+	{
+		NSEvent *event = [NSEvent keyEventWithType:type
+										  location:NSZeroPoint
+									 modifierFlags:flags
+										 timestamp:NSProcessInfo.processInfo.systemUptime
+									  windowNumber:_window.windowNumber
+										   context:nil
+										characters:characters
+					   charactersIgnoringModifiers:characters
+										 isARepeat:NO
+										   keyCode:code];
+		[NSApp postEvent:event atStart:NO];
+	}
+}
+
+#pragma mark - Ending
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app
 {
@@ -275,10 +429,16 @@ int main(int argc, const char *argv[])
 		if(o.headless)
 			return runHeadless(o);
 
+		// What the Video menu was last left at, where this command line says nothing. Not
+		// headless: those runs are measurements and take their settings from the command line.
+		std::string saved_note;
+		if(o.saved_choices)
+			saved_note = applySavedChoices(loadSavedChoices(), o);
+
 		NSApplication *app = NSApplication.sharedApplication;
 		app.activationPolicy = NSApplicationActivationPolicyRegular;
 		app.mainMenu = PLKMakeMainMenu(@"Pleikkari");
-		PLKAppDelegate *delegate = [[PLKAppDelegate alloc] initWithOptions:o];
+		PLKAppDelegate *delegate = [[PLKAppDelegate alloc] initWithOptions:o savedNote:saved_note];
 		app.delegate = delegate;
 		[app run];
 		return delegate.exitCode;
