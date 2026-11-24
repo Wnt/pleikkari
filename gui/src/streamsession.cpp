@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include <streamsession.h>
+#ifdef Q_OS_MACOS
+#include <awdlguard.h>
+#endif
 #include <settings.h>
 #include <controllermanager.h>
 #include <dualsensebthaptics.h>
@@ -535,6 +538,14 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	mouse_touch_enabled = connect_info.mouse_touch_enabled;
 	keyboard_controller_enabled = connect_info.keyboard_controller_enabled;
 	host = connect_info.host;
+#ifdef Q_OS_MACOS
+	if(connect_info.settings && connect_info.settings->GetSuspendAwdl())
+	{
+		awdl_settings = connect_info.settings;
+		// The interface comes back up when the session ends, not only when this object goes.
+		connect(this, &StreamSession::SessionQuit, this, [this]() { ReleaseAwdl(); });
+	}
+#endif
 	QByteArray host_str = connect_info.host.toUtf8();
 
 	ChiakiConnectInfo chiaki_connect_info = {};
@@ -774,6 +785,9 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 
 StreamSession::~StreamSession()
 {
+#ifdef Q_OS_MACOS
+	ReleaseAwdl();
+#endif
 	mic_active.storeRelaxed(false);
 	StopAudioOutDrainThread();
 	if(audio_out)
@@ -886,10 +900,32 @@ void StreamSession::Start()
 		throw ChiakiException("Chiaki Session Start failed");
 	}
 	session_started = true;
+#ifdef Q_OS_MACOS
+	if(awdl_settings && !awdl_acquired)
+	{
+		Settings *guard_settings = awdl_settings;
+		awdl_acquired = AwdlGuard::Instance()->Acquire(host, [guard_settings]() {
+			guard_settings->SetSuspendAwdl(false);
+		});
+	}
+#endif
 }
+
+#ifdef Q_OS_MACOS
+void StreamSession::ReleaseAwdl()
+{
+	if(!awdl_acquired)
+		return;
+	awdl_acquired = false;
+	AwdlGuard::Instance()->Release();
+}
+#endif
 
 void StreamSession::Stop()
 {
+#ifdef Q_OS_MACOS
+	ReleaseAwdl();
+#endif
 	mic_active.storeRelaxed(false);
 	chiaki_session_stop(&session);
 }

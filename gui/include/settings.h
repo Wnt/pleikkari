@@ -519,6 +519,9 @@ class Settings : public QObject
 		void SetPlaceboPlaneDownscaler(PlaceboDownscaler downscaler);
 
 		PlaceboFrameMixer GetPlaceboFrameMixer() const;
+		// macOS: keep AWDL down while a stream runs over Wi-Fi (see AwdlGuard)
+		bool GetSuspendAwdl() const { return settings.value("settings/suspend_awdl", true).toBool(); }
+		void SetSuspendAwdl(bool enabled) { settings.setValue("settings/suspend_awdl", enabled); }
 		bool GetDirectFrameMapping() const { return settings.value("settings/direct_frame_mapping", true).toBool(); }
 		void SetDirectFrameMapping(bool enabled) { settings.setValue("settings/direct_frame_mapping", enabled); }
 		void SetPlaceboFrameMixer(PlaceboFrameMixer frame_mixer);

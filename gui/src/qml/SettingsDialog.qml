@@ -888,6 +888,18 @@ DialogView {
 
                     Label {
                         Layout.alignment: Qt.AlignRight
+                        text: qsTr("Switch AWDL off while streaming over Wi-Fi:")
+                        visible: Qt.platform.os == "osx"
+                    }
+
+                    C.CheckBox {
+                        checked: Chiaki.settings.suspendAwdl
+                        onToggled: Chiaki.settings.suspendAwdl = checked
+                        visible: Qt.platform.os == "osx"
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignRight
                         text: qsTr("(Unchecked)")
                     }
 
