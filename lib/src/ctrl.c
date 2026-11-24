@@ -1286,6 +1286,7 @@ static ChiakiErrorCode ctrl_connect(ChiakiCtrl *ctrl)
 			"RP-ConPath: 1\r\n"
 			"%s%s%s"
 			"%s%s%s"
+			"%s"
 			"\r\n";
 
 	const char *path;
@@ -1303,6 +1304,12 @@ static ChiakiErrorCode ctrl_connect(ChiakiCtrl *ctrl)
 	else if(session->holepunch_session)
 		port = chiaki_get_ps_ctrl_port(session->holepunch_session);
 #endif
+	// Sony's own clients name the pad protocol they speak; the macOS one sends 3. A PS5 that is
+	// not told takes the pad for one without the multi-position trigger effects: it still
+	// sends such an effect's parameters, but with the mode replaced by 0x05 (off), so the
+	// trigger stays slack. Seen with a driving game whose brake stiffens from 70 % of the
+	// travel (05 | 80 03 00 00 20 00 ... without the header, 21 | 80 03 00 00 20 00 ... with it).
+	const char *pad_proc_no_header = chiaki_target_is_ps5(session->target) ? "RP-PadProcNo: 3\r\n" : "";
 	char send_buf[512];
 	int request_len = snprintf(send_buf, sizeof(send_buf), request_fmt,
 			path, session->connect_info.hostname, port, auth_b64,
@@ -1312,7 +1319,8 @@ static ChiakiErrorCode ctrl_connect(ChiakiCtrl *ctrl)
 			have_bitrate ? "\r\n" : "",
 			have_streaming_type ? "RP-StreamingType: " : "",
 			have_streaming_type ? streaming_type_b64 : "",
-			have_streaming_type ? "\r\n" : "");
+			have_streaming_type ? "\r\n" : "",
+			pad_proc_no_header);
 	if(request_len < 0 || request_len >= sizeof(send_buf))
 		goto error;
 

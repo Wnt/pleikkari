@@ -12,6 +12,7 @@
 #include <chiaki/linkwatchdog.h>
 
 #include <string.h>
+#include <stdlib.h>
 #include <inttypes.h>
 #include <assert.h>
 #ifndef _WIN32
@@ -81,6 +82,9 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_stream_connection_init(ChiakiStreamConnecti
 
 	stream_connection->haptic_intensity = Strong;
 	stream_connection->trigger_intensity = Strong;
+	stream_connection->trigger_effect_type[0] = 0x05; // off
+	stream_connection->trigger_effect_type[1] = 0x05;
+	memset(stream_connection->trigger_effect_data, 0, sizeof(stream_connection->trigger_effect_data));
 
 	ChiakiErrorCode err = chiaki_network_stats_init(&stream_connection->network_stats);
 	if(err != CHIAKI_ERR_SUCCESS)
@@ -320,6 +324,9 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_stream_connection_run(ChiakiStreamConnectio
 	}
 	stream_connection->feedback_sender_active = true;
 	chiaki_feedback_sender_set_controller_state(&stream_connection->feedback_sender, &session->controller_state);
+	chiaki_feedback_sender_set_trigger_effects(&stream_connection->feedback_sender,
+		stream_connection->trigger_effect_type[0], stream_connection->trigger_effect_data[0],
+		stream_connection->trigger_effect_type[1], stream_connection->trigger_effect_data[1]);
 	chiaki_mutex_unlock(&stream_connection->feedback_sender_mutex);
 
 	stream_connection->state = STATE_IDLE;
@@ -662,12 +669,53 @@ static void stream_connection_takion_data_trigger_effects(ChiakiStreamConnection
 				(unsigned long long)buf_size);
 		return;
 	}
+	// Layout after the data type byte: [0] controller, [1] L2 mode, [2] R2 mode, [3] trigger
+	// mask (bit 0 L2, bit 1 R2), [4] reserved, [5..14] L2 parameters, [15..24] R2 parameters.
+	// The message is scePadSetTriggerEffect() on the wire: it changes only the triggers in
+	// its mask, as Sony's client does, so a game that sets one trigger at a time does not
+	// wipe the other one's effect. A mode of 0x05 (off) with parameters still set means the
+	// console stripped an effect it thinks this client's pad cannot do, see RP-PadProcNo in
+	// ctrl.c.
+	uint8_t mask = buf[3] & (CHIAKI_TRIGGER_EFFECTS_MASK_L2 | CHIAKI_TRIGGER_EFFECTS_MASK_R2);
+	if(!mask)
+	{
+		CHIAKI_LOGW(stream_connection->log, "StreamConnection got trigger effects with empty mask %#x, applying both triggers", buf[3]);
+		mask = CHIAKI_TRIGGER_EFFECTS_MASK_L2 | CHIAKI_TRIGGER_EFFECTS_MASK_R2;
+	}
+	// CHIAKI_TRIGGER_LOG=1 logs every message at info level, to compare what a game sends
+	// with what the controller does.
+	static int trigger_log = -1;
+	if(trigger_log < 0)
+		trigger_log = getenv("CHIAKI_TRIGGER_LOG") ? 1 : 0;
+	ChiakiLogLevel trigger_log_level = trigger_log ? CHIAKI_LOG_INFO : CHIAKI_LOG_VERBOSE;
+	chiaki_log(stream_connection->log, trigger_log_level, "Trigger effects packet, mask %#x:", buf[3]);
+	chiaki_log_hexdump(stream_connection->log, trigger_log_level, buf, buf_size);
+	if(mask & CHIAKI_TRIGGER_EFFECTS_MASK_L2)
+	{
+		stream_connection->trigger_effect_type[0] = buf[1];
+		memcpy(stream_connection->trigger_effect_data[0], buf + 5, 10);
+	}
+	if(mask & CHIAKI_TRIGGER_EFFECTS_MASK_R2)
+	{
+		stream_connection->trigger_effect_type[1] = buf[2];
+		memcpy(stream_connection->trigger_effect_data[1], buf + 15, 10);
+	}
+	// A game can ask what each effect is doing, so the feedback sender reports that back.
+	if(chiaki_mutex_lock(&stream_connection->feedback_sender_mutex) == CHIAKI_ERR_SUCCESS)
+	{
+		if(stream_connection->feedback_sender_active)
+			chiaki_feedback_sender_set_trigger_effects(&stream_connection->feedback_sender,
+				stream_connection->trigger_effect_type[0], stream_connection->trigger_effect_data[0],
+				stream_connection->trigger_effect_type[1], stream_connection->trigger_effect_data[1]);
+		chiaki_mutex_unlock(&stream_connection->feedback_sender_mutex);
+	}
 	ChiakiEvent event = { 0 };
 	event.type = CHIAKI_EVENT_TRIGGER_EFFECTS;
-	event.trigger_effects.type_left = buf[1];
-	event.trigger_effects.type_right = buf[2];
-	memcpy(&event.trigger_effects.left, buf + 5, 10);
-	memcpy(&event.trigger_effects.right, buf + 15, 10);
+	event.trigger_effects.mask = mask;
+	event.trigger_effects.type_left = stream_connection->trigger_effect_type[0];
+	event.trigger_effects.type_right = stream_connection->trigger_effect_type[1];
+	memcpy(&event.trigger_effects.left, stream_connection->trigger_effect_data[0], 10);
+	memcpy(&event.trigger_effects.right, stream_connection->trigger_effect_data[1], 10);
 	chiaki_session_send_event(stream_connection->session, &event);
 }
 

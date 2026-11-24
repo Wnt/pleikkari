@@ -55,6 +55,12 @@ typedef struct chiaki_feedback_sender_t
 	uint64_t stats_gap_count;
 	uint64_t stats_gap_max_ms;
 	uint64_t stats_gaps_over_50_ms;
+
+	// Effect the console has set on each trigger (0 L2, 1 R2): raw mode and parameters
+	uint8_t trigger_effect_type[2];
+	uint8_t trigger_effect_data[2][10];
+	uint8_t trigger_effect_state[2]; // ChiakiTriggerEffectState of each trigger now
+	uint8_t trigger_effect_state_prev[2]; // as of the last state packet
 } ChiakiFeedbackSender;
 
 typedef struct chiaki_feedback_sender_stats_t
@@ -75,6 +81,14 @@ typedef struct chiaki_feedback_sender_stats_t
 CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_init(ChiakiFeedbackSender *feedback_sender, ChiakiTakion *takion, uint32_t state_min_interval_ms, uint32_t stats_log_interval_ms);
 CHIAKI_EXPORT void chiaki_feedback_sender_fini(ChiakiFeedbackSender *feedback_sender);
 CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_set_controller_state(ChiakiFeedbackSender *feedback_sender, ChiakiControllerState *state);
+
+/**
+ * Tell the sender which effect the console has set on each trigger. Every state packet reports
+ * what each effect is doing (see chiaki_trigger_effect_state()), which a game can ask for.
+ *
+ * @param type_left raw effect mode of L2, with its 10 parameter bytes in left; likewise for R2
+ */
+CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_set_trigger_effects(ChiakiFeedbackSender *feedback_sender, uint8_t type_left, const uint8_t *left, uint8_t type_right, const uint8_t *right);
 CHIAKI_EXPORT uint64_t chiaki_feedback_sender_get_packets_total(ChiakiFeedbackSender *feedback_sender);
 CHIAKI_EXPORT void chiaki_feedback_sender_get_stats(ChiakiFeedbackSender *feedback_sender, ChiakiFeedbackSenderStats *stats, bool reset_gaps);
 CHIAKI_EXPORT void chiaki_feedback_sender_record_send(ChiakiFeedbackSender *feedback_sender, uint64_t now_ms);

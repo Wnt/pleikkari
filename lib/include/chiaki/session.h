@@ -166,12 +166,22 @@ typedef struct chiaki_rumble_event_t
 	uint8_t right; // high-frequency
 } ChiakiRumbleEvent;
 
+#define CHIAKI_TRIGGER_EFFECTS_MASK_L2 0x01
+#define CHIAKI_TRIGGER_EFFECTS_MASK_R2 0x02
+
+/**
+ * The console sets the two triggers independently: mask says which of them this event
+ * changes (CHIAKI_TRIGGER_EFFECTS_MASK_*). Only a trigger named in the mask may be written
+ * to the controller. type and data always hold the current effect of both triggers, so the
+ * trigger that is not in the mask reads as what it was last set to.
+ */
 typedef struct chiaki_trigger_effects_event_t
 {
 	uint8_t type_left;
 	uint8_t type_right;
 	uint8_t left[10];
 	uint8_t right[10];
+	uint8_t mask;
 } ChiakiTriggerEffectsEvent;
 
 typedef struct chiaki_video_fec_failure_event_t

@@ -129,6 +129,17 @@ static QSet<QPair<uint16_t, uint16_t>> chiaki_steam_virtual_controller_ids({
 static ControllerManager *instance = nullptr;
 
 #define UPDATE_INTERVAL_MS 4
+
+// Parts of a DualSense's effect state, for Controller::QueueDualSenseEffects().
+enum
+{
+	DS_EFFECT_RUMBLE = 0x01,
+	DS_EFFECT_TRIGGER_L2 = 0x02,
+	DS_EFFECT_TRIGGER_R2 = 0x04,
+};
+
+// Effect reports closer together than this are merged into one.
+#define DS_EFFECTS_MIN_INTERVAL_MS 2
 #define MOVE_CHECK_MS 1000
 
 ControllerManager *ControllerManager::GetInstance()
@@ -416,6 +427,9 @@ Controller::~Controller()
 		const uint8_t clear_effect[10] = { 0 };
 		this->SetTriggerEffects(0x05, clear_effect, 0x05, clear_effect);
 		this->SetRumble(0,0);
+		// Whatever the merge window still holds has to leave before the controller closes.
+		if(ds_effects_changed)
+			SendDualSenseEffects();
 		SDL_GameControllerClose(controller);
 	}
 #endif
@@ -787,33 +801,62 @@ void Controller::SetDualSenseRumble(uint8_t left, uint8_t right)
 	ds_rumble_used = true;
 	ds_rumble_left = left;
 	ds_rumble_right = right;
-	SendDualSenseEffects();
-	// Zero rumble has been sent once: later trigger-only reports leave the motors alone,
-	// so they are byte for byte what they were before the reports were combined.
-	if(!left && !right)
-		ds_rumble_used = false;
+	QueueDualSenseEffects(DS_EFFECT_RUMBLE);
 #endif
 }
 
-// Rumble and trigger effects used to go out as two separate reports. SDL queues effect
-// reports for a writer thread and only replaces a queued report with a newer one whose
-// enable bits match, so alternating rumble and trigger updates piled up behind each
-// other and reached the controller late and one write apiece. That is slowest over
-// Bluetooth, where every report is a blocking write. Sending the whole current state
-// with every update keeps the enable bits stable while both are in use: SDL then holds
-// at most one queued report behind the write in flight, and it is always the newest.
+// An effect report writes only what changed. The controller applies every field whose
+// enable bit is set, so a report must not name a trigger whose effect did not change:
+// the console sets L2 and R2 independently (see ChiakiTriggerEffectsEvent), and Sony's
+// own client sets the enable bit of a trigger only when the message named it.
+//
+// The first change goes out at once. Changes during the next DS_EFFECTS_MIN_INTERVAL_MS
+// are collected and leave as one report, e.g. the L2 and R2 updates a game makes in the
+// same frame, or rumble next to a trigger update. That keeps reports from piling up in
+// SDL's writer queue, which holds every report whose enable bits differ from the one
+// before it and writes them one blocking write apiece, slowest over Bluetooth.
+void Controller::QueueDualSenseEffects(uint8_t changed)
+{
+#ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	ds_effects_changed |= changed;
+	if(!ds_effects_timer)
+	{
+		ds_effects_timer = new QTimer(this);
+		ds_effects_timer->setSingleShot(true);
+		ds_effects_timer->setTimerType(Qt::PreciseTimer);
+		ds_effects_timer->setInterval(DS_EFFECTS_MIN_INTERVAL_MS);
+		connect(ds_effects_timer, &QTimer::timeout, this, [this]() {
+			if(!ds_effects_changed)
+				return;
+			SendDualSenseEffects();
+			ds_effects_timer->start();
+		});
+	}
+	if(ds_effects_timer->isActive())
+		return;
+	SendDualSenseEffects();
+	ds_effects_timer->start();
+#endif
+}
+
 void Controller::SendDualSenseEffects()
 {
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	const uint8_t changed = ds_effects_changed;
+	ds_effects_changed = 0;
 	if((!is_dualsense && !is_dualsense_edge) || !controller)
 		return;
 	DS5EffectsState_t state;
 	SDL_zero(state);
 	state.rgucUnknown1[4] = manager->GetDualSenseIntensity();
 	state.ucEnableBits2 |= 0x40;
+	// Rumble is a level, not an event: while the motors run, every report repeats it, so a
+	// trigger report cannot switch the controller back from rumble to haptics mode.
 	if(ds_rumble_used)
 	{
-		if(firmware_version < 0x0224)
+		// Same rule as SDL's own driver: a version that could not be read (0, which happens
+		// over Bluetooth) and every DualSense Edge take the current encoding.
+		if(firmware_version != 0 && firmware_version < 0x0224 && !is_dualsense_edge)
 		{
 			state.ucEnableBits1 |= 0x01;
 			state.ucRumbleLeft = ds_rumble_left >> 1;
@@ -826,11 +869,18 @@ void Controller::SendDualSenseEffects()
 			state.ucRumbleRight = ds_rumble_right;
 		}
 		state.ucEnableBits1 |= 0x02;
+		// Zero rumble has been sent once: later reports leave the motors alone.
+		if(!ds_rumble_left && !ds_rumble_right)
+			ds_rumble_used = false;
 	}
-	if(ds_triggers_used)
+	if(changed & DS_EFFECT_TRIGGER_L2)
 	{
-		state.ucEnableBits1 |= (0x04 /* right trigger */ | 0x08 /* left trigger */);
+		state.ucEnableBits1 |= 0x08;
 		SDL_memcpy(state.rgucLeftTriggerEffect, ds_trigger_left, sizeof(ds_trigger_left));
+	}
+	if(changed & DS_EFFECT_TRIGGER_R2)
+	{
+		state.ucEnableBits1 |= 0x04;
 		SDL_memcpy(state.rgucRightTriggerEffect, ds_trigger_right, sizeof(ds_trigger_right));
 	}
 	SDL_GameControllerSendEffect(controller, &state, sizeof(state));
@@ -867,17 +917,26 @@ void Controller::ChangePlayerIndex(const uint8_t player_index)
 #endif
 }
 
-void Controller::SetTriggerEffects(uint8_t type_left, const uint8_t *data_left, uint8_t type_right, const uint8_t *data_right)
+void Controller::SetTriggerEffects(uint8_t type_left, const uint8_t *data_left, uint8_t type_right, const uint8_t *data_right, uint8_t mask)
 {
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 	if((!is_dualsense && !is_dualsense_edge) || !controller)
 		return;
-	ds_triggers_used = true;
-	ds_trigger_left[0] = type_left;
-	SDL_memcpy(ds_trigger_left + 1, data_left, 10);
-	ds_trigger_right[0] = type_right;
-	SDL_memcpy(ds_trigger_right + 1, data_right, 10);
-	SendDualSenseEffects();
+	uint8_t changed = 0;
+	if(mask & 0x01)
+	{
+		ds_trigger_left[0] = type_left;
+		SDL_memcpy(ds_trigger_left + 1, data_left, 10);
+		changed |= DS_EFFECT_TRIGGER_L2;
+	}
+	if(mask & 0x02)
+	{
+		ds_trigger_right[0] = type_right;
+		SDL_memcpy(ds_trigger_right + 1, data_right, 10);
+		changed |= DS_EFFECT_TRIGGER_R2;
+	}
+	if(changed)
+		QueueDualSenseEffects(changed);
 #endif
 }
 

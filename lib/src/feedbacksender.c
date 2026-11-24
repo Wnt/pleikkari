@@ -4,6 +4,7 @@
 #include <chiaki/time.h>
 #include <chiaki/trace.h>
 
+#include <stdlib.h>
 #include <string.h>
 
 #define FEEDBACK_STATE_TIMEOUT_MIN_MS_DEFAULT 8 // default minimum time to wait between sending 2 packets
@@ -13,7 +14,8 @@
 #define FEEDBACK_HISTORY_RESEND_EVENT_COUNT 0x4
 
 static void *feedback_sender_thread_func(void *user);
-static void feedback_sender_send_state(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state);
+static void feedback_sender_send_state(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state, const uint8_t *trigger_effect_state);
+static bool feedback_sender_update_trigger_effect_state_locked(ChiakiFeedbackSender *feedback_sender);
 static void feedback_sender_send_history_packet(ChiakiFeedbackSender *feedback_sender, const uint8_t *buf, size_t buf_size, uint32_t buttons);
 static void feedback_sender_flush_history_locked(ChiakiFeedbackSender *feedback_sender);
 static void feedback_sender_record_history(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state_prev, const ChiakiControllerState *state_now);
@@ -46,6 +48,10 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_init(ChiakiFeedbackSender *
 	feedback_sender->should_stop = false;
 	feedback_sender->controller_state_changed = false;
 	feedback_sender->history_dirty = false;
+	feedback_sender->trigger_effect_type[0] = feedback_sender->trigger_effect_type[1] = 0x05; // off
+	memset(feedback_sender->trigger_effect_data, 0, sizeof(feedback_sender->trigger_effect_data));
+	memset(feedback_sender->trigger_effect_state, 0, sizeof(feedback_sender->trigger_effect_state));
+	memset(feedback_sender->trigger_effect_state_prev, 0, sizeof(feedback_sender->trigger_effect_state_prev));
 	ChiakiErrorCode err = chiaki_feedback_history_buffer_init(&feedback_sender->history_buf, FEEDBACK_HISTORY_BUFFER_SIZE);
 	if(err != CHIAKI_ERR_SUCCESS)
 		return err;
@@ -103,9 +109,63 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_set_controller_state(Chiaki
 	feedback_sender_flush_history_locked(feedback_sender);
 	feedback_sender->controller_state_history_prev = feedback_sender->controller_state;
 	feedback_sender->controller_state_changed = true;
+	feedback_sender_update_trigger_effect_state_locked(feedback_sender);
 
 	chiaki_mutex_unlock(&feedback_sender->state_mutex);
 	chiaki_cond_signal(&feedback_sender->state_cond);
+
+	return CHIAKI_ERR_SUCCESS;
+}
+
+/**
+ * Works out each trigger's effect state from its effect and how far the trigger is pulled.
+ * A changed state is a change the console has to be sent, like a moved stick.
+ *
+ * @return whether a state changed
+ */
+static bool feedback_sender_update_trigger_effect_state_locked(ChiakiFeedbackSender *feedback_sender)
+{
+	const uint8_t analog[2] = { feedback_sender->controller_state.l2_state, feedback_sender->controller_state.r2_state };
+	bool changed = false;
+	for(size_t i = 0; i < 2; i++)
+	{
+		uint8_t state = chiaki_trigger_effect_state(feedback_sender->trigger_effect_type[i],
+				feedback_sender->trigger_effect_data[i], analog[i], feedback_sender->trigger_effect_state[i]);
+		if(state == feedback_sender->trigger_effect_state[i])
+			continue;
+		feedback_sender->trigger_effect_state[i] = state;
+		changed = true;
+	}
+	if(changed)
+	{
+		feedback_sender->controller_state_changed = true;
+		// CHIAKI_TRIGGER_LOG=1 lifts this to info, next to the console's trigger effect messages
+		static int trigger_log = -1;
+		if(trigger_log < 0)
+			trigger_log = getenv("CHIAKI_TRIGGER_LOG") ? 1 : 0;
+		chiaki_log(feedback_sender->log, trigger_log ? CHIAKI_LOG_INFO : CHIAKI_LOG_VERBOSE,
+				"Trigger effect state: L2 %u (trigger at %u), R2 %u (trigger at %u)",
+				feedback_sender->trigger_effect_state[0], analog[0],
+				feedback_sender->trigger_effect_state[1], analog[1]);
+	}
+	return changed;
+}
+
+CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_sender_set_trigger_effects(ChiakiFeedbackSender *feedback_sender, uint8_t type_left, const uint8_t *left, uint8_t type_right, const uint8_t *right)
+{
+	ChiakiErrorCode err = chiaki_mutex_lock(&feedback_sender->state_mutex);
+	if(err != CHIAKI_ERR_SUCCESS)
+		return err;
+
+	feedback_sender->trigger_effect_type[0] = type_left;
+	memcpy(feedback_sender->trigger_effect_data[0], left, sizeof(feedback_sender->trigger_effect_data[0]));
+	feedback_sender->trigger_effect_type[1] = type_right;
+	memcpy(feedback_sender->trigger_effect_data[1], right, sizeof(feedback_sender->trigger_effect_data[1]));
+	bool changed = feedback_sender_update_trigger_effect_state_locked(feedback_sender);
+
+	chiaki_mutex_unlock(&feedback_sender->state_mutex);
+	if(changed)
+		chiaki_cond_signal(&feedback_sender->state_cond);
 
 	return CHIAKI_ERR_SUCCESS;
 }
@@ -174,9 +234,11 @@ static bool controller_state_equals_for_feedback_state(ChiakiControllerState *a,
 	return true;
 }
 
-static void feedback_sender_send_state(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state)
+static void feedback_sender_send_state(ChiakiFeedbackSender *feedback_sender, const ChiakiControllerState *state, const uint8_t *trigger_effect_state)
 {
 	ChiakiFeedbackState feedback_state;
+	feedback_state.l2_effect_state = trigger_effect_state[0];
+	feedback_state.r2_effect_state = trigger_effect_state[1];
 	feedback_state.left_x = state->left_x;
 	feedback_state.left_y = state->left_y;
 	feedback_state.right_x = state->right_x;
@@ -408,6 +470,7 @@ static void *feedback_sender_thread_func(void *user)
 		uint64_t now_ms = chiaki_time_now_monotonic_ms();
 		bool send_feedback_state = now_ms - feedback_sender->last_feedback_state_ms >= FEEDBACK_STATE_TIMEOUT_MAX_MS;
 		ChiakiControllerState state_now = feedback_sender->controller_state;
+		const uint8_t trigger_effect_state_now[2] = { feedback_sender->trigger_effect_state[0], feedback_sender->trigger_effect_state[1] };
 		bool send_feedback_history = false;
 		uint8_t history_buf[CHIAKI_FEEDBACK_HISTORY_PACKET_BUF_SIZE];
 		size_t history_buf_size = 0;
@@ -420,7 +483,8 @@ static void *feedback_sender_thread_func(void *user)
 			send_feedback_state = true;
 
 			// don't need to send feedback state if nothing relevant changed
-			if(controller_state_equals_for_feedback_state(&state_now, &feedback_sender->controller_state_prev))
+			if(controller_state_equals_for_feedback_state(&state_now, &feedback_sender->controller_state_prev)
+				&& !memcmp(trigger_effect_state_now, feedback_sender->trigger_effect_state_prev, sizeof(trigger_effect_state_now)))
 				send_feedback_state = false;
 		} // else: timeout, or change still throttled by state_min_interval_ms
 
@@ -438,7 +502,7 @@ static void *feedback_sender_thread_func(void *user)
 		chiaki_mutex_unlock(&feedback_sender->state_mutex);
 
 		if(send_feedback_state)
-			feedback_sender_send_state(feedback_sender, &state_now);
+			feedback_sender_send_state(feedback_sender, &state_now, trigger_effect_state_now);
 
 		if(send_feedback_history)
 			feedback_sender_send_history_packet(feedback_sender, history_buf, history_buf_size, history_buttons);
@@ -453,6 +517,7 @@ static void *feedback_sender_thread_func(void *user)
 		if(send_feedback_state)
 		{
 			feedback_sender->controller_state_prev = state_now;
+			memcpy(feedback_sender->trigger_effect_state_prev, trigger_effect_state_now, sizeof(trigger_effect_state_now));
 			feedback_sender->last_feedback_state_ms = chiaki_time_now_monotonic_ms();
 		}
 	}

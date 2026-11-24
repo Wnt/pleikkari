@@ -2617,9 +2617,10 @@ void StreamSession::Event(ChiakiEvent *event)
 			uint8_t data_right[10];
 			memcpy(data_right, event->trigger_effects.right, 10);
 			uint8_t type_right = event->trigger_effects.type_right;
-			QMetaObject::invokeMethod(this, [this, type_left, data_left, type_right, data_right]() {
+			uint8_t mask = event->trigger_effects.mask;
+			QMetaObject::invokeMethod(this, [this, type_left, data_left, type_right, data_right, mask]() {
 				for(auto controller : controllers)
-					controller->SetTriggerEffects(type_left, data_left, type_right, data_right);
+					controller->SetTriggerEffects(type_left, data_left, type_right, data_right, mask);
 			});
 			break;
 		}

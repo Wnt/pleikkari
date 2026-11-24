@@ -3,6 +3,7 @@
 #include <munit.h>
 
 #include <chiaki/ecdh.h>
+#include <chiaki/feedback.h>
 #include <chiaki/feedbacksender.h>
 #include <chiaki/gkcrypt.h>
 #include <chiaki/takion.h>
@@ -427,6 +428,82 @@ static MunitResult test_last_stick_sample_inside_state_minimum_sent_at_minimum(c
 }
 #endif
 
+/**
+ * The console sets a trigger effect and a game may ask what the effect is doing. The states come
+ * from the effect and the trigger's travel, by the rules and thresholds of Sony's own client.
+ */
+static MunitResult test_trigger_effect_state(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	// Off, and nothing set at all
+	const uint8_t none[10] = { 0 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x05, none, 255, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_OFF);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x00, none, 255, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_OFF);
+
+	// Feedback as a driving game sets it on the brake: resistance in zones 7 to 9
+	const uint8_t brake[10] = { 0x80, 0x03, 0x00, 0x00, 0x20, 0x00 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x21, brake, 0, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x21, brake, 191, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x21, brake, 192, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x21, brake, 255, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE);
+	// and on the throttle: a notch in zone 7 alone
+	const uint8_t throttle[10] = { 0x80 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x21, throttle, 223, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x21, throttle, 224, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY);
+
+	// Vibration in every zone starts a little into the travel
+	const uint8_t all_zones[10] = { 0xff, 0x03 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x26, all_zones, 7, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_STANDBY);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x26, all_zones, 8, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_ACTIVE);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x26, none, 255, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_STANDBY);
+
+	// Weapon from zone 2 to zone 5: standby, pulling, fired, and fired until let back out
+	const uint8_t weapon[10] = { 0x24 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon, 53, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_STANDBY);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon, 54, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_STANDBY), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_PULLING);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon, 159, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_PULLING), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_PULLING);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon, 160, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_PULLING), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon, 100, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon, 53, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_STANDBY);
+	// A weapon without an end zone, or with its end in byte 1 (zone 8), which is the last valid one
+	const uint8_t weapon_no_end[10] = { 0x04 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon_no_end, 255, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_OFF);
+	const uint8_t weapon_long[10] = { 0x80, 0x01 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon_long, 213, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_STANDBY);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon_long, 214, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_PULLING);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x25, weapon_long, 255, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED);
+
+	// Bow between zones 1 and 4
+	const uint8_t bow[10] = { 0x12 };
+	munit_assert_uint8(chiaki_trigger_effect_state(0x22, bow, 0, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x22, bow, 1, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x22, bow, 96, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE);
+	munit_assert_uint8(chiaki_trigger_effect_state(0x22, bow, 97, 0), ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY);
+	return MUNIT_OK;
+}
+
+/**
+ * The v12 feedback state carries both triggers' effect states after the sticks, L2 first.
+ */
+static MunitResult test_feedback_state_v12_trigger_effect_state(const MunitParameter params[], void *user)
+{
+	(void)params;
+	(void)user;
+	ChiakiFeedbackState state;
+	memset(&state, 0, sizeof(state));
+	state.orient_w = 1.0f;
+	state.l2_effect_state = CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE;
+	state.r2_effect_state = CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_STANDBY;
+	uint8_t buf[CHIAKI_FEEDBACK_STATE_BUF_SIZE_V12];
+	memset(buf, 0xaa, sizeof(buf));
+	chiaki_feedback_state_format_v12(buf, &state);
+	munit_assert_uint8(buf[0x19], ==, CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE);
+	munit_assert_uint8(buf[0x1a], ==, CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_STANDBY);
+	munit_assert_uint8(buf[0x1b], ==, 1);
+	return MUNIT_OK;
+}
+
 MunitTest tests_feedback_sender[] = {
 #if defined(__linux__)
 	{
@@ -462,5 +539,21 @@ MunitTest tests_feedback_sender[] = {
 		NULL
 	},
 #endif
+	{
+		"/trigger_effect_state",
+		test_trigger_effect_state,
+		NULL,
+		NULL,
+		MUNIT_TEST_OPTION_NONE,
+		NULL
+	},
+	{
+		"/feedback_state_v12_trigger_effect_state",
+		test_feedback_state_v12_trigger_effect_state,
+		NULL,
+		NULL,
+		MUNIT_TEST_OPTION_NONE,
+		NULL
+	},
 	{ NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL }
 };

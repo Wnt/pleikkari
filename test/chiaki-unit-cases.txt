@@ -36,6 +36,8 @@
 /chiaki/feedback_sender/state_minimum_holds_for_a_stick_moved_with_a_press
 /chiaki/feedback_sender/stick_change_inside_state_minimum_sent_at_minimum
 /chiaki/feedback_sender/last_stick_sample_inside_state_minimum_sent_at_minimum
+/chiaki/feedback_sender/trigger_effect_state
+/chiaki/feedback_sender/feedback_state_v12_trigger_effect_state
 /chiaki/link_watchdog/healthy_stream_never_expires
 /chiaki/link_watchdog/expires_once_the_deadline_passes
 /chiaki/link_watchdog/expires_exactly_once

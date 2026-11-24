@@ -79,9 +79,90 @@ CHIAKI_EXPORT void chiaki_feedback_state_format_v9(uint8_t *buf, ChiakiFeedbackS
 CHIAKI_EXPORT void chiaki_feedback_state_format_v12(uint8_t *buf, ChiakiFeedbackState *state)
 {
 	chiaki_feedback_state_format_v9(buf, state);
-	buf[0x19] = 0x0;
-	buf[0x1a] = 0x0;
+	buf[0x19] = state->l2_effect_state;
+	buf[0x1a] = state->r2_effect_state;
 	buf[0x1b] = 0x1;
+}
+
+// Lowest trigger value inside each of the 10 zones a trigger's travel is divided into, for the
+// feedback and bow effects and for the vibration effect.
+static const uint8_t trigger_zone_min_feedback[10] = { 1, 1, 32, 64, 96, 128, 160, 192, 224, 255 };
+static const uint8_t trigger_zone_min_vibration[10] = { 8, 8, 39, 71, 103, 135, 167, 199, 231, 255 };
+// Trigger value from which a weapon effect is being pulled, by its start zone (2 to 7), and
+// from which it has fired, by its end zone (3 to 8).
+static const uint8_t trigger_weapon_pull_min[9] = { 0, 0, 54, 86, 118, 150, 182, 214, 0 };
+static const uint8_t trigger_weapon_fire_min[10] = { 0, 0, 0, 96, 128, 160, 192, 224, 255, 0 };
+
+static bool trigger_zone_set(const uint8_t *params, unsigned int zone)
+{
+	return (params[zone / 8] >> (zone % 8)) & 1;
+}
+
+// Highest zone the trigger has reached, or 10 when it is short of the first one
+static unsigned int trigger_zone_reached(const uint8_t *zone_min, uint8_t analog)
+{
+	unsigned int zone = 10;
+	for(unsigned int i = 0; i < 10; i++)
+	{
+		if(analog < zone_min[i])
+			break;
+		zone = i;
+	}
+	return zone;
+}
+
+// The first two zones set from zone first on, or limit for one that is missing
+static void trigger_zone_pair(const uint8_t *params, unsigned int first, unsigned int limit, unsigned int *start, unsigned int *end)
+{
+	*start = limit;
+	*end = limit;
+	for(unsigned int i = first; i < limit; i++)
+	{
+		if(!trigger_zone_set(params, i))
+			continue;
+		if(*start == limit)
+			*start = i;
+		else
+		{
+			*end = i;
+			break;
+		}
+	}
+}
+
+CHIAKI_EXPORT uint8_t chiaki_trigger_effect_state(uint8_t mode, const uint8_t *params, uint8_t analog, uint8_t prev_state)
+{
+	// Thresholds and rules are those of Sony's macOS client, which reports the same states
+	// from them whenever it does not take the status from the controller's own report.
+	unsigned int zone, start, end;
+	switch(mode)
+	{
+		case 0x21: // feedback: bytes 0-1 are the zones with resistance
+			zone = trigger_zone_reached(trigger_zone_min_feedback, analog);
+			return zone < 10 && trigger_zone_set(params, zone)
+				? CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE : CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY;
+		case 0x26: // vibration: bytes 0-1 are the zones that vibrate
+			zone = trigger_zone_reached(trigger_zone_min_vibration, analog);
+			return zone < 10 && trigger_zone_set(params, zone)
+				? CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_ACTIVE : CHIAKI_TRIGGER_EFFECT_STATE_VIBRATION_STANDBY;
+		case 0x25: // weapon: bytes 0-1 hold the start zone (2 to 7) and the end zone (above it, up to 8)
+			trigger_zone_pair(params, 2, 9, &start, &end);
+			if(start >= 8 || end >= 9)
+				return CHIAKI_TRIGGER_EFFECT_STATE_OFF;
+			if(analog < trigger_weapon_pull_min[start])
+				return CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_STANDBY;
+			if(prev_state == CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED || analog >= trigger_weapon_fire_min[end])
+				return CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_FIRED;
+			return CHIAKI_TRIGGER_EFFECT_STATE_WEAPON_PULLING;
+		case 0x22: // bow: resistance between a start zone and an end zone
+			trigger_zone_pair(params, 0, 10, &start, &end);
+			if(start >= 9 || end >= 10)
+				return CHIAKI_TRIGGER_EFFECT_STATE_OFF;
+			return analog >= trigger_zone_min_feedback[start] && analog <= trigger_zone_min_feedback[end]
+				? CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_ACTIVE : CHIAKI_TRIGGER_EFFECT_STATE_FEEDBACK_STANDBY;
+		default: // 0x05 off, and the effects Sony's client reports nothing for
+			return CHIAKI_TRIGGER_EFFECT_STATE_OFF;
+	}
 }
 
 CHIAKI_EXPORT ChiakiErrorCode chiaki_feedback_history_event_set_button(ChiakiFeedbackHistoryEvent *event, uint64_t button, uint8_t state)

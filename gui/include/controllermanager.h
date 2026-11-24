@@ -79,6 +79,7 @@ class Controller : public QObject
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 		void UpdateState(SDL_Event event);
 		void SetDualSenseRumble(uint8_t left, uint8_t right);
+		void QueueDualSenseEffects(uint8_t changed);
 		void SendDualSenseEffects();
 		bool HandleButtonEvent(SDL_ControllerButtonEvent event);
 		bool HandleAxisEvent(SDL_ControllerAxisEvent event);
@@ -104,14 +105,15 @@ class Controller : public QObject
 		bool has_led;
 		bool micbutton_push;
 		uint16_t firmware_version;
-		// Last rumble and trigger effect state sent to a DualSense. Every effect report
-		// carries all of it, see SendDualSenseEffects().
+		// Current rumble and trigger effect state of a DualSense, and which parts of it have
+		// changed since the last effect report (DS_EFFECT_*), see SendDualSenseEffects().
 		bool ds_rumble_used = false;
 		uint8_t ds_rumble_left = 0;
 		uint8_t ds_rumble_right = 0;
-		bool ds_triggers_used = false;
 		uint8_t ds_trigger_left[11] = {};
 		uint8_t ds_trigger_right[11] = {};
+		uint8_t ds_effects_changed = 0;
+		QTimer *ds_effects_timer = nullptr;
 
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 		QMap<QPair<Sint64, Sint64>, uint8_t> touch_ids;
@@ -139,7 +141,8 @@ class Controller : public QObject
 		QString GetGUIDString();
 		ChiakiControllerState GetState();
 		void SetRumble(uint8_t left, uint8_t right);
-		void SetTriggerEffects(uint8_t type_left, const uint8_t *data_left, uint8_t type_right, const uint8_t *data_right);
+		/** mask: which triggers to change, 0x01 L2, 0x02 R2 (CHIAKI_TRIGGER_EFFECTS_MASK_*). */
+		void SetTriggerEffects(uint8_t type_left, const uint8_t *data_left, uint8_t type_right, const uint8_t *data_right, uint8_t mask = 0x03);
 		void SetDualsenseMic(bool on);
 		void SetHapticRumble(uint16_t left, uint16_t right);
 		void StartUpdatingMapping();

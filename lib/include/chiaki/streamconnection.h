@@ -50,6 +50,9 @@ typedef struct chiaki_stream_connection_t
 	uint8_t player_index;
 	ChiakiDualSenseEffectIntensity haptic_intensity;
 	ChiakiDualSenseEffectIntensity trigger_intensity;
+	// Current adaptive trigger effect per trigger (0 = L2, 1 = R2): mode byte and parameters.
+	uint8_t trigger_effect_type[2];
+	uint8_t trigger_effect_data[2][10];
 	ChiakiFeedbackSender feedback_sender;
 	ChiakiCongestionControl congestion_control;
 	ChiakiNetworkStats network_stats;
