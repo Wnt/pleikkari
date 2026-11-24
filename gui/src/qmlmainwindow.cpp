@@ -6656,7 +6656,9 @@ void QmlMainWindow::render()
     int queue_depth_before_update = -1;
     struct pl_frame direct_render_frame = {};
     const struct pl_frame *direct_frames[] = { &direct_render_frame };
-    const float direct_timestamps[] = { 0.0f };
+    // pl_frame_mix::timestamps is float in older libplacebo and double in newer
+    // releases; take the element type from the header instead of hard-coding it.
+    const std::remove_cv<std::remove_pointer<decltype(pl_frame_mix::timestamps)>::type>::type direct_timestamps[] = { 0 };
     if (bypass_frame_queue) {
         AVFrame *incoming = nullptr;
         bool reset_direct_frame = false;
