@@ -34,6 +34,7 @@
 #include <chiaki/session.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <functional>
@@ -63,6 +64,9 @@ struct StreamSettings
 	// Sender") threads run at QOS_CLASS_USER_INTERACTIVE, so they stay on performance
 	// cores and wake promptly. Installed by the first start() that asks for it.
 	bool elevate_thread_qos = true;
+	// Keep awdl0 down while the stream runs over Wi-Fi (AwdlGuard.h). The first time this
+	// shows the system's password dialog.
+	bool suspend_awdl = true;
 	uint32_t log_mask = CHIAKI_LOG_INFO | CHIAKI_LOG_WARNING | CHIAKI_LOG_ERROR; // VERBOSE dumps request headers
 };
 
@@ -210,6 +214,7 @@ private:
 	ChiakiOpusDecoder opus_;
 	ChiakiAudioSink opus_sink_; // the decoder's own sink, called from audio*Trampoline
 	std::string host_;
+	std::atomic<bool> awdl_acquired_{false};
 
 	std::mutex lifecycle_mutex_;        // start() / shutdown()
 	bool session_inited_ = false;

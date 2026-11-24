@@ -38,6 +38,7 @@ plk::ConnectTarget fakeTarget()
 plk::StreamSettings quietSettings()
 {
 	plk::StreamSettings s;
+	s.suspend_awdl = false; // a test changes nothing on the machine
 	// PLK_TEST_VERBOSE=1 shows the library's log of these sessions.
 	s.log_mask = plktest::envFlag("PLK_TEST_VERBOSE") ? CHIAKI_LOG_ALL & ~CHIAKI_LOG_VERBOSE : CHIAKI_LOG_ERROR;
 	return s;

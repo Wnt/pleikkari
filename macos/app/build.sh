@@ -64,6 +64,11 @@ if [ ! -f "$BUILD/CMakeCache.txt" ]; then
 		-DCMAKE_OBJC_FLAGS="-I$SHIM" \
 		-DCMAKE_OBJCXX_FLAGS="-I$SHIM"
 fi
+# A build directory configured before the 1 MB receive buffer became the default on macOS
+# still has it off: the cache keeps the old answer.
+if ! grep -q '^CHIAKI_LIB_ENABLE_TAKION_SOCKET_TUNING:BOOL=ON' "$BUILD/CMakeCache.txt"; then
+	nice -n "$NICE" cmake -S "$SRC" -B "$BUILD" -DCHIAKI_LIB_ENABLE_TAKION_SOCKET_TUNING=ON > /dev/null
+fi
 nice -n "$NICE" cmake --build "$BUILD" -j "$JOBS"
 
 echo "app: $BUILD/macos/app/Pleikkari.app"

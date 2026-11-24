@@ -2,6 +2,8 @@
 
 #include "SessionHost.h"
 
+#include "AwdlGuard.h"
+
 #include <chiaki/thread.h>
 #include <chiaki/videoreceiver.h>
 
@@ -223,6 +225,8 @@ ChiakiErrorCode SessionHost::start(const ConnectTarget &target, const StreamSett
 		return err;
 	}
 	session_thread_started_ = true;
+	if(settings.suspend_awdl && AwdlGuard::instance().acquire(target.host))
+		awdl_acquired_ = true;
 	return CHIAKI_ERR_SUCCESS;
 }
 
@@ -253,6 +257,8 @@ bool SessionHost::shutdown()
 		return true;
 
 	chiaki_session_stop(&session_);
+	if(awdl_acquired_.exchange(false))
+		AwdlGuard::instance().release();
 	if(session_thread_started_)
 		chiaki_session_join(&session_); // the session thread joins ctrl, takion and the feedback sender
 
@@ -381,6 +387,8 @@ void SessionHost::handleEvent(const ChiakiEvent &e)
 				d->onConnected(e.connected);
 			break;
 		case CHIAKI_EVENT_QUIT:
+			if(awdl_acquired_.exchange(false))
+				AwdlGuard::instance().release();
 			if(d)
 				d->onQuit(e.quit.reason, e.quit.reason_str);
 			{

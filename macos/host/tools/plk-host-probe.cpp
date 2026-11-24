@@ -254,6 +254,7 @@ int main(int argc, char **argv)
 	std::string nickname, address, dump_path, pin;
 	double seconds = 10.0;
 	plk::StreamSettings settings;
+	settings.suspend_awdl = false; // a probe changes nothing on the machine
 	settings.stream_diagnostics = true;
 
 	for(int i = 1; i < argc; i++)

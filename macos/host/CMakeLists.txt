@@ -6,6 +6,8 @@ set(PLK_HOST_CXX_PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSI
 add_library(plk-host STATIC
 	AudioOutput.cpp
 	AudioOutput.h
+	AwdlGuard.cpp
+	AwdlGuard.h
 	FrameRing.h
 	Playout.cpp
 	Playout.h
@@ -25,7 +27,8 @@ target_link_libraries(plk-host PUBLIC
 	chiaki-lib
 	"-framework AudioToolbox"
 	"-framework CoreAudio"
-	"-framework CoreFoundation")
+	"-framework CoreFoundation"
+	"-framework SystemConfiguration")
 
 add_executable(plk-host-probe tools/plk-host-probe.cpp)
 set_target_properties(plk-host-probe PROPERTIES ${PLK_HOST_CXX_PROPERTIES})
@@ -34,6 +37,7 @@ target_link_libraries(plk-host-probe PRIVATE plk-host)
 
 add_executable(plk-host-tests
 	tests/AudioTests.cpp
+	tests/AwdlGuardTests.cpp
 	tests/main.cpp
 	tests/RegistrationTests.cpp
 	tests/SessionHostTests.cpp

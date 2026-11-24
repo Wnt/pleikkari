@@ -110,6 +110,8 @@ std::string usageText()
 		"  --codec h264|h265|h265-hdr\n"
 		"  --feedback-interval MS  minimum spacing of stick/motion packets (lib default 8)\n"
 		"  --no-reorder            do not wait for a missing video packet (disable reordering)\n"
+		"  --keep-awdl             leave AWDL (AirDrop, AirPlay) up during a Wi-Fi stream; by default\n"
+		"                          it is switched off while the stream runs (asks for the password once)\n"
 		"  --idr-on-fec-failure    the lib requests an IDR itself when FEC fails\n"
 		"  --diagnostics           the lib's per-second stream statistics in the log\n"
 		"  --verbose               the lib's verbose log level\n"
@@ -219,6 +221,8 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 		}
 		else if(a == "--no-reorder")
 			o.disable_reordering = true;
+		else if(a == "--keep-awdl")
+			o.keep_awdl = true;
 		else if(a == "--idr-on-fec-failure")
 			o.idr_on_fec_failure = true;
 		else if(a == "--diagnostics")
@@ -411,6 +415,7 @@ StreamConfig resolveStreamConfig(const Options &o, const QtStreamSettings *qt)
 	s.stream_diagnostics = o.diagnostics;
 	s.audio_video_disabled = CHIAKI_NONE_DISABLED; // --no-audio only leaves the PCM sink out
 	s.elevate_thread_qos = true;
+	s.suspend_awdl = !o.keep_awdl;
 	s.log_mask = CHIAKI_LOG_INFO | CHIAKI_LOG_WARNING | CHIAKI_LOG_ERROR;
 	if(o.verbose)
 		s.log_mask |= CHIAKI_LOG_VERBOSE;

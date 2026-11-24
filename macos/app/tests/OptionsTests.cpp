@@ -42,6 +42,7 @@ PLK_TEST(options_stream_defaults)
 	CHECK(c.session.video_profile_auto_downgrade);
 	CHECK(!c.session.idr_on_fec_failure);
 	CHECK(!c.session.disable_video_packet_reordering);
+	CHECK(c.session.suspend_awdl);
 	CHECK(c.session.packet_loss_max > 0.0499 && c.session.packet_loss_max < 0.0501);
 	CHECK(c.session.feedback_state_min_interval_ms == 0);
 	CHECK(c.bt_haptics);
@@ -53,7 +54,7 @@ PLK_TEST(options_all_flags)
 	Options o;
 	std::string err;
 	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--fullscreen", "--resolution", "720p", "--fps=30",
-						  "--bitrate", "12000", "--codec", "h265-hdr", "--feedback-interval", "4", "--no-reorder",
+						  "--bitrate", "12000", "--codec", "h265-hdr", "--feedback-interval", "4", "--no-reorder", "--keep-awdl",
 						  "--log", "/tmp/x.log", "--pacing", "displaylink", "--scaler", "lanczos", "--stats-interval", "5",
 						  "--no-controller-output", "--haptic-gain", "0.5", "--bt-haptics", "off", "--seconds", "3" },
 			o, &err));
@@ -71,6 +72,7 @@ PLK_TEST(options_all_flags)
 	CHECK(c.session.codec == CHIAKI_CODEC_H265_HDR);
 	CHECK(c.session.feedback_state_min_interval_ms == 4);
 	CHECK(c.session.disable_video_packet_reordering);
+	CHECK(!c.session.suspend_awdl);
 	CHECK(c.width == 1280 && c.height == 720);
 	CHECK(!c.bt_haptics);
 	CHECK(c.haptic_gain == 0.5f);

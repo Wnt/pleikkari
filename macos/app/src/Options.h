@@ -41,6 +41,7 @@ struct Options
 	std::optional<ChiakiCodec> codec;
 	std::optional<uint32_t> feedback_interval_ms; // lib default 8 ms
 	bool disable_reordering = false;
+	bool keep_awdl = false;          // leave AWDL up during a Wi-Fi stream
 	bool idr_on_fec_failure = false;
 	bool diagnostics = false;        // the lib's per-second stream stats in the log
 	bool verbose = false;            // the lib's verbose log level
