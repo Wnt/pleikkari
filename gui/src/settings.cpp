@@ -604,6 +604,11 @@ static const ChiakiCodec codec_default_ps4 = CHIAKI_CODEC_H264;
 
 static ChiakiCodec clampCodecForBackend(RenderBackend backend, ChiakiCodec codec)
 {
+	// CHIAKI_CODEC=h264|h265|h265_hdr picks the PS5 codec for one run without touching the
+	// stored setting, like CHIAKI_RENDER_BACKEND does for the backend.
+	const QString override_codec = qEnvironmentVariable("CHIAKI_CODEC").toLower();
+	if (!override_codec.isEmpty())
+		codec = codecs.key(override_codec, codec);
 	if (backend == RenderBackend::OpenGL && codec == CHIAKI_CODEC_H265_HDR)
 		return CHIAKI_CODEC_H265;
 	return codec;

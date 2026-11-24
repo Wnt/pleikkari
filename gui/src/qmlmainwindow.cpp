@@ -7185,6 +7185,21 @@ void QmlMainWindow::render()
     if (!hint_frame && frame_mix.num_frames)
         hint_frame = frame_mix.frames[0];
     struct pl_color_space hint = hint_frame ? hint_frame->color : pl_color_space{};
+#ifdef Q_OS_MACOS
+    // An SDR picture goes to an sRGB surface with its code values untouched, which is how the
+    // OpenGL path shows it. Left to itself libplacebo matches the surface to the video and picks
+    // VK_COLOR_SPACE_BT709_NONLINEAR_EXT; MoltenVK then tags the layer kCGColorSpaceITUR_709, and
+    // macOS decodes that tag with a pure 2.4 power curve where sRGB has a linear toe. A code
+    // value of 10 % comes out 2.5 times darker, 5 % five times, 2 % nineteen times (measured with
+    // ColorSync on macOS 27), and the detail in the shadows is gone.
+    const pl_color_transfer mac_sdr_video_trc = hint.transfer ? hint.transfer : PL_COLOR_TRC_BT_1886;
+    const bool mac_sdr_surface = render_backend == RenderBackend::Vulkan && !target_trc && !pl_color_space_is_hdr(&hint);
+    if (mac_sdr_surface) {
+        hint.transfer = PL_COLOR_TRC_SRGB;
+        if (!target_prim)
+            hint.primaries = PL_COLOR_PRIM_BT_709;
+    }
+#endif
     struct pl_color_space target_csp = sw_frame.color_space;
     if (target_csp.hdr.max_luma <= 0.0f) {
         target_csp.hdr.max_luma = 0.0f;
@@ -7272,6 +7287,14 @@ void QmlMainWindow::render()
     };
     target_frame.overlays = &overlay;
     target_frame.num_overlays = 1;
+#ifdef Q_OS_MACOS
+    // The other half of the above: the surface is called by the video's own curve, so libplacebo
+    // re-encodes nothing, and the UI on top keeps its code values as well.
+    if (mac_sdr_surface && hint_frame && target_frame.color.transfer == PL_COLOR_TRC_SRGB) {
+        target_frame.color.transfer = mac_sdr_video_trc;
+        overlay.color.transfer = mac_sdr_video_trc;
+    }
+#endif
     if(target_prim)
     {
         target_frame.color.primaries = static_cast<pl_color_primaries>(target_prim);
