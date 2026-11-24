@@ -37,6 +37,8 @@ set(SOURCE_FILES
 	src/controllermanager.cpp
 	include/dualsensebthaptics.h
 	src/dualsensebthaptics.cpp
+	include/frametiming.h
+	src/frametiming.cpp
 	include/psnaccountid.h
 	src/psnaccountid.cpp
 	include/psntoken.h

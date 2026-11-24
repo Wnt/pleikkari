@@ -4,6 +4,7 @@
 #include <settings.h>
 #include <controllermanager.h>
 #include <dualsensebthaptics.h>
+#include <frametiming.h>
 
 #include <chiaki/base64.h>
 #include <chiaki/streamconnection.h>
@@ -361,6 +362,74 @@ static void SessionSDeckCb(SDeckEvent *event, void *user);
 #endif
 static void FfmpegFrameCb(ChiakiFfmpegDecoder *decoder, void *user);
 
+// CHIAKI_VIDEO_DUMP=<file> records the video samples exactly as the lib hands them to the
+// decoder, for replaying a real stream offline (macos/video's plk-video-replay). Format
+// "PLKVDMP1", little-endian: 8 bytes magic, then per sample
+//   uint32 payload_size, uint16 frame_index, uint16 flags (bit0 config sample, bit1 recovered),
+//   uint64 frame_ready_us (0 for a config sample), int32 frames_lost, payload (Annex-B).
+// It writes on the Takion thread, so a dump run is not a latency measurement. It stops at
+// CHIAKI_VIDEO_DUMP_MAX_MB (default 512). One session at a time.
+static struct
+{
+	FILE *file = nullptr;
+	uint64_t bytes_left = 0;
+	ChiakiVideoSampleCallback next = nullptr;
+	void *next_user = nullptr;
+} video_dump;
+
+static bool VideoDumpSampleCb(uint8_t *buf, size_t buf_size, ChiakiSeqNum16 frame_index,
+		uint64_t frame_ready_time_us, int32_t frames_lost, bool frame_recovered, void *user)
+{
+	(void)user;
+	if(video_dump.file && video_dump.bytes_left >= buf_size + 20)
+	{
+		uint8_t header[20];
+		const uint32_t size = static_cast<uint32_t>(buf_size);
+		const uint16_t index = frame_index;
+		const uint16_t flags = (frame_ready_time_us == 0 ? 1 : 0) | (frame_recovered ? 2 : 0);
+		memcpy(header, &size, 4);
+		memcpy(header + 4, &index, 2);
+		memcpy(header + 6, &flags, 2);
+		memcpy(header + 8, &frame_ready_time_us, 8);
+		memcpy(header + 16, &frames_lost, 4);
+		fwrite(header, 1, sizeof(header), video_dump.file);
+		fwrite(buf, 1, buf_size, video_dump.file);
+		video_dump.bytes_left -= buf_size + 20;
+	}
+	return video_dump.next(buf, buf_size, frame_index, frame_ready_time_us, frames_lost, frame_recovered, video_dump.next_user);
+}
+
+static bool VideoDumpOpen(ChiakiVideoSampleCallback next, void *next_user)
+{
+	const QByteArray path = qgetenv("CHIAKI_VIDEO_DUMP");
+	if(path.isEmpty() || video_dump.file)
+		return false;
+	FILE *file = fopen(path.constData(), "wb");
+	if(!file)
+	{
+		qWarning() << "CHIAKI_VIDEO_DUMP: cannot open" << path;
+		return false;
+	}
+	setvbuf(file, nullptr, _IOFBF, 4 << 20);
+	fwrite("PLKVDMP1", 1, 8, file);
+	bool ok = false;
+	const int max_mb = qEnvironmentVariableIntValue("CHIAKI_VIDEO_DUMP_MAX_MB", &ok);
+	video_dump.bytes_left = static_cast<uint64_t>(ok && max_mb > 0 ? max_mb : 512) << 20;
+	video_dump.next = next;
+	video_dump.next_user = next_user;
+	video_dump.file = file;
+	qInfo() << "CHIAKI_VIDEO_DUMP: recording video samples to" << path;
+	return true;
+}
+
+static void VideoDumpClose()
+{
+	if(!video_dump.file)
+		return;
+	fclose(video_dump.file);
+	video_dump.file = nullptr;
+}
+
 StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObject *parent)
 	: QObject(parent),
 		log(this, connect_info.log_level_mask, connect_info.log_file, connect_info.log_sanitize),
@@ -550,6 +619,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
         }
         memcpy(chiaki_connect_info.psn_account_id, psn_account_id.constData(), CHIAKI_PSN_ACCOUNT_ID_SIZE);
 	}
+	FrameTiming::Install();
 	err = chiaki_session_init(&session, &chiaki_connect_info, GetChiakiLog());
 	if(err != CHIAKI_ERR_SUCCESS)
 		throw ChiakiException("Chiaki Session Init failed: " + QString::fromLocal8Bit(chiaki_error_string(err)));
@@ -585,6 +655,8 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	{
 #endif
 		chiaki_session_set_video_sample_cb(&session, chiaki_ffmpeg_decoder_video_sample_cb, ffmpeg_decoder);
+		if(VideoDumpOpen(chiaki_ffmpeg_decoder_video_sample_cb, ffmpeg_decoder))
+			chiaki_session_set_video_sample_cb(&session, VideoDumpSampleCb, nullptr);
 #if CHIAKI_LIB_ENABLE_PI_DECODER
 	}
 #endif
@@ -729,6 +801,7 @@ StreamSession::~StreamSession()
 	if(session_started)
 		chiaki_session_join(&session);
 	chiaki_session_fini(&session);
+	VideoDumpClose();
 	chiaki_opus_decoder_fini(&opus_decoder);
 	chiaki_opus_encoder_fini(&opus_encoder);
 #if CHIAKI_GUI_ENABLE_SPEEX

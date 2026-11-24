@@ -4,6 +4,10 @@
 #include "chiaki/log.h"
 #include "chiaki/time.h"
 #include "streamsession.h"
+#include "frametiming.h"
+
+#include <QByteArrayView>
+#include <QHash>
 
 #include <qpa/qplatformnativeinterface.h>
 
@@ -1138,63 +1142,43 @@ static void logLatencyStats(const char *label, qint64 delta_us)
     if (!label)
         return;
 
+    struct Stats {
+        qint64 last_log_us = 0;
+        qint64 min_us = 0;
+        qint64 max_us = 0;
+        qint64 sum_us = 0;
+        int samples = 0;
+    };
+    // One accumulator per label. All labels but schedule_to_render used to share a single one,
+    // so every stage was summed together and logged under whichever label hit the 1 s mark.
+    // The keys view the callers' string literals, which outlive the table.
     static QMutex stats_mutex;
+    static QHash<QByteArrayView, Stats> stats_by_label;
     QMutexLocker locker(&stats_mutex);
-
-    static qint64 last_log_us_schedule_to_render = 0;
-    static qint64 min_us_schedule_to_render = 0;
-    static qint64 max_us_schedule_to_render = 0;
-    static qint64 sum_us_schedule_to_render = 0;
-    static int samples_schedule_to_render = 0;
-
-    static qint64 last_log_us_render_to_swap = 0;
-    static qint64 min_us_render_to_swap = 0;
-    static qint64 max_us_render_to_swap = 0;
-    static qint64 sum_us_render_to_swap = 0;
-    static int samples_render_to_swap = 0;
-
-    qint64 *last_log_us = nullptr;
-    qint64 *min_us = nullptr;
-    qint64 *max_us = nullptr;
-    qint64 *sum_us = nullptr;
-    int *samples = nullptr;
-
-    if (qstrcmp(label, "schedule_to_render") == 0) {
-        last_log_us = &last_log_us_schedule_to_render;
-        min_us = &min_us_schedule_to_render;
-        max_us = &max_us_schedule_to_render;
-        sum_us = &sum_us_schedule_to_render;
-        samples = &samples_schedule_to_render;
-    } else {
-        last_log_us = &last_log_us_render_to_swap;
-        min_us = &min_us_render_to_swap;
-        max_us = &max_us_render_to_swap;
-        sum_us = &sum_us_render_to_swap;
-        samples = &samples_render_to_swap;
-    }
+    Stats &stats = stats_by_label[QByteArrayView(label)];
 
     const qint64 now_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
-    if (*min_us == 0 || delta_us < *min_us)
-        *min_us = delta_us;
-    if (delta_us > *max_us)
-        *max_us = delta_us;
-    *sum_us += delta_us;
-    (*samples)++;
+    if (stats.samples == 0 || delta_us < stats.min_us)
+        stats.min_us = delta_us;
+    if (stats.samples == 0 || delta_us > stats.max_us)
+        stats.max_us = delta_us;
+    stats.sum_us += delta_us;
+    stats.samples++;
 
-    if (*last_log_us == 0)
-        *last_log_us = now_us;
-    else if (now_us - *last_log_us >= 1000000 && *samples > 0) {
+    if (stats.last_log_us == 0)
+        stats.last_log_us = now_us;
+    else if (now_us - stats.last_log_us >= 1000000) {
         CHIAKI_NOISY_DEBUG().nospace()
             << "[latency] " << label
-            << " min_us=" << *min_us
-            << " max_us=" << *max_us
-            << " avg_us=" << (*sum_us / *samples)
-            << " samples=" << *samples;
-        *last_log_us = now_us;
-        *min_us = 0;
-        *max_us = 0;
-        *sum_us = 0;
-        *samples = 0;
+            << " min_us=" << stats.min_us
+            << " max_us=" << stats.max_us
+            << " avg_us=" << (stats.sum_us / stats.samples)
+            << " samples=" << stats.samples;
+        stats.last_log_us = now_us;
+        stats.min_us = 0;
+        stats.max_us = 0;
+        stats.sum_us = 0;
+        stats.samples = 0;
     }
 }
 
@@ -2974,6 +2958,8 @@ bool QmlMainWindow::configuredFrameMixerEnabledForScheduling() const
 void QmlMainWindow::presentFrame(ChiakiFfmpegFrame frame, int32_t frames_lost, qint64 decoder_delivery_us)
 {
     const qint64 present_entry_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
+    if (frame.frame)
+        FrameTiming::Mark(frame.frame->pts, FrameTiming::Stage::PresentEntry, static_cast<uint64_t>(present_entry_us));
     if (decoder_delivery_us > 0 && present_entry_us >= decoder_delivery_us) {
         const qint64 gui_handoff_us = present_entry_us - decoder_delivery_us;
         if (gui_handoff_us >= 12000) {
@@ -6654,6 +6640,8 @@ void QmlMainWindow::render()
     bool kept_frame_enqueued = false;
     const qint64 queue_update_begin_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
     int queue_depth_before_update = -1;
+    // pts of the frame this cycle renders, for the per-frame latency trace (FrameTiming).
+    int64_t timing_pts = AV_NOPTS_VALUE;
     struct pl_frame direct_render_frame = {};
     const struct pl_frame *direct_frames[] = { &direct_render_frame };
     // pl_frame_mix::timestamps is float in older libplacebo and double in newer
@@ -6684,6 +6672,7 @@ void QmlMainWindow::render()
                 if (backend && backend->zeroCopy())
                     backend->disableZeroCopy();
             }
+            timing_pts = incoming->pts;
             av_frame_free(&incoming);
         }
         direct_render_frame = direct_frame;
@@ -6745,6 +6734,12 @@ void QmlMainWindow::render()
     case PL_QUEUE_OK:
     case PL_QUEUE_MORE:
         break;
+    }
+    if (FrameTiming::Enabled()) {
+        if (!bypass_frame_queue)
+            timing_pts = frameMixCurrentPts(frame_mix);
+        if (timing_pts != AV_NOPTS_VALUE)
+            FrameTiming::Mark(timing_pts, FrameTiming::Stage::RenderEntry, static_cast<uint64_t>(render_entry_us));
     }
     if (pending_frame_waiting) {
         if (applyPendingFrameIfQueueHasCapacity())
@@ -6912,8 +6907,10 @@ void QmlMainWindow::render()
     if (render_entry_us_local > 0 && render_to_start_frame_us >= render_entry_us_local)
         logLatencyStats("render_to_start_frame", render_to_start_frame_us - render_entry_us_local);
     // Submit immediately and let the swapchain / render path enforce pacing.
-    auto close_started_frame = [this, timer_owned_playback, present_interval_us, start_frame_us, depth_limit, pending_frame_waiting, pending_overflow_waiting, snapshotQueueDepth, snapshotRenderScheduleState, present_submit_interval_s](bool present) -> bool {
+    auto close_started_frame = [this, timer_owned_playback, present_interval_us, start_frame_us, depth_limit, pending_frame_waiting, pending_overflow_waiting, snapshotQueueDepth, snapshotRenderScheduleState, present_submit_interval_s, timing_pts](bool present) -> bool {
         const qint64 submit_ready_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
+        if (present && timing_pts != AV_NOPTS_VALUE)
+            FrameTiming::Mark(timing_pts, FrameTiming::Stage::RenderReady, static_cast<uint64_t>(submit_ready_us));
         const int queue_depth_now = snapshotQueueDepth();
         if (detailedVerboseTelemetryEnabled()) {
             static qint64 last_present_trace_log_us = 0;
@@ -7055,11 +7052,15 @@ void QmlMainWindow::render()
                 const qint64 present_swap_begin_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
                 if (present_swap_begin_us >= submit_us)
                     logLatencyStats("submit_to_swap", present_swap_begin_us - submit_us);
+                if (timing_pts != AV_NOPTS_VALUE)
+                    FrameTiming::Mark(timing_pts, FrameTiming::Stage::SwapBegin, static_cast<uint64_t>(present_swap_begin_us));
                 {
                     QMutexLocker locker(&placebo_swapchain_mutex);
                     pl_swapchain_swap_buffers(placebo_swapchain);
                 }
                 const qint64 swap_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
+                if (timing_pts != AV_NOPTS_VALUE)
+                    FrameTiming::SwapDone(timing_pts, static_cast<uint64_t>(swap_us));
                 logSwapInterval(swap_us);
                 this->last_swap_return_us.storeRelease(swap_us);
                 present_complete_us = swap_us;

@@ -138,8 +138,8 @@ CHIAKI_EXPORT bool chiaki_ffmpeg_decoder_video_sample_cb(uint8_t *buf, size_t bu
 		bool frame_recovered, void *user)
 {
 	ChiakiFfmpegDecoder *decoder = user;
-	(void)frame_index;
-	(void)frame_ready_time_us;
+	// Taken before the lock: waiting for a concurrent pull is part of what decoding costs here.
+	uint64_t decode_begin_us = chiaki_time_now_monotonic_us();
 
 	chiaki_mutex_lock(&decoder->mutex);
 	decoder->frames_lost += frames_lost;
@@ -200,6 +200,7 @@ CHIAKI_EXPORT bool chiaki_ffmpeg_decoder_video_sample_cb(uint8_t *buf, size_t bu
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 8, 100)
 	packet->time_base = decoder->synthetic_time_base;
 #endif
+	int64_t packet_pts = packet->pts;
 	decoder->synthetic_packet_pts += synthetic_duration_pts;
 	int r;
 send_packet:
@@ -234,6 +235,15 @@ send_packet:
 		}
 	}
 	av_packet_free(&packet);
+	{
+		ChiakiFfmpegSampleTiming *timing = &decoder->sample_timing[decoder->sample_timing_next];
+		decoder->sample_timing_next = (decoder->sample_timing_next + 1) % CHIAKI_FFMPEG_SAMPLE_TIMING_COUNT;
+		timing->pts = packet_pts;
+		timing->frame_index = frame_index;
+		timing->frame_ready_time_us = frame_ready_time_us;
+		timing->decode_begin_us = decode_begin_us;
+		timing->decode_end_us = chiaki_time_now_monotonic_us();
+	}
 	chiaki_mutex_unlock(&decoder->mutex);
 	decoder->frame_available_cb(decoder, decoder->frame_available_cb_user);
 	return true;
@@ -288,11 +298,29 @@ CHIAKI_EXPORT ChiakiFfmpegFrame chiaki_ffmpeg_decoder_pull_frame(ChiakiFfmpegDec
 	AVRational pkt_timebase = decoder->codec_context->pkt_timebase;
 	AVRational ctx_timebase = decoder->codec_context->time_base;
 	AVRational framerate = decoder->codec_context->framerate;
+	ChiakiFfmpegSampleTiming timing = { 0 };
+	if(frame && frame->pts != AV_NOPTS_VALUE)
+	{
+		for(unsigned int i = 0; i < CHIAKI_FFMPEG_SAMPLE_TIMING_COUNT; i++)
+		{
+			// decode_end_us is never 0 for a recorded sample, which keeps the zeroed
+			// slots of a fresh decoder from matching pts 0.
+			if(decoder->sample_timing[i].pts == frame->pts && decoder->sample_timing[i].decode_end_us)
+			{
+				timing = decoder->sample_timing[i];
+				break;
+			}
+		}
+	}
 	chiaki_mutex_unlock(&decoder->mutex);
 
 	ChiakiFfmpegFrame frame_plus_stats = {};
 	frame_plus_stats.frame = frame;
 	frame_plus_stats.recovered = recovered;
+	frame_plus_stats.frame_index = timing.frame_index;
+	frame_plus_stats.frame_ready_time_us = timing.frame_ready_time_us;
+	frame_plus_stats.decode_begin_us = timing.decode_begin_us;
+	frame_plus_stats.decode_end_us = timing.decode_end_us;
 	if(frame)
 	{
 		chiaki_ffmpeg_frame_get_timing(

@@ -2,6 +2,7 @@
 #include "qmlsettings.h"
 #include "qmlmainwindow.h"
 #include "streamsession.h"
+#include "frametiming.h"
 #include "controllermanager.h"
 #include "psnaccountid.h"
 #include "psntoken.h"
@@ -1114,6 +1115,9 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
         ChiakiFfmpegFrame frame = chiaki_ffmpeg_decoder_pull_frame(decoder, &frames_lost);
         if (!frame.frame)
             return;
+        // prepareFrameForPresentation() may swap the AVFrame for a software copy; the pts survives it.
+        const int64_t timing_pts = frame.frame->pts;
+        FrameTiming::Begin(timing_pts, frame.frame_index, frame.frame_ready_time_us, frame.decode_begin_us, frame.decode_end_us);
         logDecoderDeliveryStats(static_cast<qint64>(chiaki_time_now_monotonic_us()), frames_lost, frame.recovered);
         logDecoderFramePtsStats(static_cast<qint64>(chiaki_time_now_monotonic_us()), frame.pts, frame.duration);
         if (frame.recovered)
@@ -1126,6 +1130,7 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
             return;
         }
         const qint64 prepare_end_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
+        FrameTiming::Mark(timing_pts, FrameTiming::Stage::Prepared, static_cast<uint64_t>(prepare_end_us));
         if (prepare_end_us >= prepare_begin_us && prepare_end_us - prepare_begin_us >= 5000) {
             CHIAKI_NOISY_DEBUG().nospace()
                 << "[decode] prepare_frame_us=" << (prepare_end_us - prepare_begin_us)

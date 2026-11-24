@@ -27,7 +27,28 @@ struct chiaki_ffmpeg_frame_t
 	double pts;
 	double duration;
 	bool recovered;
+	/**
+	 * Telemetry for the sample this frame was decoded from, all 0 when it is not known:
+	 * the Takion frame serial and the time the receiver completed the frame, as the sample
+	 * callback got them, and the monotonic times at which that callback was entered and at
+	 * which avcodec_send_packet() returned.
+	 */
+	ChiakiSeqNum16 frame_index;
+	uint64_t frame_ready_time_us;
+	uint64_t decode_begin_us;
+	uint64_t decode_end_us;
 };
+
+#define CHIAKI_FFMPEG_SAMPLE_TIMING_COUNT 16
+
+typedef struct chiaki_ffmpeg_sample_timing_t
+{
+	int64_t pts;
+	ChiakiSeqNum16 frame_index;
+	uint64_t frame_ready_time_us;
+	uint64_t decode_begin_us;
+	uint64_t decode_end_us;
+} ChiakiFfmpegSampleTiming;
 
 struct chiaki_ffmpeg_decoder_t
 {
@@ -51,6 +72,9 @@ struct chiaki_ffmpeg_decoder_t
 	double synthetic_candidate_duration_us;
 	uint64_t synthetic_last_sample_time_us;
 	uint8_t synthetic_candidate_count;
+	// Timing of the last samples by packet pts, so a pulled frame can report its own. Under mutex.
+	ChiakiFfmpegSampleTiming sample_timing[CHIAKI_FFMPEG_SAMPLE_TIMING_COUNT];
+	unsigned int sample_timing_next;
 };
 
 CHIAKI_EXPORT ChiakiErrorCode chiaki_ffmpeg_decoder_init(ChiakiFfmpegDecoder *decoder, ChiakiLog *log,
