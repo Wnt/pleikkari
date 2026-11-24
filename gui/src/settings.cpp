@@ -705,7 +705,9 @@ static const QMap<RenderBackend, QString> render_backend_values = {
 };
 
 #if defined(Q_OS_MACOS) && QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
-// Default to OpenGL on macOS with Qt >= 6.10 due to MoltenVK bug
+// OpenGL stays the default on macOS with Qt >= 6.10 until Vulkan has been proven there: it
+// used to crash because the surface was created on Qt's container layer instead of the
+// CAMetalLayer (fixed in QmlMainWindow, see macFindMetalLayer). Vulkan can be selected.
 static const RenderBackend render_backend_default = RenderBackend::OpenGL;
 #else
 static const RenderBackend render_backend_default = RenderBackend::Vulkan;
@@ -716,13 +718,11 @@ RenderBackend Settings::GetRenderBackend() const
 	auto v = settings.value("settings/render_backend", render_backend_values[render_backend_default]).toString();
 	auto backend = render_backend_values.key(v, render_backend_default);
 
-#if defined(Q_OS_MACOS) && QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
-	// Force OpenGL on macOS with Qt >= 6.10 because MoltenVK backend crashes when it creates a QContainerLayer.
-	if (backend == RenderBackend::Vulkan) {
-		qWarning() << "Forcing OpenGL backend on macOS (Vulkan unavailable because of Qt 6.10 MoltenVK bug)";
-		return RenderBackend::OpenGL;
-	}
-#endif
+	// CHIAKI_RENDER_BACKEND=vulkan|opengl picks the backend for one run without touching the
+	// stored setting, to try a backend that may not start.
+	const QString override_backend = qEnvironmentVariable("CHIAKI_RENDER_BACKEND").toLower();
+	if (!override_backend.isEmpty())
+		backend = render_backend_values.key(override_backend, backend);
 
 	return backend;
 }

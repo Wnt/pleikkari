@@ -64,6 +64,7 @@ extern "C" {
 #include <atomic>
 #if defined(Q_OS_MACOS)
 #include <objc/message.h>
+#include <objc/runtime.h>
 #endif
 
 Q_LOGGING_CATEGORY(chiakiGui, "chiaki.gui", QtInfoMsg);
@@ -2177,6 +2178,52 @@ static void placebo_log_cb(void *user, pl_log_level level, const char *msg)
         qCCritical(chiakiGui).noquote() << "[libplacebo]" << msg;
         break;
     }
+}
+
+#ifdef Q_OS_MACOS
+// MoltenVK needs the CAMetalLayer the window renders into. Up to Qt 6.9 that is the NSView's
+// own layer. Qt 6.10 put a container layer (QContainerLayer) on the view and moved the Metal
+// layer below it; handing MoltenVK the container crashed, which is why Vulkan used to be
+// forced off on macOS with Qt >= 6.10. Take the view's layer if it is a CAMetalLayer, else
+// the first CAMetalLayer below it.
+static void *macFindMetalLayer(void *layer, int depth = 0)
+{
+    if (!layer)
+        return nullptr;
+    const id obj = reinterpret_cast<id>(layer);
+    Class metal_layer_class = objc_getClass("CAMetalLayer");
+    if (metal_layer_class &&
+        reinterpret_cast<BOOL(*)(id, SEL, Class)>(objc_msgSend)(obj, sel_registerName("isKindOfClass:"), metal_layer_class))
+        return layer;
+    if (depth >= 4)
+        return nullptr;
+    const id sublayers = reinterpret_cast<id(*)(id, SEL)>(objc_msgSend)(obj, sel_registerName("sublayers"));
+    if (!sublayers)
+        return nullptr;
+    const unsigned long count = reinterpret_cast<unsigned long(*)(id, SEL)>(objc_msgSend)(sublayers, sel_registerName("count"));
+    for (unsigned long i = 0; i < count; i++) {
+        const id sublayer = reinterpret_cast<id(*)(id, SEL, unsigned long)>(objc_msgSend)(sublayers, sel_registerName("objectAtIndex:"), i);
+        if (void *found = macFindMetalLayer(sublayer, depth + 1))
+            return found;
+    }
+    return nullptr;
+}
+#endif
+
+// The frame a mix shows: the newest one that is not in the future, as an AVFrame pts.
+static int64_t frameMixCurrentPts(const struct pl_frame_mix &mix)
+{
+    int current = -1;
+    for (int i = 0; i < mix.num_frames; i++) {
+        if (mix.timestamps[i] <= 0 && (current < 0 || mix.timestamps[i] > mix.timestamps[current]))
+            current = i;
+    }
+    if (current < 0 && mix.num_frames > 0)
+        current = 0;
+    if (current < 0 || !mix.frames[current])
+        return AV_NOPTS_VALUE;
+    const AVFrame *avframe = pl_get_mapped_avframe(mix.frames[current]);
+    return avframe ? avframe->pts : AV_NOPTS_VALUE;
 }
 
 static bool map_frame(pl_gpu gpu, pl_tex *tex,
@@ -5851,8 +5898,14 @@ void QmlMainWindow::createSwapchain()
 #elif defined(Q_OS_MACOS)
     VkMetalSurfaceCreateInfoEXT surfaceInfo = {};
     surfaceInfo.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
-    surfaceInfo.pLayer = static_cast<const CAMetalLayer*>(reinterpret_cast<void*(*)(id, SEL)>(objc_msgSend)(reinterpret_cast<id>(winId()), sel_registerName("layer")));
-    err = vk_funcs.vkCreateMetalSurfaceEXT(placebo_vk_inst->instance, &surfaceInfo, nullptr, &surface);
+    surfaceInfo.pLayer = static_cast<const CAMetalLayer*>(macFindMetalLayer(
+        reinterpret_cast<void*(*)(id, SEL)>(objc_msgSend)(reinterpret_cast<id>(winId()), sel_registerName("layer"))));
+    if (surfaceInfo.pLayer) {
+        err = vk_funcs.vkCreateMetalSurfaceEXT(placebo_vk_inst->instance, &surfaceInfo, nullptr, &surface);
+    } else {
+        qCWarning(chiakiGui) << "No CAMetalLayer found under the window's view, cannot create a Vulkan surface";
+        err = VK_ERROR_INITIALIZATION_FAILED;
+    }
 #elif defined(Q_OS_WIN)
     VkWin32SurfaceCreateInfoKHR surfaceInfo = {};
     surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
