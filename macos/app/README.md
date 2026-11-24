@@ -46,7 +46,7 @@ $APP replay video.plkv --headless --log /tmp/replay.log   # a recorded stream, n
 $APP --help
 ```
 
-The launcher script creates a run directory with the log in it, and prints the commands to analyse it:
+The launcher script creates a run directory with the log in it, and prints the commands to analyse it. By default it starts the app through `open`, so LaunchServices activates the app and the local network prompt names Pleikkari; `DIRECT=1` runs the binary from the shell instead:
 
 ```sh
 FULLSCREEN=1 wt/native-app/macos/app/run-pleikkari.sh mylabel
