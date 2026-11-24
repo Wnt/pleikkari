@@ -39,7 +39,15 @@ tri_option(CHIAKI_USE_SYSTEM_NANOPB "Use system-provided nanopb instead of submo
 tri_option(CHIAKI_USE_SYSTEM_CURL "Use system-provided curl instead of submodule. Has to be built with experimental WebSocket support!" OFF)
 option(CHIAKI_LIB_JSONC_EXTERNAL_PROJECT "Build json-c from source via FetchContent" OFF)
 option(CHIAKI_LIB_MINIUPNPC_EXTERNAL_PROJECT "Build miniupnpc from source via FetchContent" OFF)
-option(CHIAKI_LIB_ENABLE_TAKION_SOCKET_TUNING "Raise Takion UDP SO_RCVBUF to >=1MB and mark outgoing packets with DSCP EF" OFF)
+# On by default on macOS: with the 100 kB buffer the stream socket otherwise has, a Wi-Fi radio
+# that leaves its channel for 95 ms (AWDL does, every 0.5 to 2 s) delivers more at once than the
+# buffer holds, and a stream that had lost nothing on the air failed FEC twice a second.
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+	set(CHIAKI_LIB_TAKION_SOCKET_TUNING_DEFAULT ON)
+else()
+	set(CHIAKI_LIB_TAKION_SOCKET_TUNING_DEFAULT OFF)
+endif()
+option(CHIAKI_LIB_ENABLE_TAKION_SOCKET_TUNING "Raise Takion UDP SO_RCVBUF to >=1MB and mark outgoing packets with DSCP EF" ${CHIAKI_LIB_TAKION_SOCKET_TUNING_DEFAULT})
 option(CHIAKI_LIB_ENABLE_TAKION_RECEIVE_BATCHING "Use a fixed Takion receive buffer pool and recvmmsg on Linux/Android" OFF)
 
 set(CHIAKI_VERSION_MAJOR 1)

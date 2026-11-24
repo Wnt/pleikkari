@@ -152,6 +152,7 @@ struct MicBuf
 	uint32_t current_byte;
 };
 
+
 class StreamSession : public QObject
 {
 	friend class StreamSessionPrivate;
@@ -182,6 +183,11 @@ class StreamSession : public QObject
 		bool allow_unmute;
 		int input_block;
 		QString host;
+#ifdef Q_OS_MACOS
+		Settings *awdl_settings = nullptr; // set when AWDL is to be kept down during the stream
+		bool awdl_acquired = false;
+		void ReleaseAwdl();
+#endif
 		int audio_volume;
 		double measured_bitrate = 0;
 		double average_packet_loss = 0;

@@ -5365,6 +5365,7 @@ void QmlMainWindow::update()
     }
 
     if (quick_need_sync.fetchAndStoreRelaxed(0) != 0) {
+        redraw_requested.storeRelease(1);
         quick_render->polishItems();
         if (quick_render->thread() == QThread::currentThread())
             sync();
@@ -5387,6 +5388,13 @@ void QmlMainWindow::scheduleUpdate(bool force, UpdateRequestReason reason)
         QMetaObject::invokeMethod(this, [this, force, reason]() { scheduleUpdate(force, reason); }, Qt::QueuedConnection);
         return;
     }
+
+    // Anything but the arrival of a frame asks for a picture to be drawn even when no new frame
+    // has come (see the direct path in render()).
+    if (reason != UpdateRequestReason::PendingFrame &&
+        reason != UpdateRequestReason::FinalizePending &&
+        reason != UpdateRequestReason::QueueStoredFrame)
+        redraw_requested.storeRelease(1);
 
     const bool ui_priority = render_backend != RenderBackend::OpenGL &&
         (reason == UpdateRequestReason::SceneChanged ||
@@ -5548,21 +5556,45 @@ bool QmlMainWindow::throttleFramePresentation(double interval_s)
         next_frame_target_us = 0;
     last_throttle_interval_s = interval_s;
 
+    // The frame is rendered when this runs; what is left to decide is when it is swapped.
+    //
+    // Frames are presented on an even grid, one stream interval apart, and the grid sits as early
+    // as the slowest frames allow. A frame that is ready after its slot goes out at once and the
+    // grid restarts from it. A frame that is ready early waits for its slot and pulls the grid a
+    // little earlier, so that one late frame does not delay every frame after it for good. The
+    // console sends a large and a small frame in turn and the large one takes about 10 ms longer
+    // to arrive: the large frames end up waiting nothing and the small ones the difference.
+    //
+    // Before, the grid began one interval after the first frame and a late frame was moved to the
+    // next slot. A frame that rendered in 1 ms then waited 15.7 ms of every 16.7 ms, and the
+    // frames that arrived during that sleep replaced each other: 18 % were never shown.
+    //
+    // A frame is never held while the next one is already waiting. That happens after a stall
+    // (a Wi-Fi radio that leaves its channel for 95 ms delivers six frames at once): every
+    // frame is then early for its slot, each waits out the interval while the following ones
+    // arrive, and the picture stays a whole frame behind until the grid has crept back, which
+    // took longer than the time to the next stall. Now the held frame goes out at once and the
+    // grid restarts at the waiting one.
+    //
+    // CHIAKI_PRESENT_PACING=immediate swaps every frame as soon as it is rendered: the least
+    // delay, but the frames are then shown for uneven times.
+    static const bool pacing_immediate = qEnvironmentVariable("CHIAKI_PRESENT_PACING").compare(QLatin1String("immediate"), Qt::CaseInsensitive) == 0;
+    auto newer_frame_waiting = [this]() {
+        if (!bypass_frame_queue)
+            return false;
+        QMutexLocker locker(&direct_frame_mutex);
+        return direct_pending_frame != nullptr;
+    };
+    bool behind = newer_frame_waiting();
     const uint64_t now_us = chiaki_time_now_monotonic_us();
-    if (!next_frame_target_us)
-        next_frame_target_us = now_us + interval_us;
-    while (next_frame_target_us <= now_us)
-        next_frame_target_us += interval_us;
-    const qint64 swap_to_start_gap_estimate_us = this->swap_to_start_gap_estimate_us.loadAcquire();
+    const bool frame_on_time = !pacing_immediate && !behind && next_frame_target_us > now_us;
+    if (!frame_on_time)
+        next_frame_target_us = now_us;
     const qint64 start_frame_block_estimate_us = this->start_frame_block_estimate_us.loadAcquire();
-    const qint64 render_submit_estimate_us = this->render_submit_estimate_us.loadAcquire();
     const qint64 submit_swap_estimate_us = qMax<qint64>(0, static_cast<qint64>(g_submit_swap_est_us.load(std::memory_order_acquire)));
-    const qint64 render_path_estimate_us = qMax<qint64>(0, swap_to_start_gap_estimate_us) +
-        qMax<qint64>(0, start_frame_block_estimate_us) +
-        qMax<qint64>(0, render_submit_estimate_us);
-    const uint64_t base_lead_us = static_cast<uint64_t>(qMax<qint64>(0, render_path_estimate_us));
+    // Only the swap itself is still ahead of this frame.
     const uint64_t extra_lead_us = static_cast<uint64_t>(qMax<qint64>(0, submit_swap_estimate_us));
-    const uint64_t total_lead_us = base_lead_us + extra_lead_us;
+    const uint64_t total_lead_us = extra_lead_us;
     const uint64_t remaining_to_target_us = next_frame_target_us > now_us ? (next_frame_target_us - now_us) : 0;
     const uint64_t target_wakeup_us = remaining_to_target_us > total_lead_us
         ? (next_frame_target_us - total_lead_us)
@@ -5578,6 +5610,10 @@ bool QmlMainWindow::throttleFramePresentation(double interval_s)
 
     uint64_t wait_us = target_wakeup_us > now_us ? (target_wakeup_us - now_us) : 0;
     while (wait_us > 0 && ui_priority_update_pending.loadAcquire() == 0) {
+        if (newer_frame_waiting()) {
+            behind = true;
+            break;
+        }
         const uint64_t sleep_us = qMin<uint64_t>(wait_us, 1000);
         QThread::usleep(static_cast<unsigned long>(sleep_us));
         const uint64_t after_sleep_us = chiaki_time_now_monotonic_us();
@@ -5586,8 +5622,17 @@ bool QmlMainWindow::throttleFramePresentation(double interval_s)
     if (ui_priority_update_pending.fetchAndStoreRelaxed(0) != 0 ||
         present_pacing_reset_pending.fetchAndStoreRelaxed(0) != 0) {
         reset_present_pacing();
+    } else if (behind) {
+        // The waiting frame's slot is now: it goes out as soon as it is rendered and the grid
+        // continues from it.
+        next_frame_target_us = chiaki_time_now_monotonic_us();
     } else {
         next_frame_target_us += interval_us;
+        // An early frame moves the grid earlier by 1/64 of the interval (260 us at 60 fps): a
+        // 10 ms late frame is forgotten in about 0.6 s, and the grid itself moves less than the
+        // display can show.
+        if (frame_on_time)
+            next_frame_target_us -= interval_us / 64;
     }
     present_pace_timer_rearm.storeRelease(0);
     last_present_target_us.storeRelease(0);
@@ -6137,6 +6182,7 @@ void QmlMainWindow::updateSwapchain()
 
     quick_item->setSize(size());
     quick_window->resize(size());
+    redraw_requested.storeRelease(1);
 
     if (quick_render->thread() == QThread::currentThread())
         resizeSwapchain();
@@ -6700,6 +6746,7 @@ void QmlMainWindow::render()
     // pl_frame_mix::timestamps is float in older libplacebo and double in newer
     // releases; take the element type from the header instead of hard-coding it.
     const std::remove_cv<std::remove_pointer<decltype(pl_frame_mix::timestamps)>::type>::type direct_timestamps[] = { 0 };
+    bool direct_cycle_has_new_frame = false;
     if (bypass_frame_queue) {
         AVFrame *incoming = nullptr;
         bool reset_direct_frame = false;
@@ -6712,6 +6759,7 @@ void QmlMainWindow::render()
             pl_unmap_avframe(placeboGpu(), &direct_frame);
             direct_frame = {};
         }
+        const bool incoming_was_set = incoming != nullptr;
         if (incoming) {
             pl_unmap_avframe(placeboGpu(), &direct_frame);
             direct_frame = {};
@@ -6727,6 +6775,21 @@ void QmlMainWindow::render()
             }
             timing_pts = incoming->pts;
             av_frame_free(&incoming);
+        }
+        direct_cycle_has_new_frame = incoming_was_set;
+        // A cycle that brings no new frame and has nothing else to draw ends here. Such cycles
+        // do start: the request a frame posts can arrive after the cycle that was already running
+        // took that frame. Rendered and presented like any other, the same picture went out a
+        // second time and held the render thread for a whole pacing interval, and the frames
+        // that arrived meanwhile replaced each other before they were shown.
+        const bool redraw_wanted = redraw_requested.fetchAndStoreRelaxed(0) != 0;
+        if (!incoming_was_set && !reset_direct_frame && !redraw_wanted && !swapchain_recreated &&
+            direct_frame.num_planes > 0 &&
+            quick_need_render.loadRelaxed() == 0 && quick_need_sync.loadRelaxed() == 0 &&
+            ui_priority_update_pending.loadAcquire() == 0 &&
+            startup_video_visible_pending.loadAcquire() == 0) {
+            finalize_render();
+            return;
         }
         direct_render_frame = direct_frame;
         frame_mix = {};
@@ -6960,7 +7023,7 @@ void QmlMainWindow::render()
     if (render_entry_us_local > 0 && render_to_start_frame_us >= render_entry_us_local)
         logLatencyStats("render_to_start_frame", render_to_start_frame_us - render_entry_us_local);
     // Submit immediately and let the swapchain / render path enforce pacing.
-    auto close_started_frame = [this, timer_owned_playback, present_interval_us, start_frame_us, depth_limit, pending_frame_waiting, pending_overflow_waiting, snapshotQueueDepth, snapshotRenderScheduleState, present_submit_interval_s, timing_pts](bool present) -> bool {
+    auto close_started_frame = [this, timer_owned_playback, present_interval_us, start_frame_us, depth_limit, pending_frame_waiting, pending_overflow_waiting, snapshotQueueDepth, snapshotRenderScheduleState, present_submit_interval_s, timing_pts, direct_cycle_has_new_frame](bool present) -> bool {
         const qint64 submit_ready_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
         if (present && timing_pts != AV_NOPTS_VALUE)
             FrameTiming::Mark(timing_pts, FrameTiming::Stage::RenderReady, static_cast<uint64_t>(submit_ready_us));
@@ -7014,11 +7077,15 @@ void QmlMainWindow::render()
             deferred_present_in_flight.loadAcquire() == 0;
         if (!use_deferred_swap) {
             if (present) {
-                const double pace_multiplier = pending_overflow_waiting
-                    ? 0.80
-                    : (present_backpressure_active.loadAcquire() != 0 ? 0.90 : 1.0);
-                const double paced_interval_s = present_submit_interval_s * pace_multiplier;
-                throttleFramePresentation(paced_interval_s);
+                // A redraw without a new video frame (the UI changed, the window was resized)
+                // goes out at once and leaves the presentation grid where it is.
+                if (!bypass_frame_queue || direct_cycle_has_new_frame) {
+                    const double pace_multiplier = pending_overflow_waiting
+                        ? 0.80
+                        : (present_backpressure_active.loadAcquire() != 0 ? 0.90 : 1.0);
+                    const double paced_interval_s = present_submit_interval_s * pace_multiplier;
+                    throttleFramePresentation(paced_interval_s);
+                }
             }
             else
                 throttleFramePresentation(0.0);
@@ -7185,6 +7252,21 @@ void QmlMainWindow::render()
     if (!hint_frame && frame_mix.num_frames)
         hint_frame = frame_mix.frames[0];
     struct pl_color_space hint = hint_frame ? hint_frame->color : pl_color_space{};
+#ifdef Q_OS_MACOS
+    // An SDR picture goes to an sRGB surface with its code values untouched, which is how the
+    // OpenGL path shows it. Left to itself libplacebo matches the surface to the video and picks
+    // VK_COLOR_SPACE_BT709_NONLINEAR_EXT; MoltenVK then tags the layer kCGColorSpaceITUR_709, and
+    // macOS decodes that tag with a pure 2.4 power curve where sRGB has a linear toe. A code
+    // value of 10 % comes out 2.5 times darker, 5 % five times, 2 % nineteen times (measured with
+    // ColorSync on macOS 27), and the detail in the shadows is gone.
+    const pl_color_transfer mac_sdr_video_trc = hint.transfer ? hint.transfer : PL_COLOR_TRC_BT_1886;
+    const bool mac_sdr_surface = render_backend == RenderBackend::Vulkan && !target_trc && !pl_color_space_is_hdr(&hint);
+    if (mac_sdr_surface) {
+        hint.transfer = PL_COLOR_TRC_SRGB;
+        if (!target_prim)
+            hint.primaries = PL_COLOR_PRIM_BT_709;
+    }
+#endif
     struct pl_color_space target_csp = sw_frame.color_space;
     if (target_csp.hdr.max_luma <= 0.0f) {
         target_csp.hdr.max_luma = 0.0f;
@@ -7272,6 +7354,14 @@ void QmlMainWindow::render()
     };
     target_frame.overlays = &overlay;
     target_frame.num_overlays = 1;
+#ifdef Q_OS_MACOS
+    // The other half of the above: the surface is called by the video's own curve, so libplacebo
+    // re-encodes nothing, and the UI on top keeps its code values as well.
+    if (mac_sdr_surface && hint_frame && target_frame.color.transfer == PL_COLOR_TRC_SRGB) {
+        target_frame.color.transfer = mac_sdr_video_trc;
+        overlay.color.transfer = mac_sdr_video_trc;
+    }
+#endif
     if(target_prim)
     {
         target_frame.color.primaries = static_cast<pl_color_primaries>(target_prim);

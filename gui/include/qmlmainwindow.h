@@ -295,6 +295,7 @@ private:
     bool nvidia_card = false;
     bool direct_stream = false;
     std::atomic<qint64> queue_pts_origin_cached_us = -1;
+    QAtomicInt redraw_requested = 0; // something other than a new video frame wants a picture drawn
     uint64_t next_frame_target_us = 0;
     double last_throttle_interval_s = 0.0;
     QAtomicInteger<int> present_backpressure_active = 0;

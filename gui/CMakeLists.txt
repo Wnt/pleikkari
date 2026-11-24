@@ -82,6 +82,8 @@ if(APPLE)
 	list(APPEND SOURCE_FILES
 		include/macMicPermission.h
 		src/macMicPermission.m
+		include/awdlguard.h
+		src/awdlguard.cpp
 		include/macWakeSleep.h
 		src/macWakeSleep.cpp
 	)
@@ -143,7 +145,7 @@ if(NOT CHIAKI_ENABLE_FFMPEG_DECODER)
 	message(FATAL_ERROR "Chiaki GUI requires CHIAKI_ENABLE_FFMPEG_DECODER=ON")
 endif()
 if(APPLE)
-	target_link_libraries(chiaki "-framework AVFoundation" "-framework IOKit")
+	target_link_libraries(chiaki "-framework AVFoundation" "-framework IOKit" "-framework SystemConfiguration")
 endif()
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fanalyzer")

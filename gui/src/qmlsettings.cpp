@@ -301,6 +301,17 @@ void QmlSettings::setVerticalDeck(bool vertical)
 }
 #endif
 
+bool QmlSettings::suspendAwdl() const
+{
+    return settings->GetSuspendAwdl();
+}
+
+void QmlSettings::setSuspendAwdl(bool enabled)
+{
+    settings->SetSuspendAwdl(enabled);
+    emit suspendAwdlChanged();
+}
+
 bool QmlSettings::fullscreenDoubleClick() const
 {
     return settings->GetFullscreenDoubleClickEnabled();

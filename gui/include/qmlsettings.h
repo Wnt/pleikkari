@@ -38,6 +38,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(int displayTargetPeak READ displayTargetPeak WRITE setDisplayTargetPeak NOTIFY displayTargetPeakChanged)
     Q_PROPERTY(int displayTargetPrim READ displayTargetPrim WRITE setDisplayTargetPrim NOTIFY displayTargetPrimChanged)
     Q_PROPERTY(int displayTargetTrc READ displayTargetTrc WRITE setDisplayTargetTrc NOTIFY displayTargetTrcChanged)
+    Q_PROPERTY(bool suspendAwdl READ suspendAwdl WRITE setSuspendAwdl NOTIFY suspendAwdlChanged)
     Q_PROPERTY(bool fullscreenDoubleClick READ fullscreenDoubleClick WRITE setFullscreenDoubleClick NOTIFY fullscreenDoubleClickChanged)
     Q_PROPERTY(int fpsLocalPS4 READ fpsLocalPS4 WRITE setFpsLocalPS4 NOTIFY fpsLocalPS4Changed)
     Q_PROPERTY(int fpsRemotePS4 READ fpsRemotePS4 WRITE setFpsRemotePS4 NOTIFY fpsRemotePS4Changed)
@@ -243,6 +244,8 @@ public:
     void setEchoSuppressLevel(int level);
 #endif
     bool fullscreenDoubleClick() const;
+    bool suspendAwdl() const;
+    void setSuspendAwdl(bool enabled);
     void setFullscreenDoubleClick(bool enabled);
 
     bool remotePlayAsk() const;
@@ -639,6 +642,7 @@ signals:
     void echoSuppressLevelChanged();
 #endif
     void fullscreenDoubleClickChanged();
+    void suspendAwdlChanged();
     void remotePlayAskChanged();
     void addSteamShortcutAskChanged();
     void hideCursorChanged();

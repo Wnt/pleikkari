@@ -604,6 +604,11 @@ static const ChiakiCodec codec_default_ps4 = CHIAKI_CODEC_H264;
 
 static ChiakiCodec clampCodecForBackend(RenderBackend backend, ChiakiCodec codec)
 {
+	// CHIAKI_CODEC=h264|h265|h265_hdr picks the PS5 codec for one run without touching the
+	// stored setting, like CHIAKI_RENDER_BACKEND does for the backend.
+	const QString override_codec = qEnvironmentVariable("CHIAKI_CODEC").toLower();
+	if (!override_codec.isEmpty())
+		codec = codecs.key(override_codec, codec);
 	if (backend == RenderBackend::OpenGL && codec == CHIAKI_CODEC_H265_HDR)
 		return CHIAKI_CODEC_H265;
 	return codec;
@@ -690,6 +695,11 @@ static const PlaceboPreset placebo_preset_default = PlaceboPreset::HighQuality;
 
 PlaceboPreset Settings::GetPlaceboPreset() const
 {
+	// CHIAKI_PLACEBO_PRESET=fast|default|high_quality|... picks the renderer preset for one run
+	// without touching the stored setting, to compare what each costs on the GPU.
+	const QString override_preset = qEnvironmentVariable("CHIAKI_PLACEBO_PRESET").toLower();
+	if (!override_preset.isEmpty() && placebo_preset_values.values().contains(override_preset))
+		return placebo_preset_values.key(override_preset);
 	auto v = settings.value("settings/placebo_preset", placebo_preset_values[placebo_preset_default]).toString();
 	return placebo_preset_values.key(v, placebo_preset_default);
 }
