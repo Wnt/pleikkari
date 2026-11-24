@@ -43,7 +43,7 @@ plk::dualsense::Manager::Options o;   // allow_output = false, realtime_threads 
 plk::dualsense::Manager::Callbacks cb;
 cb.input = [](Device &d, const InputState &s) { /* HID thread, every report */ };
 m.Start(o, cb);
-// with allow_output: device->SetRumble(l, r); SetTriggerEffects(l11, r11);
+// with allow_output: device->SetRumble(l, r); SetTriggerEffects(l11, r11, mask);
 // SetLightbar(r, g, b); StartHaptics(); PushHapticsPcm16(...)
 m.Stop();                             // effects off (if any were sent), threads joined
 ```
@@ -58,6 +58,16 @@ m.Stop();                             // effects off (if any were sent), threads
 - the controller's sensor clock is in µs.
 
 The header lists each field's units.
+
+## Effects
+
+Rumble, motor power (Sony's `haptic_vol`), LEDs and mic are levels: once set they go
+into every report. A trigger effect is an edge: `SetTriggerEffects(left, right, mask)`
+changes only the triggers in the console's mask (bit 0 L2, output enable bit 0x08;
+bit 1 R2, 0x04) and each named trigger goes into exactly one report, because writing
+a trigger's effect restarts it. Reports are merged in a window of
+`Options::effects_min_interval_us` (2 ms, as the Qt GUI): the first change after a quiet
+period goes out at once, the changes in the following window leave together.
 
 ## Haptics over USB
 

@@ -68,15 +68,22 @@ void EffectsWriter::SetRumble(uint8_t left, uint8_t right)
 	});
 }
 
-void EffectsWriter::SetTriggerEffects(const uint8_t left[11], const uint8_t right[11])
+void EffectsWriter::SetTriggerEffects(const uint8_t left[11], const uint8_t right[11], uint8_t mask)
 {
 	Modify([&](EffectsState &s) -> uint32_t {
-		if((s.active & kGroupTriggers) && !memcmp(s.trigger_left, left, 11) && !memcmp(s.trigger_right, right, 11))
-			return 0;
-		s.active |= kGroupTriggers;
-		memcpy(s.trigger_left, left, 11);
-		memcpy(s.trigger_right, right, 11);
-		return kGroupTriggers;
+		uint32_t changed = 0;
+		if(mask & kTriggerMaskL2)
+		{
+			memcpy(s.trigger_left, left, 11);
+			changed |= kGroupTriggerLeft;
+		}
+		if(mask & kTriggerMaskR2)
+		{
+			memcpy(s.trigger_right, right, 11);
+			changed |= kGroupTriggerRight;
+		}
+		s.active |= changed;
+		return changed;
 	});
 }
 
@@ -85,10 +92,10 @@ void EffectsWriter::SetMotorPowerLevel(uint8_t value)
 	// Like the GUI: stored, and sent with the next report carrying rumble or triggers.
 	// If either is active already, that report goes out now.
 	Modify([&](EffectsState &s) -> uint32_t {
-		if(s.motor_power == value)
-			return 0;
+		const bool changed = !(s.active & kGroupMotorPower) || s.motor_power != value;
+		s.active |= kGroupMotorPower;
 		s.motor_power = value;
-		return kGroupMotorPower;
+		return changed ? kGroupMotorPower : 0;
 	});
 }
 
@@ -136,8 +143,10 @@ void EffectsWriter::ClearEffects()
 		uint32_t changed = 0;
 		if(!(s.active & kGroupRumble) || s.rumble_left || s.rumble_right)
 			changed |= kGroupRumble;
-		if(!(s.active & kGroupTriggers) || memcmp(s.trigger_left, off.trigger_left, 11) || memcmp(s.trigger_right, off.trigger_right, 11))
-			changed |= kGroupTriggers;
+		if(!(s.active & kGroupTriggerLeft) || memcmp(s.trigger_left, off.trigger_left, 11))
+			changed |= kGroupTriggerLeft;
+		if(!(s.active & kGroupTriggerRight) || memcmp(s.trigger_right, off.trigger_right, 11))
+			changed |= kGroupTriggerRight;
 		s.active |= kGroupRumble | kGroupTriggers;
 		s.rumble_left = s.rumble_right = 0;
 		memcpy(s.trigger_left, off.trigger_left, 11);
@@ -171,7 +180,8 @@ EffectsState EffectsWriter::state() const
 
 bool EffectsWriter::SendableLocked() const
 {
-	uint32_t sendable = state_.active;
+	// Motor power alone never starts a report: it rides with rumble or a trigger effect.
+	uint32_t sendable = state_.active & ~kGroupMotorPower;
 	if(state_.active & (kGroupRumble | kGroupTriggers))
 		sendable |= kGroupMotorPower;
 	if(led_phase_ == LedPhase::Hold)
@@ -189,8 +199,24 @@ void EffectsWriter::Run()
 		cond_.wait(lk, [this] { return stop_ || SendableLocked(); });
 		if(stop_)
 			break;
+		if(config_.min_interval_us && have_last_write_)
+		{
+			// Merge window: whatever else changes until it closes leaves with this report.
+			const auto due = last_write_start_ + std::chrono::microseconds(config_.min_interval_us);
+			if(std::chrono::steady_clock::now() < due)
+			{
+				stats_.window_waits++;
+				cond_.wait_until(lk, due, [this] { return stop_; });
+				if(stop_)
+					break;
+			}
+		}
 
-		uint32_t include = state_.active;
+		// Level groups go into every report once set; a trigger only right after it was
+		// set (see the header).
+		uint32_t include = (state_.active & ~(kGroupTriggers | kGroupMotorPower)) | (dirty_ & state_.active & kGroupTriggers);
+		if(state_.active & (kGroupRumble | kGroupTriggers))
+			include |= kGroupMotorPower;
 		bool release = false;
 		if(led_phase_ != LedPhase::Ready)
 		{
@@ -205,10 +231,7 @@ void EffectsWriter::Run()
 		}
 		const size_t size = PackEffectsReport(state_, include, config_.rumble_v2, release,
 			config_.bluetooth, seq_, report);
-		uint32_t delivered = include;
-		if(include & (kGroupRumble | kGroupTriggers))
-			delivered |= kGroupMotorPower;
-		dirty_ &= ~delivered;
+		dirty_ &= ~include;
 		// A zero rumble has now been sent once: leave rumble out of later reports, so
 		// the controller goes back to audio haptics (Controller::SetDualSenseRumble).
 		if((include & kGroupRumble) && !state_.rumble_left && !state_.rumble_right)
@@ -218,6 +241,8 @@ void EffectsWriter::Run()
 
 		lk.unlock();
 		const auto t0 = std::chrono::steady_clock::now();
+		last_write_start_ = t0;
+		have_last_write_ = true;
 		const bool ok = sink_->Write(report, size);
 		const uint64_t ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
 			std::chrono::steady_clock::now() - t0).count();

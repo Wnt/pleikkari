@@ -382,7 +382,7 @@ void FillEffectsBlock(const EffectsState &s, uint32_t include, bool rumble_v2,
 {
 	memset(block, 0, kEffectsBlockSize);
 	const uint32_t g = s.active & include;
-	if(g & (kGroupRumble | kGroupTriggers))
+	if(g & (kGroupRumble | kGroupTriggers | kGroupMotorPower))
 	{
 		block[1] |= 0x40;
 		block[36] = s.motor_power;
@@ -403,10 +403,14 @@ void FillEffectsBlock(const EffectsState &s, uint32_t include, bool rumble_v2,
 		}
 		block[0] |= 0x02;
 	}
-	if(g & kGroupTriggers)
+	if(g & kGroupTriggerRight)
 	{
-		block[0] |= 0x04 | 0x08;
+		block[0] |= 0x04;
 		memcpy(block + 10, s.trigger_right, 11);
+	}
+	if(g & kGroupTriggerLeft)
+	{
+		block[0] |= 0x08;
 		memcpy(block + 21, s.trigger_left, 11);
 	}
 	if(g & kGroupMicLed)

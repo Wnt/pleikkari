@@ -65,6 +65,34 @@ TEST(output_bt_rumble_triggers_intensity)
 		std::string("3150100e4001ff00000000000026ff102030405060708090210102030405060708090a0000000062000400000000000000000000000000000000000000000000000000000000000000004c3e49bb"));
 }
 
+TEST(output_one_trigger_per_group)
+{
+	EffectsState s;
+	s.active = kGroupTriggers;
+	memcpy(s.trigger_left, kTL, 11);
+	memcpy(s.trigger_right, kTR, 11);
+	s.motor_power = 0x93;
+	uint8_t block[kEffectsBlockSize];
+	FillEffectsBlock(s, kGroupTriggerLeft, true, false, block);
+	CHECK_EQ(block[0], 0x08);
+	CHECK_EQ(block[1], 0x40);
+	CHECK_EQ(block[36], 0x93);
+	CHECK(!memcmp(block + 21, kTL, 11));
+	CHECK_EQ(block[10], 0);
+	FillEffectsBlock(s, kGroupTriggerRight, true, false, block);
+	CHECK_EQ(block[0], 0x04);
+	CHECK(!memcmp(block + 10, kTR, 11));
+	CHECK_EQ(block[21], 0);
+	// Motor power alone, when its group is active and included.
+	FillEffectsBlock(s, kGroupMotorPower, true, false, block);
+	CHECK_EQ(block[1], 0);
+	s.active |= kGroupMotorPower;
+	FillEffectsBlock(s, kGroupMotorPower, true, false, block);
+	CHECK_EQ(block[0], 0);
+	CHECK_EQ(block[1], 0x40);
+	CHECK_EQ(block[36], 0x93);
+}
+
 TEST(output_bt_leds_and_mic)
 {
 	EffectsState s;

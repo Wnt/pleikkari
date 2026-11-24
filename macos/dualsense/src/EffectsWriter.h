@@ -11,11 +11,22 @@
 // the pending "queue" is the state itself: Set*() overwrites fields and marks their
 // group dirty; the writer packs whatever is current when it is free. Three updates
 // that land during one blocking write become exactly one following write.
+//
+// Level and edge groups: rumble, motor power, LEDs and mic go into every report once
+// they have been set (a level the controller keeps). A trigger effect is an edge: it goes
+// into the one report after it was set and is then left out, because writing a trigger's
+// effect restarts it on the controller and the console changes L2 and R2 independently.
+//
+// Merge window: after a write, the next one waits until min_interval_us have passed
+// since the previous one started (the Qt GUI's DS_EFFECTS_MIN_INTERVAL_MS). The first
+// change after a quiet period goes out at once; changes in the window that follows leave
+// together, e.g. the L2 and R2 messages a game sends in one frame.
 
 #pragma once
 
 #include "Protocol.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -38,6 +49,7 @@ public:
 		bool bluetooth = false;
 		bool rumble_v2 = true;
 		bool time_constraint = false; // Manager::Options::realtime_threads
+		uint32_t min_interval_us = 0; // merge window; 0 = write as soon as the sink is free
 	};
 
 	EffectsWriter(OutputSink *sink, Config config);
@@ -51,7 +63,10 @@ public:
 	// Thread-safe and non-blocking. A call that leaves the state unchanged writes
 	// nothing.
 	void SetRumble(uint8_t left, uint8_t right);
-	void SetTriggerEffects(const uint8_t left[11], const uint8_t right[11]);
+	// Raw 11-byte trigger blocks. Only the triggers named in `mask` (kTriggerMaskL2,
+	// kTriggerMaskR2) change, and each named one is written with the next report even
+	// when its block is unchanged: the console asked for it, as Sony's client writes it.
+	void SetTriggerEffects(const uint8_t left[11], const uint8_t right[11], uint8_t mask);
 	void SetMotorPowerLevel(uint8_t value);
 	void SetLightbar(uint8_t r, uint8_t g, uint8_t b);
 	void SetPlayerLeds(uint8_t mask);
@@ -83,6 +98,8 @@ private:
 	uint32_t dirty_ = 0;
 	LedPhase led_phase_;
 	uint8_t seq_ = 0;
+	bool have_last_write_ = false;
+	std::chrono::steady_clock::time_point last_write_start_;
 	bool stop_ = false;
 	bool send_off_ = false;
 	bool attempted_ = false;

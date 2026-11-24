@@ -126,26 +126,33 @@ float CalibratedAccel(const Calibration &c, int axis, int16_t raw);
 //
 // The 47-byte effects block, offsets as in SDL's DS5EffectsState_t:
 //   [0]  enable bits 1: 0x01 legacy rumble emulation, 0x02 rumble instead of audio
-//        haptics, 0x04 right trigger effect, 0x08 left trigger effect
+//        haptics, 0x04 right trigger (R2) effect, 0x08 left trigger (L2) effect
 //   [1]  enable bits 2: 0x01 mic LED, 0x02 power save/mute control, 0x04 lightbar
 //        colour, 0x08 release LEDs from the firmware, 0x10 player LEDs,
 //        0x40 motor power level (block[36])
 //   [2]  rumble right (light motor)       [3]  rumble left (heavy motor)
 //   [8]  mic LED: 0 off, 1 on, 2 pulse    [9]  power save control / mute bits
 //   [10..20] right trigger effect          [21..31] left trigger effect
-//   [36] motor power level                 [38] enable bits 3: 0x04 improved rumble
+//   [36] motor power level (Sony: haptic_vol, trigger strength in the high nibble,
+//        rumble in the low)                [38] enable bits 3: 0x04 improved rumble
 //   [43] player LEDs                       [44..46] lightbar R, G, B
 
 enum EffectGroup : uint32_t {
 	kGroupRumble = 1u << 0,
-	kGroupTriggers = 1u << 1,
+	kGroupTriggerLeft = 1u << 1,   // L2: block[21..31], enable bits 1 0x08
 	kGroupMotorPower = 1u << 2,
 	kGroupLightbar = 1u << 3,
 	kGroupPlayerLeds = 1u << 4,
 	kGroupMicLed = 1u << 5,
 	kGroupPowerSave = 1u << 6,
+	kGroupTriggerRight = 1u << 7,  // R2: block[10..20], enable bits 1 0x04
+	kGroupTriggers = kGroupTriggerLeft | kGroupTriggerRight,
 	kGroupLeds = kGroupLightbar | kGroupPlayerLeds,
 };
+
+// Trigger mask of the console's trigger effect message (ChiakiTriggerEffectsEvent::mask).
+constexpr uint8_t kTriggerMaskL2 = 0x01;
+constexpr uint8_t kTriggerMaskR2 = 0x02;
 
 // The complete effect state a client has set. A group's fields go into a report only
 // when its bit is in `active`.
@@ -166,8 +173,11 @@ struct EffectsState {
 EffectsState EffectsOff(uint8_t motor_power);
 
 // Fills the 47-byte block. `include` masks `state.active` (used to hold the LEDs back
-// during the Bluetooth connection animation). Motor power goes in whenever rumble or
-// trigger effects do, as in SendDualSenseEffects().
+// during the Bluetooth connection animation, and to name only the trigger whose effect
+// changed). Each trigger has its own group and enable bit: a report that does not
+// include a trigger leaves that trigger's effect alone on the controller. Motor power
+// goes in whenever rumble or a trigger effect does, or its own group is active and
+// included, as in SendDualSenseEffects().
 void FillEffectsBlock(const EffectsState &state, uint32_t include, bool rumble_v2,
 	bool release_leds, uint8_t block[kEffectsBlockSize]);
 

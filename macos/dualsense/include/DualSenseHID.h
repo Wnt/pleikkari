@@ -190,6 +190,7 @@ struct WriterStats {
 	uint64_t last_write_ns = 0;    // duration of the blocking IOHIDDeviceSetReport
 	uint64_t max_write_ns = 0;
 	uint64_t total_write_ns = 0;
+	uint64_t window_waits = 0;     // writes held back by the merge window (Options::effects_min_interval_us)
 };
 
 // Tuning of the Bluetooth haptics sender. Defaults are those of the Qt GUI's
@@ -226,12 +227,16 @@ public:
 	InputStats input_stats() const;
 
 	// ---- effects (no-ops unless output is enabled) ----
-	// Each group goes into every report once it has been set, as the console does.
-	// Rumble is the exception: once a zero rumble has been sent, rumble leaves the
-	// report again so the controller returns to audio haptics (as the Qt GUI does).
+	// Rumble, motor power, LEDs and mic go into every report once they have been set.
+	// Rumble leaves the report again once a zero rumble has been sent, so the controller
+	// returns to audio haptics (as the Qt GUI does). A trigger effect goes into one report
+	// only: the one after it was set.
 	void SetRumble(uint8_t left, uint8_t right);
 	// Raw 11-byte blocks exactly as the PS5 sends them: [0] effect type, [1..10] params.
-	void SetTriggerEffects(const uint8_t left[11], const uint8_t right[11]);
+	// `mask` names the triggers to change, as ChiakiTriggerEffectsEvent::mask does: bit 0
+	// L2 (output enable bit 0x08), bit 1 R2 (0x04). Each named trigger is written, even
+	// with an unchanged block; the other one is not touched on the controller.
+	void SetTriggerEffects(const uint8_t left[11], const uint8_t right[11], uint8_t mask = 0x03);
 	// Motor power level (effects block byte 36): the Qt GUI's "DualSense intensity",
 	// which it packs as trigger reduction in the high nibble and rumble reduction in
 	// the low nibble. Sent with every report that carries rumble or trigger effects,
@@ -281,6 +286,10 @@ public:
 		// tested in the client; the kernel demotes a real-time thread that overruns its
 		// budget, so a slow callback cannot starve the system.
 		bool realtime_threads = false;
+		// Effect reports closer together than this are merged: the first change after a
+		// quiet period goes out at once, the changes during the following window leave
+		// together in one report (the Qt GUI's DS_EFFECTS_MIN_INTERVAL_MS = 2).
+		uint32_t effects_min_interval_us = 2000;
 	};
 	struct Callbacks {
 		// All run on the HID thread (see THREADING CONTRACT).

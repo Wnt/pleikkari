@@ -85,7 +85,7 @@ TEST(writer_coalesces_updates_during_blocking_write)
 	w.SetRumble(10, 20);
 	CHECK(sink.WaitForWrites(1)); // write #1 is now blocked inside the sink
 	// Three updates while the write is in flight.
-	w.SetTriggerEffects(kTL, kTR);
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2 | kTriggerMaskR2);
 	w.SetLightbar(1, 2, 3);
 	w.SetRumble(30, 40);
 	std::this_thread::sleep_for(20ms);
@@ -120,16 +120,112 @@ TEST(writer_unchanged_state_writes_nothing)
 	sink.AutoRelease();
 	EffectsWriter w(&sink, { false, true });
 	w.Start();
+	w.SetMotorPowerLevel(0); // nothing to carry it yet
 	w.SetRumble(5, 6);
 	CHECK(sink.WaitForWrites(1));
 	w.SetRumble(5, 6);
-	w.SetTriggerEffects(kTL, kTR);
+	w.SetLightbar(1, 1, 1);
 	CHECK(sink.WaitForWrites(2));
-	w.SetTriggerEffects(kTL, kTR);
+	w.SetLightbar(1, 1, 1);
+	w.SetMotorPowerLevel(0);
 	std::this_thread::sleep_for(30ms);
 	CHECK_EQ(sink.Count(), (size_t)2);
 	w.Stop(false);
 	CHECK_EQ(sink.Count(), (size_t)2);
+}
+
+TEST(writer_named_trigger_is_written_even_when_unchanged)
+{
+	// The console asked for it (Sony's client writes every message it gets).
+	SlowSink sink;
+	sink.AutoRelease();
+	EffectsWriter w(&sink, { false, true });
+	w.Start();
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2);
+	CHECK(sink.WaitForWrites(1));
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2);
+	CHECK(sink.WaitForWrites(2));
+	std::this_thread::sleep_for(20ms);
+	CHECK_EQ(sink.Count(), (size_t)2);
+	CHECK_EQ(Block(sink.Report(1))[0], 0x08);
+	w.SetTriggerEffects(kTL, kTR, 0); // names nothing: no write
+	std::this_thread::sleep_for(20ms);
+	CHECK_EQ(sink.Count(), (size_t)2);
+	w.Stop(false);
+}
+
+TEST(writer_trigger_mask_writes_only_the_named_trigger)
+{
+	SlowSink sink;
+	sink.AutoRelease();
+	EffectsWriter w(&sink, { false, true });
+	w.Start();
+	w.SetMotorPowerLevel(0x60);
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2);
+	CHECK(sink.WaitForWrites(1));
+	{
+		const auto r = sink.Report(0);
+		const uint8_t *b = Block(r);
+		CHECK_EQ(b[0], 0x08);         // L2 only
+		CHECK_EQ(b[1], 0x40);         // motor power rides along
+		CHECK_EQ(b[36], 0x60);
+		CHECK(!memcmp(b + 21, kTL, 11));
+		const uint8_t zero[11] = {};
+		CHECK(!memcmp(b + 10, zero, 11));
+	}
+	// The left block passed with an R2-only message must not replace L2's effect.
+	w.SetTriggerEffects(kTR, kTR, kTriggerMaskR2);
+	CHECK(sink.WaitForWrites(2));
+	{
+		const auto r = sink.Report(1);
+		const uint8_t *b = Block(r);
+		CHECK_EQ(b[0], 0x04);         // R2 only
+		CHECK(!memcmp(b + 10, kTR, 11));
+		const uint8_t zero[11] = {};
+		CHECK(!memcmp(b + 21, zero, 11));
+	}
+	const EffectsState st = w.state();
+	CHECK(!memcmp(st.trigger_left, kTL, 11));
+	CHECK(!memcmp(st.trigger_right, kTR, 11));
+	// A later report for something else does not restart either trigger's effect.
+	w.SetRumble(7, 8);
+	CHECK(sink.WaitForWrites(3));
+	CHECK_EQ(Block(sink.Report(2))[0], 0x02);
+	CHECK_EQ(Block(sink.Report(2))[1], 0x40);
+	w.Stop(false);
+}
+
+TEST(writer_merge_window_collects_changes_into_one_report)
+{
+	SlowSink sink;
+	sink.AutoRelease();
+	EffectsWriter::Config c;
+	c.bluetooth = true;
+	c.min_interval_us = 30000; // wide, so a loaded test machine cannot split it
+	EffectsWriter w(&sink, c);
+	w.Start();
+	const auto t0 = std::chrono::steady_clock::now();
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2); // first change after a quiet period: at once
+	CHECK(sink.WaitForWrites(1));
+	const auto t1 = std::chrono::steady_clock::now();
+	CHECK(t1 - t0 < 25ms);
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskR2);
+	w.SetRumble(3, 4);
+	w.SetTriggerEffects(kTR, kTR, kTriggerMaskL2);
+	std::this_thread::sleep_for(5ms);
+	CHECK_EQ(sink.Count(), (size_t)1);
+	CHECK(sink.WaitForWrites(2));
+	const auto t2 = std::chrono::steady_clock::now();
+	CHECK(t2 - t1 >= 20ms);
+	std::this_thread::sleep_for(50ms);
+	CHECK_EQ(sink.Count(), (size_t)2); // one report for all three changes
+	const auto r = sink.Report(1);
+	const uint8_t *b = Block(r);
+	CHECK_EQ(b[0], 0x02 | 0x04 | 0x08);
+	CHECK(!memcmp(b + 10, kTR, 11));
+	CHECK(!memcmp(b + 21, kTR, 11)); // the newest L2 block
+	CHECK_EQ(w.stats().window_waits, (uint64_t)1);
+	w.Stop(false);
 }
 
 TEST(writer_zero_rumble_is_sent_once_then_released)
@@ -164,13 +260,14 @@ TEST(writer_motor_power_rides_with_rumble_or_triggers)
 	w.SetMotorPowerLevel(0x62); // nothing to carry it yet: no write
 	std::this_thread::sleep_for(20ms);
 	CHECK_EQ(sink.Count(), (size_t)0);
-	w.SetTriggerEffects(kTL, kTR);
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2 | kTriggerMaskR2);
 	CHECK(sink.WaitForWrites(1));
 	CHECK_EQ(Block(sink.Report(0))[36], 0x62);
 	w.SetMotorPowerLevel(0x00); // triggers active: goes out at once
 	CHECK(sink.WaitForWrites(2));
 	CHECK_EQ(Block(sink.Report(1))[36], 0x00);
 	CHECK_EQ(Block(sink.Report(1))[1] & 0x40, 0x40);
+	CHECK_EQ(Block(sink.Report(1))[0] & (0x04 | 0x08), 0); // the trigger effects are not restarted
 	w.Stop(false);
 }
 
@@ -249,7 +346,7 @@ TEST(writer_clear_effects)
 	sink.AutoRelease();
 	EffectsWriter w(&sink, { false, false });
 	w.Start();
-	w.SetTriggerEffects(kTL, kTR);
+	w.SetTriggerEffects(kTL, kTR, kTriggerMaskL2 | kTriggerMaskR2);
 	w.SetRumble(50, 60);
 	CHECK(sink.WaitForWrites(1));
 	w.ClearEffects();

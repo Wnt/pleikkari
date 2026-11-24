@@ -247,7 +247,7 @@ InputStats Device::input_stats() const
 	EffectsWriter &w = *impl_->writer
 
 void Device::SetRumble(uint8_t left, uint8_t right) { PLK_WRITER_OR_RETURN; w.SetRumble(left, right); }
-void Device::SetTriggerEffects(const uint8_t left[11], const uint8_t right[11]) { PLK_WRITER_OR_RETURN; w.SetTriggerEffects(left, right); }
+void Device::SetTriggerEffects(const uint8_t left[11], const uint8_t right[11], uint8_t mask) { PLK_WRITER_OR_RETURN; w.SetTriggerEffects(left, right, mask); }
 void Device::SetMotorPowerLevel(uint8_t value) { PLK_WRITER_OR_RETURN; w.SetMotorPowerLevel(value); }
 void Device::SetLightbar(uint8_t r, uint8_t g, uint8_t b) { PLK_WRITER_OR_RETURN; w.SetLightbar(r, g, b); }
 void Device::SetPlayerLeds(uint8_t mask) { PLK_WRITER_OR_RETURN; w.SetPlayerLeds(mask); }
@@ -510,6 +510,7 @@ void Manager::Impl::OnMatched(IOHIDDeviceRef ref)
 		wc.bluetooth = d.bluetooth;
 		wc.rumble_v2 = info.rumble_v2;
 		wc.time_constraint = options.realtime_threads;
+		wc.min_interval_us = options.effects_min_interval_us;
 		d.writer = std::make_unique<EffectsWriter>(&d.sink, wc);
 		d.writer->Start();
 	}
