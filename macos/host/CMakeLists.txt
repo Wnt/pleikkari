@@ -32,3 +32,15 @@ set_target_properties(plk-host-probe PROPERTIES ${PLK_HOST_CXX_PROPERTIES})
 target_compile_options(plk-host-probe PRIVATE -Wall -Wextra)
 target_link_libraries(plk-host-probe PRIVATE plk-host)
 
+add_executable(plk-host-tests
+	tests/AudioTests.cpp
+	tests/main.cpp
+	tests/RegistrationTests.cpp
+	tests/SessionHostTests.cpp
+	tests/TestHarness.h
+	tests/VideoDumpTests.cpp)
+set_target_properties(plk-host-tests PROPERTIES ${PLK_HOST_CXX_PROPERTIES})
+target_compile_options(plk-host-tests PRIVATE -Wall -Wextra)
+target_compile_definitions(plk-host-tests PRIVATE PLK_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+target_link_libraries(plk-host-tests PRIVATE plk-host)
+add_test(NAME plk-host-tests COMMAND plk-host-tests WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")

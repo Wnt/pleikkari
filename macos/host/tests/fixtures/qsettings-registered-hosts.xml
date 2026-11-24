@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic QSettings plist in the shape chiaki-ng's Qt app writes on macOS.
+     Every value here is made up: no real registration, key or token. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>registered_hosts.size</key>
+	<integer>3</integer>
+
+	<!-- 1: a PS5 as QSettings stores it natively (CFData, CFNumber) -->
+	<key>registered_hosts.1.target</key>
+	<integer>1000100</integer>
+	<key>registered_hosts.1.server_nickname</key>
+	<string>Fake PS5</string>
+	<key>registered_hosts.1.server_mac</key>
+	<data>AhEiM0RV</data>
+	<key>registered_hosts.1.rp_regist_key</key>
+	<data>EBESExQVFhcYGRobHB0eHw==</data>
+	<key>registered_hosts.1.rp_key</key>
+	<data>oKGio6SlpqeoqaqrrK2urw==</data>
+	<key>registered_hosts.1.rp_key_type</key>
+	<integer>2</integer>
+	<key>registered_hosts.1.ap_ssid</key>
+	<string></string>
+	<key>registered_hosts.1.console_pin</key>
+	<string></string>
+
+	<!-- 2: a PS4 as an .ini import leaves it: numbers and byte arrays as strings,
+	     a nickname starting with '@' escaped as "@@" -->
+	<key>registered_hosts.2.target</key>
+	<string>1000</string>
+	<key>registered_hosts.2.server_nickname</key>
+	<string>@@Den</string>
+	<key>registered_hosts.2.server_mac</key>
+	<string>@ByteArray(ABCDEF)</string>
+	<key>registered_hosts.2.rp_regist_key</key>
+	<string>@ByteArray(FAKEREGISTKEY016)</string>
+	<key>registered_hosts.2.rp_key</key>
+	<string>@ByteArray(FAKEMORNINGKEY16)</string>
+	<key>registered_hosts.2.rp_key_type</key>
+	<true/>
+
+	<!-- 3: broken: a 15-byte regist key, no rp_key, nickname as UTF-8 data -->
+	<key>registered_hosts.3.target</key>
+	<integer>1000000</integer>
+	<key>registered_hosts.3.server_nickname</key>
+	<data>RmFrZQ==</data>
+	<key>registered_hosts.3.rp_regist_key</key>
+	<data>AQIDBAUGBwgJCgsMDQ4P</data>
+
+	<!-- beyond registered_hosts.size: must be ignored -->
+	<key>registered_hosts.4.server_nickname</key>
+	<string>Beyond size</string>
+	<key>registered_hosts.4.target</key>
+	<integer>1000100</integer>
+
+	<!-- unrelated keys -->
+	<key>settings.bitrate_local_ps5</key>
+	<integer>0</integer>
+	<key>settings.psn_auth_token</key>
+	<string>not-a-real-token</string>
+</dict>
+</plist>
