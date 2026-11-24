@@ -44,11 +44,13 @@ enum class PacingMode {
 	Immediate,
 	// Same, with displaySyncEnabled = YES: the drawable waits for a vsync in
 	// the layer's swap queue. No tearing in direct-to-display fullscreen;
-	// measured ~18 ms slower than Immediate in a window.
+	// measured 2.5-20 ms slower than Immediate in a window, depending on
+	// what else the compositor was showing.
 	ImmediateVsync,
 	// Present the newest decoded frame at each CAMetalDisplayLink update
 	// (preferredFrameLatency 1, frame rate range pinned to displayRefreshHz).
-	// Measured in a window: presents ~41.6 ms after the callback.
+	// Measured in a window on macOS 27: targetPresentationTimestamp is 41.6 ms
+	// (5 refreshes) after the callback; 40-50 ms submit-to-presented.
 	DisplayLink,
 };
 
@@ -97,6 +99,7 @@ struct PipelineConfig {
 	// DisplayLink only: if no new frame is waiting when the display link fires,
 	// wait for one until (targetTimestamp - latchMarginUs) before giving up on
 	// this refresh. 0 disables the wait (render only what is already decoded).
+	// 1500 measured: about half the waits catch a frame, ~7 ms less latency.
 	uint32_t latchMarginUs = 0;
 	int maxDrawables = 3;               // CAMetalLayer.maximumDrawableCount (2 or 3)
 	bool asyncDecode = true;            // kVTDecodeFrame_EnableAsynchronousDecompression
