@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>Pleikkari</string>
+	<key>CFBundleIdentifier</key>
+	<string>fi.madekivi.pleikkari.mac</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Pleikkari</string>
+	<key>CFBundleDisplayName</key>
+	<string>Pleikkari</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@PLK_APP_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@PLK_APP_VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.games</string>
+	<key>LSSupportsGameMode</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<false/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Pleikkari reads your DualSense controller and sends it the game's rumble, trigger effects and haptics.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pleikkari streams from your PlayStation console on the local network.</string>
+</dict>
+</plist>
