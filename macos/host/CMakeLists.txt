@@ -27,3 +27,8 @@ target_link_libraries(plk-host PUBLIC
 	"-framework CoreAudio"
 	"-framework CoreFoundation")
 
+add_executable(plk-host-probe tools/plk-host-probe.cpp)
+set_target_properties(plk-host-probe PROPERTIES ${PLK_HOST_CXX_PROPERTIES})
+target_compile_options(plk-host-probe PRIVATE -Wall -Wextra)
+target_link_libraries(plk-host-probe PRIVATE plk-host)
+
