@@ -79,6 +79,7 @@ class Controller : public QObject
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 		void UpdateState(SDL_Event event);
 		void SetDualSenseRumble(uint8_t left, uint8_t right);
+		void SendDualSenseEffects();
 		bool HandleButtonEvent(SDL_ControllerButtonEvent event);
 		bool HandleAxisEvent(SDL_ControllerAxisEvent event);
 #if SDL_VERSION_ATLEAST(2, 0, 14)
@@ -99,9 +100,18 @@ class Controller : public QObject
 		bool is_steam_virtual;
 		bool is_steam_virtual_unmasked;
 		bool is_dualsense_edge;
+		bool is_bluetooth;
 		bool has_led;
 		bool micbutton_push;
 		uint16_t firmware_version;
+		// Last rumble and trigger effect state sent to a DualSense. Every effect report
+		// carries all of it, see SendDualSenseEffects().
+		bool ds_rumble_used = false;
+		uint8_t ds_rumble_left = 0;
+		uint8_t ds_rumble_right = 0;
+		bool ds_triggers_used = false;
+		uint8_t ds_trigger_left[11] = {};
+		uint8_t ds_trigger_right[11] = {};
 
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 		QMap<QPair<Sint64, Sint64>, uint8_t> touch_ids;
@@ -142,6 +152,9 @@ class Controller : public QObject
 		bool IsSteamVirtual();
 		bool IsSteamVirtualUnmasked();
 		bool IsDualSenseEdge();
+		bool IsBluetooth();
+		// Path usable with SDL_hid_open_path(), empty if SDL is not driving the device through HIDAPI
+		QString GetHidPath();
 		void resetMotionControls();
 
 	signals:

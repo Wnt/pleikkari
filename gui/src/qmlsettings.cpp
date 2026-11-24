@@ -133,6 +133,17 @@ void QmlSettings::setHapticOverride(float override)
     emit hapticOverrideChanged();
 }
 
+bool QmlSettings::dualSenseBtHaptics() const
+{
+    return settings->GetDualSenseBtHapticsEnabled();
+}
+
+void QmlSettings::setDualSenseBtHaptics(bool enabled)
+{
+    settings->SetDualSenseBtHapticsEnabled(enabled);
+    emit dualSenseBtHapticsChanged();
+}
+
 int QmlSettings::audioVideoDisabled() const
 {
     return static_cast<int>(settings->GetAudioVideoDisabled());
@@ -1892,6 +1903,7 @@ void QmlSettings::refreshAllKeys()
     emit logSanitizeChanged();
     emit vSyncEnabledChanged();
     emit hapticOverrideChanged();
+    emit dualSenseBtHapticsChanged();
     emit rumbleHapticsIntensityChanged();
     emit buttonsByPositionChanged();
     emit allowJoystickBackgroundEventsChanged();

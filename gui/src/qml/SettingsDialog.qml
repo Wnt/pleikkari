@@ -2803,6 +2803,26 @@ DialogView {
                             Layout.alignment: Qt.AlignHCenter
                             Label {
                                 Layout.alignment: Qt.AlignRight
+                                text: qsTr("Bluetooth Haptics:")
+                            }
+
+                            C.CheckBox {
+                                id: dualSenseBtHaptics
+                                text: qsTr("Send true haptics to a Bluetooth DualSense")
+                                checked: Chiaki.settings.dualSenseBtHaptics
+                                onToggled: Chiaki.settings.dualSenseBtHaptics = checked
+                            }
+
+                            Label {
+                                Layout.alignment: Qt.AlignRight
+                                text: qsTr("(Checked)")
+                            }
+                        }
+                        RowLayout {
+                            spacing: 10
+                            Layout.alignment: Qt.AlignHCenter
+                            Label {
+                                Layout.alignment: Qt.AlignRight
                                 text: qsTr("True Haptics Intensity:")
                             }
 

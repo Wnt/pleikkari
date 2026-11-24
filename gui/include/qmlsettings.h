@@ -33,6 +33,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(bool showStreamStats READ showStreamStats WRITE setShowStreamStats NOTIFY showStreamStatsChanged)
     Q_PROPERTY(bool streamerMode READ streamerMode WRITE setStreamerMode NOTIFY streamerModeChanged)
     Q_PROPERTY(float hapticOverride READ hapticOverride WRITE setHapticOverride NOTIFY hapticOverrideChanged)
+    Q_PROPERTY(bool dualSenseBtHaptics READ dualSenseBtHaptics WRITE setDualSenseBtHaptics NOTIFY dualSenseBtHapticsChanged)
     Q_PROPERTY(int displayTargetContrast READ displayTargetContrast WRITE setDisplayTargetContrast NOTIFY displayTargetContrastChanged)
     Q_PROPERTY(int displayTargetPeak READ displayTargetPeak WRITE setDisplayTargetPeak NOTIFY displayTargetPeakChanged)
     Q_PROPERTY(int displayTargetPrim READ displayTargetPrim WRITE setDisplayTargetPrim NOTIFY displayTargetPrimChanged)
@@ -255,6 +256,9 @@ public:
 
     float hapticOverride() const;
     void setHapticOverride(float override);
+
+    bool dualSenseBtHaptics() const;
+    void setDualSenseBtHaptics(bool enabled);
 
     int fpsLocalPS4() const;
     void setFpsLocalPS4(int fps);
@@ -639,6 +643,7 @@ signals:
     void addSteamShortcutAskChanged();
     void hideCursorChanged();
     void hapticOverrideChanged();
+    void dualSenseBtHapticsChanged();
     void audioVideoDisabledChanged();
     void showStreamStatsChanged();
     void streamerModeChanged();

@@ -357,7 +357,7 @@ void ControllerManager::ControllerClosed(Controller *controller)
 
 Controller::Controller(int device_id, ControllerManager *manager)
 : QObject(manager), ref(0), last_motion_timestamp(0), micbutton_push(false), is_dualsense(false),
-  is_dualsense_edge(false), has_led(false), firmware_version(0), updating_mapping_button(false), is_handheld(false),
+  is_dualsense_edge(false), is_bluetooth(false), has_led(false), firmware_version(0), updating_mapping_button(false), is_handheld(false),
   is_steam_virtual(false), is_steam_virtual_unmasked(false), enable_analog_stick_mapping(false)
 {
 	this->id = device_id;
@@ -391,6 +391,8 @@ Controller::Controller(int device_id, ControllerManager *manager)
 			auto guid_controller_id = QPair<uint16_t, uint16_t>(0, 0);
 			uint16_t guid_version = 0;
 			SDL_GetJoystickGUIDInfo(guid, &guid_controller_id.first, &guid_controller_id.second, &guid_version, NULL);
+			// The first two GUID bytes hold the bus type (little endian)
+			is_bluetooth = (guid.data[0] | (guid.data[1] << 8)) == 0x05 /* SDL_HARDWARE_BUS_BLUETOOTH */;
 #ifdef Q_OS_MACOS
 			is_steam_virtual = (guid_version == 0 && chiaki_steam_virtual_controller_ids.contains(guid_controller_id));
 			is_steam_virtual_unmasked = (guid_version == 0 && chiaki_steam_virtual_controller_ids.contains(controller_id));
@@ -782,23 +784,55 @@ void Controller::SetDualSenseRumble(uint8_t left, uint8_t right)
 		return;
 	if(!is_dualsense && !is_dualsense_edge)
 		return;
+	ds_rumble_used = true;
+	ds_rumble_left = left;
+	ds_rumble_right = right;
+	SendDualSenseEffects();
+	// Zero rumble has been sent once: later trigger-only reports leave the motors alone,
+	// so they are byte for byte what they were before the reports were combined.
+	if(!left && !right)
+		ds_rumble_used = false;
+#endif
+}
+
+// Rumble and trigger effects used to go out as two separate reports. SDL queues effect
+// reports for a writer thread and only replaces a queued report with a newer one whose
+// enable bits match, so alternating rumble and trigger updates piled up behind each
+// other and reached the controller late and one write apiece. That is slowest over
+// Bluetooth, where every report is a blocking write. Sending the whole current state
+// with every update keeps the enable bits stable while both are in use: SDL then holds
+// at most one queued report behind the write in flight, and it is always the newest.
+void Controller::SendDualSenseEffects()
+{
+#ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	if((!is_dualsense && !is_dualsense_edge) || !controller)
+		return;
 	DS5EffectsState_t state;
 	SDL_zero(state);
-	if(firmware_version < 0x0224)
-	{
-		state.ucEnableBits1 |= 0x01;
-		state.ucRumbleLeft = left >> 1;
-		state.ucRumbleRight = right >> 1;
-	}
-	else
-	{
-		state.ucEnableBits3 |= 0x04;
-		state.ucRumbleLeft = left;
-		state.ucRumbleRight = right;
-	}
 	state.rgucUnknown1[4] = manager->GetDualSenseIntensity();
 	state.ucEnableBits2 |= 0x40;
-	state.ucEnableBits1 |= 0x02;
+	if(ds_rumble_used)
+	{
+		if(firmware_version < 0x0224)
+		{
+			state.ucEnableBits1 |= 0x01;
+			state.ucRumbleLeft = ds_rumble_left >> 1;
+			state.ucRumbleRight = ds_rumble_right >> 1;
+		}
+		else
+		{
+			state.ucEnableBits3 |= 0x04;
+			state.ucRumbleLeft = ds_rumble_left;
+			state.ucRumbleRight = ds_rumble_right;
+		}
+		state.ucEnableBits1 |= 0x02;
+	}
+	if(ds_triggers_used)
+	{
+		state.ucEnableBits1 |= (0x04 /* right trigger */ | 0x08 /* left trigger */);
+		SDL_memcpy(state.rgucLeftTriggerEffect, ds_trigger_left, sizeof(ds_trigger_left));
+		SDL_memcpy(state.rgucRightTriggerEffect, ds_trigger_right, sizeof(ds_trigger_right));
+	}
 	SDL_GameControllerSendEffect(controller, &state, sizeof(state));
 #endif
 }
@@ -838,16 +872,12 @@ void Controller::SetTriggerEffects(uint8_t type_left, const uint8_t *data_left, 
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 	if((!is_dualsense && !is_dualsense_edge) || !controller)
 		return;
-	DS5EffectsState_t state;
-	SDL_zero(state);
-	state.rgucUnknown1[4] = manager->GetDualSenseIntensity();
-	state.ucEnableBits2 |= 0x40;
-	state.ucEnableBits1 |= (0x04 /* left trigger */ | 0x08 /* right trigger */);
-	state.rgucLeftTriggerEffect[0] = type_left;
-	SDL_memcpy(state.rgucLeftTriggerEffect + 1, data_left, 10);
-	state.rgucRightTriggerEffect[0] = type_right;
-	SDL_memcpy(state.rgucRightTriggerEffect + 1, data_right, 10);
-	SDL_GameControllerSendEffect(controller, &state, sizeof(state));
+	ds_triggers_used = true;
+	ds_trigger_left[0] = type_left;
+	SDL_memcpy(ds_trigger_left + 1, data_left, 10);
+	ds_trigger_right[0] = type_right;
+	SDL_memcpy(ds_trigger_right + 1, data_right, 10);
+	SendDualSenseEffects();
 #endif
 }
 
@@ -882,6 +912,28 @@ void Controller::SetHapticRumble(uint16_t left, uint16_t right)
 		SetDualSenseRumble(left >> 8, right >> 8);
 	else
 		SDL_GameControllerRumble(controller, left, right, 5000);
+#endif
+}
+
+bool Controller::IsBluetooth()
+{
+#ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	if(!controller)
+		return false;
+	return is_bluetooth;
+#endif
+	return false;
+}
+
+QString Controller::GetHidPath()
+{
+#if defined(CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER) && SDL_VERSION_ATLEAST(2, 24, 0)
+	if(!controller)
+		return QString();
+	const char *path = SDL_GameControllerPath(controller);
+	return path ? QString::fromUtf8(path) : QString();
+#else
+	return QString();
 #endif
 }
 

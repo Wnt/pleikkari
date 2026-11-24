@@ -184,10 +184,10 @@ Additionally, you can use gyro controls for camera options with any game by mapp
 
 ### Haptics and Adaptive Triggers
 
-PlayStation 5 haptics are mapped for both the DualSense controller (usb connection required) and the Steam Deck controller and adaptive triggers are mapped for the DualSense controller (usb or bluetooth).
+PlayStation 5 haptics are mapped for both the DualSense controller (usb or bluetooth) and the Steam Deck controller and adaptive triggers are mapped for the DualSense controller (usb or bluetooth). Over bluetooth the controller has no audio device, so haptics are sent directly to it as HID reports. This is on by default; turning off `Bluetooth Haptics` in the `Controllers` tab of the settings makes bluetooth haptics fall back to rumble.
 
 If you are using a DualSense controller in Game mode on the Steam Deck or via Steam, you will also need to disable Steam Input for the controller when it's first plugged in following the "Turning off Steam Input" tab [here](#enabling-chiaki-ng-to-work-with-dualsense-dualshock-4){target="_blank" rel="noopener"}.
-Once checked, haptics and adaptive triggers (DualSense only) will work in games that support them when streaming from a PlayStation 5. If the DualSense is plugged in via USB (either initially or plugged in during a gaming session), haptics will be directed to it. If you are using the Steam Deck and don't have a DualSense plugged in, haptics will be directed to it and played via the trackpads.
+Once checked, haptics and adaptive triggers (DualSense only) will work in games that support them when streaming from a PlayStation 5. If the DualSense is plugged in via USB (either initially or plugged in during a gaming session) or connected via bluetooth (unless `Bluetooth Haptics` is turned off), haptics will be directed to it. If you are using the Steam Deck and don't have a DualSense plugged in, haptics will be directed to it and played via the trackpads.
 
 ### Microphone
 

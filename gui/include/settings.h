@@ -302,6 +302,11 @@ class Settings : public QObject
 		bool GetIDROnFECFailureEnabled() const	   { return settings.value("settings/idr_on_fec_failure", false).toBool(); }
 		void SetIDROnFECFailureEnabled(bool enabled) { settings.setValue("settings/idr_on_fec_failure", enabled); }
 
+		// On by default: stream the console's haptics to a Bluetooth DualSense as HID output report 0x32.
+		// Off falls back to rumble, the only Bluetooth behaviour before this setting existed.
+		bool GetDualSenseBtHapticsEnabled() const	   { return settings.value("settings/dualsense_bt_haptics", true).toBool(); }
+		void SetDualSenseBtHapticsEnabled(bool enabled) { settings.setValue("settings/dualsense_bt_haptics", enabled); }
+
 		float GetHapticOverride() const 			{ return settings.value("settings/haptic_override", 1.0).toFloat(); }
 		void SetHapticOverride(float override)	{ settings.setValue("settings/haptic_override", override); }
 
