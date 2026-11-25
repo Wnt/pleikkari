@@ -58,7 +58,7 @@ final class Engine: @unchecked Sendable {
   private let delivery = NSLock()    // one callback at a time
   private var controls: Controls
   // Touched only by the frame in flight.
-  private var writer: (width: Int, height: Int, writer: MLXPixelBufferWriter)?
+  private var writer: (width: Int, height: Int, half: Bool, writer: MLXPixelBufferWriter)?
   private var frameIndex: UInt64 = 0
   let summary: UnsafeMutablePointer<CChar>
 
@@ -107,7 +107,8 @@ final class Engine: @unchecked Sendable {
     _ buffer: CVPixelBuffer, seq: UInt64, reset: Bool, callback: plk_nr_callback,
     context: UnsafeMutableRawPointer?
   ) -> Bool {
-    guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA,
+    let format = CVPixelBufferGetPixelFormatType(buffer)
+    guard format == kCVPixelFormatType_32BGRA || format == kCVPixelFormatType_64RGBAHalf,
       CVPixelBufferGetIOSurface(buffer) != nil
     else { return false }
     state.lock()
@@ -182,8 +183,13 @@ final class Engine: @unchecked Sendable {
       frame, motion: nil, context: context, processingScale: 1, temporal: controls.temporal,
       outputOptions: options, featureControls: controls.profile.featureControls,
       intensity: controls.intensity)
-    if writer?.width != width || writer?.height != height {
-      writer = (width, height, try MLXPixelBufferWriter(width: width, height: height))
+    // The result has the input's pixel format: 8 bits for 8 bits, half float for half float.
+    let half = CVPixelBufferGetPixelFormatType(input.buffer) == kCVPixelFormatType_64RGBAHalf
+    if writer?.width != width || writer?.height != height || writer?.half != half {
+      writer = (
+        width, height, half,
+        try MLXPixelBufferWriter(width: width, height: height, halfOutput: half)
+      )
     }
     return try await writer!.writer.write(rendered)
   }

@@ -5,8 +5,10 @@
 // frame gets the newest result the GPU can deliver and is never made to wait. The result
 // arrives through the callback on a thread of the engine's own.
 //
-// Pixel buffers in and out are IOSurface-backed kCVPixelFormatType_32BGRA, non-linear
-// R'G'B' code values in [0, 1] (what an SDR display is sent). Output has the input's size.
+// Pixel buffers in and out are IOSurface-backed, non-linear R'G'B' in [0, 1] (what an SDR
+// display is sent): kCVPixelFormatType_32BGRA, or kCVPixelFormatType_64RGBAHalf for a
+// picture that 8 bits are too coarse for (the SDR rendition of an HDR picture). Output
+// has the input's size and pixel format.
 #pragma once
 
 #include <CoreVideo/CoreVideo.h>
@@ -19,7 +21,7 @@ extern "C" {
 
 // Bumped when a struct or a function below changes incompatibly; the app refuses a
 // library whose version differs.
-#define PLK_NR_ABI_VERSION 1u
+#define PLK_NR_ABI_VERSION 2u
 
 typedef struct plk_nr_engine plk_nr_engine;
 

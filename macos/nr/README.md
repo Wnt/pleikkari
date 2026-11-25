@@ -27,8 +27,12 @@ decode ──► scale + mix ──► display            every frame, as before
 - The stream's own frames are decoded, rendered and presented exactly as without the
   engine. What the engine costs them is contention for the GPU; see the numbers below.
 
-An SDR stream only: the network was trained on 8-bit SDR pictures, and an HDR stream is
-left as it is.
+The network knows SDR pictures. An SDR stream's frames go to it as they are. Of an HDR
+stream's frame it is given an **SDR rendition** (SDR white at 203 nits, the highlights
+packed above it), and the change it makes to the rendition is made to the HDR frame in
+proportion: what is under about 120 nits changes exactly as it would in an SDR stream,
+and a highlight changes by the same share as its rendition did and stays a highlight.
+[`macos/video/README.md`](../video/README.md) has the curve.
 
 ## Build
 
@@ -87,12 +91,13 @@ plk_nr_set_controls(e, &controls);                                  // with the 
 plk_nr_destroy(e);                                                  // waits for the frame in flight
 ```
 
-Frames in and out are IOSurface-backed BGRA8 pixel buffers of non-linear R'G'B', the
-output the size of the input. The callback runs on a thread of the engine's own, exactly
-once for a frame that was taken, and callbacks never overlap. The engine is idle again
-before the callback is called, so the next frame can be offered from inside it.
-`plk_nr_destroy` must not be called from inside it. `PLK_NR_ABI_VERSION` is checked by
-the app when it loads the library.
+Frames in and out are IOSurface-backed pixel buffers of non-linear R'G'B' in 0...1, BGRA8
+or RGBA half float (the rendition of an HDR picture, which 8 bits are too coarse for);
+the output has the size and the format of the input. The callback runs on a thread of
+the engine's own, exactly once for a frame that was taken, and callbacks never overlap.
+The engine is idle again before the callback is called, so the next frame can be offered
+from inside it. `plk_nr_destroy` must not be called from inside it. `PLK_NR_ABI_VERSION`
+is checked by the app when it loads the library.
 
 In the app, `NeuralEnhancer` (`macos/app/src`) wraps an engine. Its destructor returns at
 once on whatever thread drops the last reference (the render thread, a Metal callback)
@@ -149,6 +154,24 @@ A GPU that never idles between frames would explain that; it was not looked into
 time did not change (p50 1.3 to 1.4 ms either way), and no frame was lost or replaced in
 any of the runs.
 
+**An HDR picture** (the same recording made into HDR10 with its highlights at 1000 nits,
+replayed the same way; load average 14 to 19). The small network at 1280x720 took 46 to
+53 ms a picture, 15 to 16 results a second, and the result on a frame was 76 to 90 ms old
+at the median: the half-float rendition costs the network nothing that shows. The frames
+pay for the mix, which converts every pixel to the rendition and back. GPU time of a
+frame's own pass, p50 / p95 / p99 in ms, 600-frame windows (300 for bilinear):
+
+| scaler | off | on | off again |
+|---|---|---|---|
+| MetalFX | 2.58 / 2.84 / 4.21 | 2.10 / 4.77 / 6.56 | 2.58 / 2.91 / 3.96 |
+| Lanczos | 2.38 / 4.17 / 5.79 | 3.30 / 6.15 / 7.32 | 2.99 / 3.83 / 5.46 |
+| bilinear | 0.76 / 0.80 / 1.31 | 1.37 / 4.35 / 6.35 and 2.11 / 4.94 / 6.83 | 0.76 / 0.80 / 0.81 |
+
+With MetalFX the mix is done at the stream's size, before the scaler, and costs what it
+costs an SDR picture: nothing at the median, about 2 ms at the 95th percentile. The other
+scalers do it at the display's size (3456x2234 here), and there it adds 0.6 to 1.3 ms to
+the median frame.
+
 **Memory**, peak footprint of the app in a 10 s replay (`/usr/bin/time -l`; on Apple
 Silicon it includes what the GPU holds):
 
@@ -170,7 +193,11 @@ By design:
   the frame it was made from. Fast motion therefore shows mostly the plain stream, and a
   still or slowly moving picture shows all of the network's work. Veyra warps its result
   along optical flow; that is not done here.
-- **SDR only.** An HDR stream is never given to the network.
+- **An HDR picture is enhanced through an SDR rendition.** The network never sees more
+  than 1000 nits (brighter is clipped for it, not for the picture), and it sees the
+  highlights with less contrast than they have. Where SDR white sits is fixed at 203
+  nits; a game whose picture is much brighter or dimmer than that looks over- or
+  underexposed to the network.
 - **The GPU and the memory are shared**, see above.
 
 Not yet looked at on a screen (everything above was measured headless):
@@ -179,4 +206,8 @@ Not yet looked at on a screen (everything above was measured headless):
   results disagree, a surface may shimmer; a cross-fade between results would be the
   remedy.
 - How the picture looks while the change fades in and out around moving things.
+- **An HDR picture from a console.** The HDR path is checked by numbers
+  (`plk-video-enhancer-hdr-test`) and was run with the network on a recording converted
+  to HDR10, which has the levels the rendition expects by construction. What the network
+  makes of a real PS5 HDR picture has not been looked at.
 - Frame ready to on glass with the engine on, in a window and in fullscreen.
