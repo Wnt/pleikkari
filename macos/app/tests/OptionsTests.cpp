@@ -232,3 +232,28 @@ PLK_TEST(options_key_script)
 	CHECK(o.keys == "1:2,2:m");
 	CHECK(!parse({ "replay", "/tmp/x.plkv", "--keys", "soon:2" }, o, &err));
 }
+
+PLK_TEST(options_hdr_brightness)
+{
+	Options o;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164" }, o));
+	CHECK(!o.hdr_brightness);
+	CHECK(resolveViewChoices(o).hdr_brightness == 100);
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-brightness", "55" }, o));
+	REQUIRE(o.hdr_brightness);
+	CHECK(resolveViewChoices(o).hdr_brightness == 55);
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-brightness", "10" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-brightness", "250" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-brightness", "bright" }, o));
+
+	// Steps of 5 on a grid of 5, within 20 to 200.
+	CHECK(stepHdrBrightness(100, 1) == 105);
+	CHECK(stepHdrBrightness(100, -1) == 95);
+	CHECK(stepHdrBrightness(100, 0) == 100);
+	CHECK(stepHdrBrightness(57, 1) == 60);
+	CHECK(stepHdrBrightness(57, -1) == 55);
+	CHECK(stepHdrBrightness(200, 1) == 200);
+	CHECK(stepHdrBrightness(20, -1) == 20);
+	CHECK(stepHdrBrightness(22, -1) == 20);
+	CHECK(stepHdrBrightness(198, 1) == 200);
+}

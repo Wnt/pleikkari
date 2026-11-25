@@ -124,6 +124,7 @@ std::string usageText()
 		"                          display's full gamut (default accurate)\n"
 		"  --hdr on|off            HDR stream (h265-hdr) or not, whatever the codec setting says\n"
 		"  --hdr-output pq|linear  (default pq)\n"
+		"  --hdr-brightness PCT    brightness of an HDR picture, 20 to 200 (default 100: as the console sends it)\n"
 		"                          These four are also in the Video menu while the stream runs\n"
 		"                          (right click or M; keys 1-4, A, V, H, P, L). A choice made\n"
 		"                          there is remembered for the next run that does not give the\n"
@@ -277,6 +278,13 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&v) || !video::parseHdrOutput(v, &output))
 				return fail("--hdr-output wants pq or linear");
 			o.hdr_output = output;
+		}
+		else if(a == "--hdr-brightness")
+		{
+			double pct = 0;
+			if(!value(&v) || !parseDouble(v, kHdrBrightnessMin, kHdrBrightnessMax, &pct))
+				return fail("--hdr-brightness wants a percentage from 20 to 200");
+			o.hdr_brightness = (int)(pct + 0.5);
 		}
 		else if(a == "--no-saved-choices")
 			o.saved_choices = false;
@@ -448,7 +456,22 @@ ViewChoices resolveViewChoices(const Options &o)
 		v.sdr_color = *o.sdr_color;
 	if(o.hdr_output)
 		v.hdr_output = *o.hdr_output;
+	if(o.hdr_brightness)
+		v.hdr_brightness = *o.hdr_brightness;
 	return v;
+}
+
+int stepHdrBrightness(int percent, int direction)
+{
+	// Onto the step grid first, so a value given by hand lands on a round number.
+	int next;
+	if(direction > 0)
+		next = (percent / kHdrBrightnessStep + 1) * kHdrBrightnessStep;
+	else if(direction < 0)
+		next = ((percent + kHdrBrightnessStep - 1) / kHdrBrightnessStep - 1) * kHdrBrightnessStep;
+	else
+		next = percent;
+	return next < kHdrBrightnessMin ? kHdrBrightnessMin : next > kHdrBrightnessMax ? kHdrBrightnessMax : next;
 }
 
 ChiakiCodec codecWithHdr(ChiakiCodec codec, bool hdr, ChiakiCodec sdr_codec)

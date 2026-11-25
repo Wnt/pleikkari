@@ -64,6 +64,7 @@ public:
 		video::Scaler scaler = video::Scaler::Bilinear;
 		video::SdrColor sdr_color = video::SdrColor::Accurate;
 		video::HdrOutput hdr_output = video::HdrOutput::PQ;
+		int hdr_brightness = kHdrBrightnessDefault; // percent
 		bool hdr = false;            // the stream is asked for in HDR
 		bool hdr_switchable = false; // a PS5 stream: setHdr() can change that
 	};
@@ -71,6 +72,8 @@ public:
 	void setScaler(video::Scaler scaler);
 	void setSdrColor(video::SdrColor color);
 	void setHdrOutput(video::HdrOutput output);
+	/** Brightness of an HDR picture in percent, kept within the range. @return what was set */
+	int setHdrBrightness(int percent);
 	/**
 	 * HDR on or off. The console fixes the codec when a session starts, so this ends the
 	 * session and starts a new one (a few seconds without picture); window, video pipeline,

@@ -4,6 +4,8 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 
+#include <cstdlib>
+
 namespace plk::app {
 
 const char *const kChoicesDomain = "fi.madekivi.pleikkari.mac";
@@ -14,6 +16,7 @@ const char *const kScalerKey = "scaler";
 const char *const kSdrColorKey = "sdrColor";
 const char *const kHdrOutputKey = "hdrOutput";
 const char *const kHdrKey = "hdr";
+const char *const kHdrBrightnessKey = "hdrBrightness";
 
 CFStringRef cfString(const std::string &s)
 {
@@ -72,6 +75,13 @@ SavedChoices loadSavedChoices(const std::string &domain)
 		c.hdr_output = output;
 	if(readString(domain, kHdrKey, &s) && (s == "on" || s == "off"))
 		c.hdr = s == "on";
+	if(readString(domain, kHdrBrightnessKey, &s))
+	{
+		char *end = nullptr;
+		const long pct = strtol(s.c_str(), &end, 10);
+		if(end != s.c_str() && !*end && pct >= kHdrBrightnessMin && pct <= kHdrBrightnessMax)
+			c.hdr_brightness = (int)pct;
+	}
 	return c;
 }
 
@@ -95,9 +105,14 @@ void saveHdr(bool on, const std::string &domain)
 	writeString(domain, kHdrKey, on ? "on" : "off");
 }
 
+void saveHdrBrightness(int percent, const std::string &domain)
+{
+	writeString(domain, kHdrBrightnessKey, std::to_string(percent).c_str());
+}
+
 void forgetSavedChoices(const std::string &domain)
 {
-	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey })
+	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey })
 		writeString(domain, key, nullptr);
 }
 
@@ -119,6 +134,11 @@ std::string applySavedChoices(const SavedChoices &saved, Options &o)
 	{
 		o.hdr_output = saved.hdr_output;
 		note(std::string("HDR output ") + video::toString(*saved.hdr_output));
+	}
+	if(!o.hdr_brightness && saved.hdr_brightness)
+	{
+		o.hdr_brightness = saved.hdr_brightness;
+		note("HDR brightness " + std::to_string(*saved.hdr_brightness) + " %");
 	}
 	// --codec is as explicit about HDR as --hdr is.
 	if(!o.hdr && !o.codec && saved.hdr)

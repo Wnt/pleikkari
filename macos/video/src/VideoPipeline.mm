@@ -242,6 +242,7 @@ void colorRows(const ColorInfo &c, ShaderParams &p)
 }
 
 bool linearOutput(const ColorInfo &c, HdrOutput mode) { return mode == HdrOutput::ExtendedLinear && c.transfer == Transfer::PQ; }
+bool brightnessScaled(float gain) { return gain < 0.999f || gain > 1.001f; }
 
 CFStringRef colorSpaceName(const ColorInfo &c, HdrOutput mode, SdrColor sdr)
 {
@@ -493,6 +494,7 @@ struct VideoPipeline::Impl {
 	bool layerConfigured = false;
 	ColorInfo layerColor;
 	std::shared_ptr<const HdrMeta> layerHdr;
+	float layerBrightness = 1.0f; // the hdrBrightness the layer's HDR metadata was made for
 	PacingMode activePacing = PacingMode::DisplayLink;
 	Scaler scaler = Scaler::Bilinear;
 	id<MTLFXSpatialScaler> fx;
@@ -1195,6 +1197,7 @@ struct VideoPipeline::Impl {
 		CGColorSpaceRelease(cs);
 		layerColor = c;
 		layerHdr = hdr;
+		layerBrightness = cfg.hdrBrightness;
 		layerConfigured = true;
 		std::lock_guard<std::mutex> sl(shared->m);
 		shared->c.layerColorSpace = ((__bridge NSString *)csName).UTF8String;
@@ -1206,6 +1209,10 @@ struct VideoPipeline::Impl {
 			return nil;
 		if(c.transfer == Transfer::HLG)
 			return [CAEDRMetadata HLGMetadata];
+		// The picture is scaled in linear light (hdrBrightness), so the range it is said
+		// to cover is scaled with it.
+		const float gain = cfg.hdrBrightness;
+		const bool scaled = brightnessScaled(gain);
 		// All-zero values mean "unknown" in both SEI messages; treat as absent.
 		bool hasMd = hdr && hdr->sei.hasMasteringDisplay
 			&& (hdr->sei.masteringDisplay[16] | hdr->sei.masteringDisplay[17] | hdr->sei.masteringDisplay[18] | hdr->sei.masteringDisplay[19]);
@@ -1217,14 +1224,23 @@ struct VideoPipeline::Impl {
 			const auto &cl = hdr->sei.contentLightLevel;
 			char desc[160];
 			// MDCV luminance fields are in 0.0001 cd/m2 units (D.2.28).
-			snprintf(desc, sizeof desc, "SEI: mastering %s%.4f-%.0f nits, CLL %s%u/%u nits",
-					hasMd ? "" : "(none) ",
-					hasMd ? ((md[20] << 24 | md[21] << 16 | md[22] << 8 | md[23]) / 10000.0) : 0.0,
-					hasMd ? ((uint32_t)(md[16] << 24 | md[17] << 16 | md[18] << 8 | md[19]) / 10000.0) : 0.0,
-					hasCll ? "" : "(none) ", (unsigned)(cl[0] << 8 | cl[1]), (unsigned)(cl[2] << 8 | cl[3]));
+			const double mdMin = hasMd ? ((md[20] << 24 | md[21] << 16 | md[22] << 8 | md[23]) / 10000.0) : 0.0;
+			const double mdMax = hasMd ? ((uint32_t)(md[16] << 24 | md[17] << 16 | md[18] << 8 | md[19]) / 10000.0) : 0.0;
+			const unsigned maxCll = (unsigned)(cl[0] << 8 | cl[1]);
+			int n = snprintf(desc, sizeof desc, "SEI: mastering %s%.4f-%.0f nits, CLL %s%u/%u nits",
+					hasMd ? "" : "(none) ", mdMin, mdMax,
+					hasCll ? "" : "(none) ", maxCll, (unsigned)(cl[2] << 8 | cl[3]));
+			if(scaled && n > 0 && (size_t)n < sizeof desc)
+				snprintf(desc + n, sizeof desc - (size_t)n, ", brightness %.0f %%", gain * 100.0f);
 			{
 				std::lock_guard<std::mutex> sl(shared->m);
 				shared->c.hdrMetadata = desc;
+			}
+			if(scaled)
+			{
+				const float lo = (float)(hasMd ? mdMin : 0.005) * gain;
+				const float hi = (float)(hasMd ? mdMax : (maxCll ? maxCll : 1000.0)) * gain;
+				return [CAEDRMetadata HDR10MetadataWithMinLuminance:lo maxLuminance:hi opticalOutputScale:100.0f];
 			}
 			NSData *mdcv = hasMd ? [NSData dataWithBytes:md.data() length:24] : nil;
 			NSData *cll = hasCll ? [NSData dataWithBytes:cl.data() length:4] : nil;
@@ -1232,10 +1248,15 @@ struct VideoPipeline::Impl {
 		}
 		// No SEI: PS5-like defaults (1000-nit mastering display).
 		{
+			char desc[96];
+			if(scaled)
+				snprintf(desc, sizeof desc, "defaults: mastering 0.005-1000 nits, brightness %.0f %%", gain * 100.0f);
+			else
+				snprintf(desc, sizeof desc, "defaults: mastering 0.005-1000 nits");
 			std::lock_guard<std::mutex> sl(shared->m);
-			shared->c.hdrMetadata = "defaults: mastering 0.005-1000 nits";
+			shared->c.hdrMetadata = desc;
 		}
-		return [CAEDRMetadata HDR10MetadataWithMinLuminance:0.005f maxLuminance:1000.0f opticalOutputScale:100.0f];
+		return [CAEDRMetadata HDR10MetadataWithMinLuminance:0.005f * gain maxLuminance:1000.0f * gain opticalOutputScale:100.0f];
 	}
 
 	static MTLRegion letterbox(double srcW, double srcH, NSUInteger tw, NSUInteger th)
@@ -1291,13 +1312,14 @@ struct VideoPipeline::Impl {
 		{
 			if(!layerConfigured || !ci.sameOutput(layerColor) || outFmt != layer.pixelFormat)
 				configureLayer(ci, rec->hdr);
-			else if(ci.hdr() && rec->hdr != layerHdr)
+			else if(ci.hdr() && (rec->hdr != layerHdr || layerBrightness != cfg.hdrBrightness))
 			{
 				[CATransaction begin];
 				[CATransaction setDisableActions:YES];
 				layer.EDRMetadata = edrMetadataFor(ci, rec->hdr);
 				[CATransaction commit];
 				layerHdr = rec->hdr;
+				layerBrightness = cfg.hdrBrightness;
 			}
 			if(drawable && drawable.texture.pixelFormat != outFmt)
 			{
@@ -1348,8 +1370,16 @@ struct VideoPipeline::Impl {
 		// Left-sited chroma sits 1/4 chroma texel left of where a centred
 		// sampler assumes it; shift the lookup right by that much.
 		params.chromaShift = simd_make_float2(ci.chromaLeft ? 0.25f : 0.0f, ci.chromaTop ? 0.25f : 0.0f);
-		// ExtendedLinear: 1.0 = 100 nits, matching opticalOutputScale 100.
-		params.linearize = simd_make_float2(linear ? 1.0f : 0.0f, 100.0f);
+		// ExtendedLinear: 1.0 = 100 nits, matching opticalOutputScale 100. The brightness
+		// is a factor on linear light either way; at 100 % a PQ drawable gets the decoder's
+		// code values untouched.
+		const float gain = cfg.hdrBrightness;
+		if(linear)
+			params.linearize = simd_make_float2(1.0f, 100.0f * gain);
+		else if(ci.transfer == Transfer::PQ && brightnessScaled(gain))
+			params.linearize = simd_make_float2(2.0f, gain);
+		else
+			params.linearize = simd_make_float2(0.0f, 0.0f);
 
 		// Target.
 		id<MTLTexture> target;
@@ -1681,6 +1711,15 @@ void VideoPipeline::setHdrOutput(HdrOutput output)
 		d->cfg.hdrOutput = output;
 		d->layerConfigured = false;
 	});
+}
+
+// The layer keeps its colour space and format: the next frame is scaled in the shader and
+// the layer's HDR metadata follows (renderFrame()).
+void VideoPipeline::setHdrBrightness(float gain)
+{
+	Impl *d = impl_.get();
+	gain = std::min(std::max(gain, 0.05f), 4.0f);
+	d->post([d, gain] { d->cfg.hdrBrightness = gain; });
 }
 
 void VideoPipeline::setLatchMarginUs(uint32_t marginUs) { impl_->latchMarginUs.store(marginUs); }

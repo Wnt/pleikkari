@@ -79,15 +79,31 @@ NSCursor *blankCursor()
 // that menu; everything else goes nowhere (and does not beep).
 - (void)keyDown:(NSEvent *)event
 {
-	if(event.isARepeat)
-		return;
 	const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask
 			& (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption);
 	if(mods)
 		return;
+	// HDR brightness: + and - wherever the layout has them (= is the unshifted + of a US
+	// keyboard), and a held key keeps stepping. Not through the menu's key equivalents,
+	// which do not see a held key or a shifted one the same way on every layout.
+	NSString *chars = event.charactersIgnoringModifiers;
+	NSInteger step = 0;
+	if([chars isEqualToString:@"+"] || [chars isEqualToString:@"="])
+		step = 1;
+	else if([chars isEqualToString:@"-"] || [chars isEqualToString:@"_"])
+		step = -1;
+	if(step)
+	{
+		NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"" action:@selector(plkStepHdrBrightness:) keyEquivalent:@""];
+		item.tag = step;
+		[NSApp sendAction:@selector(plkStepHdrBrightness:) to:nil from:item];
+		return;
+	}
+	if(event.isARepeat)
+		return;
 	if([NSApp.mainMenu performKeyEquivalent:event])
 		return;
-	if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"m"])
+	if([chars.lowercaseString isEqualToString:@"m"])
 		[self popUpVideoMenuWithEvent:nil];
 }
 
@@ -285,6 +301,10 @@ NSMenu *PLKMakeVideoMenu(void)
 	addChoice(menu, @"HDR stream (reconnects)", @selector(plkToggleHdr:), 0, @"h");
 	addChoice(menu, @"Output as PQ, tone mapped by macOS", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::PQ, @"p");
 	addChoice(menu, @"Output as linear light", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::ExtendedLinear, @"l");
+	// The first one's title carries the current value (the app delegate sets it).
+	addChoice(menu, @"Brightness as the console sends it (100 %)", @selector(plkStepHdrBrightness:), 0, @"0");
+	addChoice(menu, @"Brighter", @selector(plkStepHdrBrightness:), 1, @"+");
+	addChoice(menu, @"Darker", @selector(plkStepHdrBrightness:), -1, @"-");
 	return menu;
 }
 

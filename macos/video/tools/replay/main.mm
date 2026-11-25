@@ -67,6 +67,7 @@ struct Options {
 	bool syncDecode = false;
 	bool compressed = false;
 	bool hdrLinear = false;
+	float hdrBrightness = 1.0f;
 	long invalidateAt = -1;
 	std::vector<std::pair<int, int>> readback;
 	bool json = false;
@@ -98,6 +99,7 @@ void usage()
 		"  --sync-decode         synchronous VTDecompressionSessionDecodeFrame\n"
 		"  --compressed-output   request lossless-compressed decoder output (&8v0, 8-bit only)\n"
 		"  --hdr-output pq|linear  HDR drawable: PQ code values (default) or extended-linear half float\n"
+		"  --hdr-brightness PCT  linear light of an HDR picture times PCT/100 (default 100)\n"
 		"  --size WxH            window size in points (default 640x360)\n"
 		"  --back                order the window behind other windows\n"
 		"  --offscreen WxH       render offscreen at WxH pixels (GPU timing; no presentation)\n"
@@ -455,6 +457,7 @@ void printScreenInfo(const char *when)
 	cfg.asyncDecode = !_o.syncDecode;
 	cfg.compressedDecoderOutput = _o.compressed;
 	cfg.hdrOutput = _o.hdrLinear ? video::HdrOutput::ExtendedLinear : video::HdrOutput::PQ;
+	cfg.hdrBrightness = _o.hdrBrightness;
 	cfg.offscreenWidth = _o.offW;
 	cfg.offscreenHeight = _o.offH;
 	PLKReplayApp *__weak weakSelf = self;
@@ -692,6 +695,7 @@ int main(int argc, char **argv)
 			else if(a == "--sync-decode") o.syncDecode = true;
 			else if(a == "--compressed-output") o.compressed = true;
 		else if(a == "--hdr-output") { std::string v = next(); if(v != "pq" && v != "linear") { usage(); return 2; } o.hdrLinear = v == "linear"; }
+		else if(a == "--hdr-brightness") { o.hdrBrightness = (float)atof(next()) / 100.0f; if(!(o.hdrBrightness >= 0.05f && o.hdrBrightness <= 4.0f)) { usage(); return 2; } }
 			else if(a == "--size") { if(!parseSize(next(), &o.winW, &o.winH)) { usage(); return 2; } }
 			else if(a == "--back") o.back = true;
 			else if(a == "--offscreen") { if(!parseSize(next(), &o.offW, &o.offH)) { usage(); return 2; } }

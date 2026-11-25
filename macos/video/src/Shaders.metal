@@ -36,7 +36,9 @@ struct Params {
 	float2 uvScale;      // visible (clean) rect size / luma texture size
 	float2 uvOffset;     // visible rect origin / luma texture size
 	float2 chromaShift;  // chroma siting correction, in chroma texels
-	float2 linearize;    // x > 0.5: decode PQ to linear light, times y (HdrOutput::ExtendedLinear)
+	float2 linearize;    // x = 0: code values as they are. x = 1: PQ to linear light, times y
+	                     // (HdrOutput::ExtendedLinear). x = 2: PQ to linear light, times y, back
+	                     // to PQ (an HDR brightness other than 100 % on a PQ drawable).
 };
 
 constexpr sampler kLinear(filter::linear, address::clamp_to_edge, coord::normalized);
@@ -51,11 +53,22 @@ static inline float3 pq_eotf(float3 e)
 	return pow(max(p - c1, 0.0) / (c2 - c3 * p), 1.0 / m1);
 }
 
+// The inverse: linear light, 1.0 = 10000 nits -> PQ code value.
+static inline float3 pq_inverse_eotf(float3 l)
+{
+	const float m1 = 2610.0 / 16384.0, m2 = 2523.0 / 4096.0 * 128.0;
+	const float c1 = 3424.0 / 4096.0, c2 = 2413.0 / 4096.0 * 32.0, c3 = 2392.0 / 4096.0 * 32.0;
+	float3 p = pow(saturate(l), m1);
+	return pow((c1 + c2 * p) / (1.0 + c3 * p), m2);
+}
+
 static inline float4 to_rgb(float y, float2 c, constant Params &p)
 {
 	float4 v = float4(y, c, 1.0);
 	float3 rgb = saturate(float3(dot(p.r0, v), dot(p.r1, v), dot(p.r2, v)));
-	if(p.linearize.x > 0.5)
+	if(p.linearize.x > 1.5)
+		rgb = pq_inverse_eotf(pq_eotf(rgb) * p.linearize.y);
+	else if(p.linearize.x > 0.5)
 		rgb = pq_eotf(rgb) * p.linearize.y;
 	return float4(rgb, 1.0);
 }

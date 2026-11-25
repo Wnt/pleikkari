@@ -87,6 +87,7 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 | A, V | colour of an SDR picture: accurate (the console's colours), vivid (stretched to the display's full gamut, as a renderer without colour management shows it) | with the next frame; an HDR picture is not affected |
 | H | HDR stream on or off | **reconnects**: the console fixes the codec when a session starts, so the app ends the session and starts a new one. Window, video pipeline, audio output and controller stay; the picture is gone for a few seconds. PS5 only |
 | P, L | HDR output: PQ code values tone mapped by macOS, or linear light decoded in the shader | with the next frame; an SDR picture is not affected |
+| +, -, 0 | HDR brightness: 5 % brighter, 5 % darker (20 to 200 %; a held key keeps stepping), back to 100 % | with the next frame; an SDR picture is not affected. A factor on the picture's linear light, so colours keep their hue. macOS shows 203 nits of an HDR picture as bright as SDR white, and a game's own white is often about twice that: next to the desktop a 100 % picture can look too bright, and about 50 to 60 % brings its white to the desktop's |
 
 What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) and used by the next run that does not give the matching option; `--no-saved-choices` neither uses nor remembers it. Headless runs never use it.
 
@@ -105,6 +106,7 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--color accurate\|vivid` | the menu's choice, else accurate | colour of an SDR picture |
 | `--hdr on\|off` | the menu's choice, else what the codec says | HDR stream or not, on top of `--codec` and the Qt setting |
 | `--hdr-output pq\|linear` | the menu's choice, else pq | |
+| `--hdr-brightness PCT` | the menu's choice, else 100 | 20 to 200; 100 is the picture as the console sends it |
 | `--no-saved-choices` | | neither use nor remember the Video menu's choices |
 | `--stats-interval S` | 10 | 0 = off |
 | `--no-frame-log` | per-frame lines on | |

@@ -136,6 +136,10 @@ struct PipelineConfig {
 	Scaler scaler = Scaler::Bilinear;
 	HdrOutput hdrOutput = HdrOutput::PQ;
 	SdrColor sdrColor = SdrColor::Accurate;
+	// Brightness of an HDR (PQ) picture: its linear light times this, 1 = as the console
+	// sends it. macOS shows 203 nits of an HDR picture as bright as SDR white, and a game's
+	// own white is often twice that, so next to the desktop the picture can look too bright.
+	float hdrBrightness = 1.0f;
 	float displayRefreshHz = 120.0f;    // DisplayLink frame rate range (min=max=preferred)
 	// DisplayLink only: if no new frame is waiting when the display link fires,
 	// wait for one until (targetTimestamp - latchMarginUs) before giving up on
@@ -221,11 +225,12 @@ public:
 	bool submitFrame(const uint8_t *data, size_t size, uint16_t frameIndex, uint64_t frameReadyUs,
 			bool recovered, int32_t framesLost = 0);
 
-	// These three take effect with the next frame; none of them touches the decoder.
+	// These take effect with the next frame; none of them touches the decoder.
 	void setPacingMode(PacingMode mode);
 	void setScaler(Scaler scaler);
 	void setSdrColor(SdrColor color);
 	void setHdrOutput(HdrOutput output);
+	void setHdrBrightness(float gain); // see PipelineConfig::hdrBrightness; 0.05 to 4
 	void setLatchMarginUs(uint32_t marginUs);
 	void setDrawableSize(int widthPixels, int heightPixels);
 

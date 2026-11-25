@@ -212,7 +212,8 @@ int runHeadless(const Options &o)
 {
 	const SEL action = item.action;
 	const bool ours = action == @selector(plkSelectScaler:) || action == @selector(plkSelectSdrColor:)
-			|| action == @selector(plkSelectHdrOutput:) || action == @selector(plkToggleHdr:);
+			|| action == @selector(plkSelectHdrOutput:) || action == @selector(plkToggleHdr:)
+			|| action == @selector(plkStepHdrBrightness:);
 	if(!ours)
 		return YES;
 	if(!_runner || _terminating || _cleanedUp)
@@ -225,6 +226,17 @@ int runHeadless(const Options &o)
 		on = (NSInteger)v.sdr_color == item.tag;
 	else if(action == @selector(plkSelectHdrOutput:))
 		on = (NSInteger)v.hdr_output == item.tag;
+	else if(action == @selector(plkStepHdrBrightness:))
+	{
+		if(item.tag == 0)
+		{
+			on = v.hdr_brightness == kHdrBrightnessDefault;
+			item.title = on ? @"Brightness as the console sends it (100 %)"
+							: [NSString stringWithFormat:@"Brightness %d %%: back to 100 %%", v.hdr_brightness];
+		}
+		else
+			enabled = stepHdrBrightness(v.hdr_brightness, (int)item.tag) != v.hdr_brightness;
+	}
 	else
 	{
 		on = v.hdr;
@@ -262,6 +274,22 @@ int runHeadless(const Options &o)
 	if(_options.saved_choices)
 		saveHdrOutput(output);
 	NSString *text = [@"HDR: " stringByAppendingString:[sender title]];
+	if(!_runner->pictureIsHdr())
+		text = [text stringByAppendingString:@" - for an HDR picture; this one is SDR"];
+	[_window.videoView showNotice:text];
+}
+
+- (void)plkStepHdrBrightness:(id)sender
+{
+	// Also reached straight from the + and - keys, not only through a validated menu item.
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const int direction = (int)[sender tag];
+	const int before = _runner->viewState().hdr_brightness;
+	const int percent = _runner->setHdrBrightness(direction ? stepHdrBrightness(before, direction) : kHdrBrightnessDefault);
+	if(_options.saved_choices && percent != before)
+		saveHdrBrightness(percent);
+	NSString *text = [NSString stringWithFormat:@"HDR brightness %d %%", percent];
 	if(!_runner->pictureIsHdr())
 		text = [text stringByAppendingString:@" - for an HDR picture; this one is SDR"];
 	[_window.videoView showNotice:text];

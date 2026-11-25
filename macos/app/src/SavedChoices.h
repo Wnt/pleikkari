@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 //
 // What was last picked in the Video menu, kept in the app's own preferences
-// (defaults read fi.madekivi.pleikkari.mac): scaler, SDR colour, HDR on or off, HDR output.
+// (defaults read fi.madekivi.pleikkari.mac): scaler, SDR colour, HDR on or off, HDR output,
+// HDR brightness.
 // A run uses a saved choice only where its command line gives no option.
 
 #ifndef PLK_APP_SAVEDCHOICES_H
@@ -23,6 +24,7 @@ struct SavedChoices
 	std::optional<video::SdrColor> sdr_color;
 	std::optional<video::HdrOutput> hdr_output;
 	std::optional<bool> hdr;
+	std::optional<int> hdr_brightness; // percent
 };
 
 /** A value that is missing or not one of the known names is left unset. */
@@ -32,7 +34,8 @@ void saveScaler(video::Scaler scaler, const std::string &domain = kChoicesDomain
 void saveSdrColor(video::SdrColor color, const std::string &domain = kChoicesDomain);
 void saveHdrOutput(video::HdrOutput output, const std::string &domain = kChoicesDomain);
 void saveHdr(bool on, const std::string &domain = kChoicesDomain);
-/** Removes the four values. */
+void saveHdrBrightness(int percent, const std::string &domain = kChoicesDomain);
+/** Removes every value. */
 void forgetSavedChoices(const std::string &domain = kChoicesDomain);
 
 /**

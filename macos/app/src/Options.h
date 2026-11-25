@@ -55,6 +55,7 @@ struct Options
 	std::optional<video::Scaler> scaler;        // default bilinear
 	std::optional<video::SdrColor> sdr_color;   // default accurate
 	std::optional<video::HdrOutput> hdr_output; // default PQ
+	std::optional<int> hdr_brightness;          // percent, default 100
 	std::optional<bool> hdr;         // HDR on or off, whatever --codec, Qt settings or default say
 	bool saved_choices = true;       // read and remember the menu's choices
 	std::string keys;                // test tool: "seconds:key,..." pressed by the app itself
@@ -97,12 +98,22 @@ struct KeyPress
 /** "2:3,4.5:v,6:down" as presses in the order given; false with *error on a malformed list. */
 bool parseKeyScript(const std::string &list, std::vector<KeyPress> &out, std::string *error);
 
+// Brightness of an HDR picture in percent of what the console sends (a factor on its linear
+// light), and the step of the menu's brighter and darker.
+constexpr int kHdrBrightnessMin = 20;
+constexpr int kHdrBrightnessMax = 200;
+constexpr int kHdrBrightnessDefault = 100;
+constexpr int kHdrBrightnessStep = 5;
+/** The next value a step up (+1) or down (-1) from percent, within the range. */
+int stepHdrBrightness(int percent, int direction);
+
 /** What the Video menu changes, as the run starts with it. */
 struct ViewChoices
 {
 	video::Scaler scaler = video::Scaler::Bilinear;
 	video::SdrColor sdr_color = video::SdrColor::Accurate;
 	video::HdrOutput hdr_output = video::HdrOutput::PQ;
+	int hdr_brightness = kHdrBrightnessDefault;
 };
 ViewChoices resolveViewChoices(const Options &options);
 

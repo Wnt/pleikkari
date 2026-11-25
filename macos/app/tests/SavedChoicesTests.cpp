@@ -99,3 +99,26 @@ PLK_TEST(saved_choices_fill_only_what_the_command_line_left_open)
 	CHECK(applySavedChoices(SavedChoices(), nothing).empty());
 	CHECK(!nothing.scaler && !nothing.hdr);
 }
+
+PLK_TEST(saved_choices_hdr_brightness)
+{
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).hdr_brightness);
+	saveHdrBrightness(60, kTestDomain);
+	SavedChoices c = loadSavedChoices(kTestDomain);
+	REQUIRE(c.hdr_brightness);
+	CHECK(*c.hdr_brightness == 60);
+
+	// Used where the command line says nothing, not over what it says.
+	Options o;
+	CHECK(applySavedChoices(c, o) == "HDR brightness 60 %");
+	REQUIRE(o.hdr_brightness);
+	CHECK(*o.hdr_brightness == 60);
+	Options given;
+	given.hdr_brightness = 120;
+	CHECK(applySavedChoices(c, given).empty());
+	CHECK(*given.hdr_brightness == 120);
+
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).hdr_brightness);
+}
