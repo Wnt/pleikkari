@@ -150,7 +150,7 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--no-frame-log` | per-frame lines on | |
 | `--no-controller`, `--no-controller-output`, `--no-realtime-controller` | | |
 | `--bt-haptics on\|off`, `--haptic-gain G` | Qt settings | |
-| `--dump PATH` | | record the video samples (PLKVDMP1) |
+| `--dump PATH` | | record the video samples (PLKVDMP1). PATH gets the first stream. A different stream that starts later (H restarts the session in the other codec; the console may change the stream) goes to a file of its own beside it, named after what it is: `video.plkv`, `video-2-sdr.plkv`, `video-3-hdr.plkv`. Each file starts with its own config sample and replays by itself. `DUMP=1 run-pleikkari.sh <label>` records into the run directory |
 | `--headless` | | no window or NSApplication; video renders offscreen; the controller is only read |
 | `--retry-window S` | 20 | restart a session that ends before it connects |
 | `--seconds S` | | end after S seconds |

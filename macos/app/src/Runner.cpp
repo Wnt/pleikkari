@@ -205,7 +205,17 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 		if(!video_path_->openDump(options_.dump_path, &err))
 			PLK_LOGW("Video dump: %s", err.c_str());
 		else
-			PLK_LOGI("Recording the video samples to %s", options_.dump_path.c_str());
+		{
+			// A stream that starts later (after H, say) gets a file of its own, named after
+			// what it is; a replay of a dump is copied as whatever it holds.
+			const bool stream = options_.command == Command::Stream;
+			if(stream)
+				video_path_->setDumpLabel(chiaki_codec_is_hdr(stream_config_.session.codec) ? "hdr" : "sdr");
+			PLK_LOGI("Recording the video samples to %s%s%s; a stream that starts later goes to %s and so on",
+					options_.dump_path.c_str(), stream ? ", " : "",
+					!stream ? "" : chiaki_codec_is_hdr(stream_config_.session.codec) ? "an HDR stream" : "an SDR stream",
+					dumpSegmentPath(options_.dump_path, 2, stream ? "hdr|sdr" : "").c_str());
+		}
 	}
 	// Neural rendering: the engine is loaded beside the stream, which starts without it.
 	nr_thread_ = std::thread([this] { nrLoop(); });
@@ -366,8 +376,15 @@ bool Runner::setHdr(bool on)
 		return true;
 	PLK_LOGI("HDR %s: restarting the session with codec %s", on ? "on" : "off", codecName(settings.codec));
 	const uint64_t restarts = session_->restarts();
+	// A recording names the file of the stream that starts now after what it is.
+	if(video_path_)
+		video_path_->setDumpLabel(on ? "hdr" : "sdr");
 	if(!session_->restart(settings))
+	{
+		if(video_path_)
+			video_path_->setDumpLabel(on ? "sdr" : "hdr");
 		return false;
+	}
 	hdr_switch_restart_ = restarts + 1;
 	stream_config_.session = settings;
 	if(analysis_)

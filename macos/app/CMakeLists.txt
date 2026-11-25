@@ -119,7 +119,8 @@ add_executable(plk-app-tests
 	tests/OptionsTests.cpp
 	tests/PadMapperTests.cpp
 	tests/SavedChoicesTests.cpp
-	tests/TelemetryTests.cpp)
+	tests/TelemetryTests.cpp
+	tests/VideoPathTests.cpp)
 set_target_properties(plk-app-tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 target_compile_options(plk-app-tests PRIVATE -Wall -Wextra -Wno-unused-parameter)
 target_include_directories(plk-app-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../host/tests")

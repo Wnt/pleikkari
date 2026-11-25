@@ -9,7 +9,11 @@
 #   HOST_NICK   registered console nickname (default PS5-466)
 #   HOST_IP     console address (default 192.168.1.164)
 #   FULLSCREEN=1  start in fullscreen (Game Mode; Cmd-F toggles)
-#   DUMP=1      also record the video samples to <run>/video.plkv (not for latency runs)
+#   DUMP=1      also record the video samples to <run>/video.plkv (not for latency runs). A
+#               stream that starts later, as after H in the Video menu, goes to a file of
+#               its own beside it: video-2-sdr.plkv, video-3-hdr.plkv and so on. Each file
+#               replays by itself (replay-pleikkari.sh). About 110 to 190 MB a minute at
+#               15000 to 25000 kbit/s
 #   COLLECT=1   also run build/mac/profile/collect.sh (top, ping, nettop, GPU) for SECONDS
 #   SECONDS_TO_COLLECT  collect.sh duration (default 300)
 #   DIRECT=1    exec the binary from this shell instead of `open` (by default the app goes
@@ -97,6 +101,7 @@ echo "app         $APP"
 echo "pid         $PID ($STATE)"
 echo "run dir     $RUN"
 echo "session log $RUN/session.log"
+[ "${DUMP:-0}" = 1 ] && echo "recording   $RUN/video.plkv, and video-<n>-<hdr|sdr>.plkv for each stream that starts after it (H)"
 if [ "$STATE" = "process exited" ]; then
 	echo "the stream did not start; the end of the log:" >&2
 	tail -n 15 "$RUN/session.log" >&2 2> /dev/null || tail -n 15 "$RUN/stdout.log" >&2
