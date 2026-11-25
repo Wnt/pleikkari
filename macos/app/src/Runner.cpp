@@ -159,7 +159,8 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 	frame_logger_ = std::make_unique<FrameLogger>(options_.frame_log);
 	video::PipelineConfig pc;
 	pc.codec = video::Codec::Auto;
-	pc.pacing = options_.pacing;
+	pacing_ = effectivePacing(options_.pacing, window_fullscreen_, view_.fullscreen_sync);
+	pc.pacing = pacing_;
 	pc.scaler = view_.scaler;
 	pc.hdrOutput = view_.hdr_output;
 	pc.hdrBrightness = view_.hdr_brightness / 100.0f;
@@ -188,7 +189,7 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 		return false;
 	}
 	PLK_LOGI("Video: pacing %s, scaler %s, SDR colour %s, HDR output %s, HDR brightness %d %%, HDR tone mapping %s, display %.0f Hz%s",
-			video::toString(options_.pacing), video::toString(view_.scaler), video::toString(view_.sdr_color),
+			video::toString(pacing_), video::toString(view_.scaler), video::toString(view_.sdr_color),
 			video::toString(view_.hdr_output), view_.hdr_brightness, video::toString(view_.hdr_tone_map), pc.displayRefreshHz,
 			options_.headless ? ", headless (offscreen)" : "");
 	video_path_ = std::make_unique<VideoPath>(pipeline_.get());
@@ -216,6 +217,8 @@ Runner::ViewState Runner::viewState() const
 	v.hdr_output = view_.hdr_output;
 	v.hdr_brightness = view_.hdr_brightness;
 	v.hdr_tone_map = view_.hdr_tone_map;
+	v.fullscreen_sync = view_.fullscreen_sync;
+	v.fullscreen_sync_applies = options_.pacing == video::PacingMode::Immediate;
 	v.hdr = stream_config_.session.codec == CHIAKI_CODEC_H265_HDR && options_.command == Command::Stream;
 	v.hdr_switchable = options_.command == Command::Stream && ps5_ && session_ && !stop_requested_.load();
 	return v;
@@ -261,6 +264,30 @@ void Runner::setHdrToneMap(video::HdrToneMap tone_map)
 	if(pipeline_)
 		pipeline_->setHdrToneMap(tone_map);
 	PLK_LOGI("Video: HDR tone mapping %s", video::toString(tone_map));
+}
+
+void Runner::setFullscreenSync(bool on)
+{
+	view_.fullscreen_sync = on;
+	applyPacing();
+}
+
+void Runner::setWindowFullscreen(bool fullscreen)
+{
+	window_fullscreen_ = fullscreen;
+	applyPacing();
+}
+
+void Runner::applyPacing()
+{
+	const video::PacingMode mode = effectivePacing(options_.pacing, window_fullscreen_, view_.fullscreen_sync);
+	if(mode == pacing_)
+		return;
+	pacing_ = mode;
+	if(pipeline_)
+		pipeline_->setPacingMode(mode);
+	PLK_LOGI("Video: pacing %s (%s, fullscreen sync %s)", video::toString(mode),
+			window_fullscreen_ ? "fullscreen" : "window", view_.fullscreen_sync ? "on" : "off");
 }
 
 void Runner::setDisplayHeadroom(float headroom)
@@ -496,11 +523,12 @@ void Runner::logStats(bool final_report)
 		const video::Stats s = pipeline_->stats();
 		char buf[512];
 		snprintf(buf, sizeof(buf),
-				"video%s: %dx%d %s %s%s %s -> %dx%d scaler=%s layer=%s hdr_brightness=%d%% tone_map=%s headroom=%.2f submitted=%llu decoded=%llu rendered=%llu "
+				"video%s: %dx%d %s %s%s %s -> %dx%d scaler=%s pacing=%s layer=%s hdr_brightness=%d%% tone_map=%s headroom=%.2f submitted=%llu decoded=%llu rendered=%llu "
 				"presented=%llu superseded=%llu not_presented=%llu lost=%llu errors=%llu idr=%llu awaiting_idr=%llu",
 				final_report ? " (last window)" : "", s.width, s.height, s.codec.c_str(), s.pixelFormat.c_str(),
 				s.hdr ? " HDR" : "", s.hardwareDecoder ? "hw" : "sw?", s.targetWidth, s.targetHeight,
-				s.scaler.empty() ? "-" : s.scaler.c_str(), s.layerColorSpace.empty() ? "-" : s.layerColorSpace.c_str(),
+				s.scaler.empty() ? "-" : s.scaler.c_str(), s.pacing.empty() ? "-" : s.pacing.c_str(),
+				s.layerColorSpace.empty() ? "-" : s.layerColorSpace.c_str(),
 				view_.hdr_brightness, video::toString(view_.hdr_tone_map), display_headroom_.load(),
 				(unsigned long long)s.framesSubmitted, (unsigned long long)s.framesDecoded,
 				(unsigned long long)s.framesRendered, (unsigned long long)s.framesPresented,

@@ -49,7 +49,7 @@ struct Options
 
 	// Window and video.
 	bool fullscreen = false;
-	video::PacingMode pacing = video::PacingMode::Immediate;
+	video::PacingMode pacing = video::PacingMode::Immediate; // see effectivePacing()
 	// The four below can also be changed while the stream runs (the Video menu). A choice
 	// made there is remembered and used by the next run that does not give the option.
 	std::optional<video::Scaler> scaler;        // default bilinear
@@ -57,6 +57,7 @@ struct Options
 	std::optional<video::HdrOutput> hdr_output; // default PQ
 	std::optional<int> hdr_brightness;          // percent, default 100
 	std::optional<video::HdrToneMap> hdr_tone_map; // default app
+	std::optional<bool> fullscreen_sync;        // default on, see effectivePacing()
 	std::optional<bool> hdr;         // HDR on or off, whatever --codec, Qt settings or default say
 	bool saved_choices = true;       // read and remember the menu's choices
 	std::string keys;                // test tool: "seconds:key,..." pressed by the app itself
@@ -118,8 +119,18 @@ struct ViewChoices
 	video::HdrOutput hdr_output = video::HdrOutput::PQ;
 	int hdr_brightness = kHdrBrightnessDefault;
 	video::HdrToneMap hdr_tone_map = video::HdrToneMap::App;
+	bool fullscreen_sync = true;
 };
 ViewChoices resolveViewChoices(const Options &options);
+
+/**
+ * The pipeline's pacing for --pacing as given and the window as it is. A fullscreen window's
+ * layer can go straight to the display, past the compositor, and a frame presented without
+ * display sync is then switched in wherever the refresh happens to be: the picture tears.
+ * So immediate becomes immediate-vsync in fullscreen, unless fullscreen sync is switched
+ * off. The other modes are left as given.
+ */
+video::PacingMode effectivePacing(video::PacingMode given, bool window_fullscreen, bool fullscreen_sync);
 
 /** The codec with HDR switched on or off: h265-hdr, or the SDR codec the stream had (h265 if it had none). */
 ChiakiCodec codecWithHdr(ChiakiCodec codec, bool hdr, ChiakiCodec sdr_codec = CHIAKI_CODEC_H265);

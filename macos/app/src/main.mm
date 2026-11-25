@@ -130,6 +130,7 @@ int runHeadless(const Options &o)
 	float _loggedHeadroom;
 	NSTimer *_headroomTimer;
 	id _screenObserver;
+	NSArray *_fullscreenObservers;
 }
 
 - (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
@@ -192,6 +193,23 @@ int runHeadless(const Options &o)
 											  }];
 	_headroomTimer.tolerance = 0.05;
 	[NSRunLoop.mainRunLoop addTimer:_headroomTimer forMode:NSRunLoopCommonModes];
+	// Fullscreen from the end of the animation in to the start of the one out: the time
+	// the system can hand the layer straight to the display.
+	NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+	_fullscreenObservers = @[
+		[center addObserverForName:NSWindowDidEnterFullScreenNotification
+							object:_window
+							 queue:NSOperationQueue.mainQueue
+						usingBlock:^(NSNotification *note) {
+							[headroomSelf windowFullscreenChanged:YES];
+						}],
+		[center addObserverForName:NSWindowWillExitFullScreenNotification
+							object:_window
+							 queue:NSOperationQueue.mainQueue
+						usingBlock:^(NSNotification *note) {
+							[headroomSelf windowFullscreenChanged:NO];
+						}],
+	];
 	[_window.videoView reportDrawableSize];
 	if(@available(macOS 14.0, *))
 		[NSApp activate];
@@ -233,7 +251,8 @@ int runHeadless(const Options &o)
 	const SEL action = item.action;
 	const bool ours = action == @selector(plkSelectScaler:) || action == @selector(plkSelectSdrColor:)
 			|| action == @selector(plkSelectHdrOutput:) || action == @selector(plkToggleHdr:)
-			|| action == @selector(plkStepHdrBrightness:) || action == @selector(plkToggleHdrToneMap:);
+			|| action == @selector(plkStepHdrBrightness:) || action == @selector(plkToggleHdrToneMap:)
+			|| action == @selector(plkToggleFullscreenSync:);
 	if(!ours)
 		return YES;
 	if(!_runner || _terminating || _cleanedUp)
@@ -248,12 +267,17 @@ int runHeadless(const Options &o)
 		on = (NSInteger)v.hdr_output == item.tag;
 	else if(action == @selector(plkToggleHdrToneMap:))
 		on = v.hdr_tone_map == video::HdrToneMap::System;
+	else if(action == @selector(plkToggleFullscreenSync:))
+	{
+		on = v.fullscreen_sync;
+		enabled = v.fullscreen_sync_applies;
+	}
 	else if(action == @selector(plkStepHdrBrightness:))
 	{
 		if(item.tag == 0)
 		{
 			on = v.hdr_brightness == kHdrBrightnessDefault;
-			item.title = on ? @"Brightness as the console sends it (100 %)"
+			item.title = on ? @"Standard brightness (100 %)"
 							: [NSString stringWithFormat:@"Brightness %d %%: back to 100 %%", v.hdr_brightness];
 		}
 		else
@@ -328,6 +352,23 @@ int runHeadless(const Options &o)
 	if(!_runner->pictureIsHdr())
 		text = [text stringByAppendingString:@" - for an HDR picture; this one is SDR"];
 	[_window.videoView showNotice:text];
+}
+
+- (void)plkToggleFullscreenSync:(id)sender
+{
+	const bool on = !_runner->viewState().fullscreen_sync;
+	_runner->setFullscreenSync(on);
+	if(_options.saved_choices)
+		saveFullscreenSync(on);
+	[_window.videoView showNotice:on ? @"Fullscreen: frames in step with the display, no tearing"
+									 : @"Fullscreen: frames shown at once, the picture can tear"];
+}
+
+- (void)windowFullscreenChanged:(BOOL)fullscreen
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	_runner->setWindowFullscreen(fullscreen);
 }
 
 // What the display can show above SDR white right now. It changes with the display's
@@ -497,6 +538,9 @@ int runHeadless(const Options &o)
 	if(_screenObserver)
 		[NSNotificationCenter.defaultCenter removeObserver:_screenObserver];
 	_screenObserver = nil;
+	for(id observer in _fullscreenObservers)
+		[NSNotificationCenter.defaultCenter removeObserver:observer];
+	_fullscreenObservers = nil;
 	_runner->shutdownVideo();
 	_exitCode = _runner->exitCode();
 	if(_activity)

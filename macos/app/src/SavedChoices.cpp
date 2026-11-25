@@ -18,6 +18,7 @@ const char *const kHdrOutputKey = "hdrOutput";
 const char *const kHdrKey = "hdr";
 const char *const kHdrBrightnessKey = "hdrBrightness";
 const char *const kHdrToneMapKey = "hdrToneMap";
+const char *const kFullscreenSyncKey = "fullscreenSync";
 
 CFStringRef cfString(const std::string &s)
 {
@@ -86,6 +87,8 @@ SavedChoices loadSavedChoices(const std::string &domain)
 	video::HdrToneMap tone_map;
 	if(readString(domain, kHdrToneMapKey, &s) && video::parseHdrToneMap(s, &tone_map))
 		c.hdr_tone_map = tone_map;
+	if(readString(domain, kFullscreenSyncKey, &s) && (s == "on" || s == "off"))
+		c.fullscreen_sync = s == "on";
 	return c;
 }
 
@@ -119,9 +122,15 @@ void saveHdrToneMap(video::HdrToneMap tone_map, const std::string &domain)
 	writeString(domain, kHdrToneMapKey, video::toString(tone_map));
 }
 
+void saveFullscreenSync(bool on, const std::string &domain)
+{
+	writeString(domain, kFullscreenSyncKey, on ? "on" : "off");
+}
+
 void forgetSavedChoices(const std::string &domain)
 {
-	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey, kHdrToneMapKey })
+	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey, kHdrToneMapKey,
+				kFullscreenSyncKey })
 		writeString(domain, key, nullptr);
 }
 
@@ -148,6 +157,11 @@ std::string applySavedChoices(const SavedChoices &saved, Options &o)
 	{
 		o.hdr_brightness = saved.hdr_brightness;
 		note("HDR brightness " + std::to_string(*saved.hdr_brightness) + " %");
+	}
+	if(!o.fullscreen_sync && saved.fullscreen_sync)
+	{
+		o.fullscreen_sync = saved.fullscreen_sync;
+		note(std::string("fullscreen sync ") + (*saved.fullscreen_sync ? "on" : "off"));
 	}
 	if(!o.hdr_tone_map && saved.hdr_tone_map)
 	{

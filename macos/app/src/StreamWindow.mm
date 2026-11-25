@@ -306,13 +306,15 @@ NSMenu *PLKMakeVideoMenu(void)
 	addChoice(menu, @"Vivid (the display's full gamut)", @selector(plkSelectSdrColor:), (NSInteger)SdrColor::Vivid, @"v");
 	addHeader(menu, @"HDR");
 	addChoice(menu, @"HDR stream (reconnects)", @selector(plkToggleHdr:), 0, @"h");
-	addChoice(menu, @"Output as PQ, tone mapped by macOS", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::PQ, @"p");
+	addChoice(menu, @"Output as PQ", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::PQ, @"p");
 	addChoice(menu, @"Output as linear light", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::ExtendedLinear, @"l");
 	// The first one's title carries the current value (the app delegate sets it).
-	addChoice(menu, @"Brightness as the console sends it (100 %)", @selector(plkStepHdrBrightness:), 0, @"0");
+	addChoice(menu, @"Standard brightness (100 %)", @selector(plkStepHdrBrightness:), 0, @"0");
 	addChoice(menu, @"Brighter", @selector(plkStepHdrBrightness:), 1, @"+");
 	addChoice(menu, @"Darker", @selector(plkStepHdrBrightness:), -1, @"-");
 	addChoice(menu, @"Tone mapping by macOS (stalls in fullscreen)", @selector(plkToggleHdrToneMap:), 0, @"t");
+	addHeader(menu, @"Fullscreen");
+	addChoice(menu, @"In step with the display: no tearing", @selector(plkToggleFullscreenSync:), 0, @"s");
 	return menu;
 }
 

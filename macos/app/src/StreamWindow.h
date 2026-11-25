@@ -44,6 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)plkStepHdrBrightness:(id)sender;
 /** Between the app's tone mapping and macOS's. */
 - (void)plkToggleHdrToneMap:(id)sender;
+/** Frames of a fullscreen picture in step with the display's refresh, or shown at once. */
+- (void)plkToggleFullscreenSync:(id)sender;
 - (void)plkToggleHdr:(id)sender;
 @end
 

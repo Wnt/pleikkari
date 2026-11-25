@@ -40,7 +40,9 @@ enum class Codec { Auto, H264, HEVC };
 enum class PacingMode {
 	// Render and present as soon as a frame is decoded; CAMetalLayer display
 	// sync off. The compositor shows the newest drawable at its next refresh
-	// (and, on ProMotion, refreshes on demand). Lowest latency measured.
+	// (and, on ProMotion, refreshes on demand). Lowest latency measured. In
+	// fullscreen the system can hand the layer straight to the display, and
+	// a frame is then switched in wherever the refresh is: the picture tears.
 	Immediate,
 	// Same, with displaySyncEnabled = YES: the drawable waits for a vsync in
 	// the layer's swap queue. No tearing in direct-to-display fullscreen;

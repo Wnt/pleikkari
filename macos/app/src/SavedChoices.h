@@ -26,6 +26,7 @@ struct SavedChoices
 	std::optional<bool> hdr;
 	std::optional<int> hdr_brightness; // percent
 	std::optional<video::HdrToneMap> hdr_tone_map;
+	std::optional<bool> fullscreen_sync;
 };
 
 /** A value that is missing or not one of the known names is left unset. */
@@ -37,6 +38,7 @@ void saveHdrOutput(video::HdrOutput output, const std::string &domain = kChoices
 void saveHdr(bool on, const std::string &domain = kChoicesDomain);
 void saveHdrBrightness(int percent, const std::string &domain = kChoicesDomain);
 void saveHdrToneMap(video::HdrToneMap tone_map, const std::string &domain = kChoicesDomain);
+void saveFullscreenSync(bool on, const std::string &domain = kChoicesDomain);
 /** Removes every value. */
 void forgetSavedChoices(const std::string &domain = kChoicesDomain);
 

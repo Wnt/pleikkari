@@ -119,6 +119,8 @@ std::string usageText()
 		"window and video\n"
 		"  --fullscreen            start in native fullscreen (Cmd-F toggles)\n"
 		"  --pacing immediate|immediate-vsync|displaylink   (default immediate)\n"
+		"  --fullscreen-sync on|off   --pacing immediate in a fullscreen window: each frame at a refresh\n"
+		"                          of the display, so the picture cannot tear (default on)\n"
 		"  --scaler bilinear|bicubic|lanczos|metalfx         (default bilinear)\n"
 		"  --color accurate|vivid  SDR picture: the console's colours, or stretched to the\n"
 		"                          display's full gamut (default accurate)\n"
@@ -288,6 +290,12 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&v) || !parseDouble(v, kHdrBrightnessMin, kHdrBrightnessMax, &pct))
 				return fail("--hdr-brightness wants a percentage from 20 to 200");
 			o.hdr_brightness = (int)(pct + 0.5);
+		}
+		else if(a == "--fullscreen-sync")
+		{
+			if(!value(&v) || (v != "on" && v != "off"))
+				return fail("--fullscreen-sync wants on or off");
+			o.fullscreen_sync = v == "on";
 		}
 		else if(a == "--hdr-tone-map")
 		{
@@ -470,7 +478,16 @@ ViewChoices resolveViewChoices(const Options &o)
 		v.hdr_brightness = *o.hdr_brightness;
 	if(o.hdr_tone_map)
 		v.hdr_tone_map = *o.hdr_tone_map;
+	if(o.fullscreen_sync)
+		v.fullscreen_sync = *o.fullscreen_sync;
 	return v;
+}
+
+video::PacingMode effectivePacing(video::PacingMode given, bool window_fullscreen, bool fullscreen_sync)
+{
+	if(given == video::PacingMode::Immediate && window_fullscreen && fullscreen_sync)
+		return video::PacingMode::ImmediateVsync;
+	return given;
 }
 
 int stepHdrBrightness(int percent, int direction)

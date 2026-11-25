@@ -83,6 +83,10 @@ Dumps (`PLKVDMP1`, format in `tools/replay/Dump.h`) replay at their recorded
 lateness: if it is more than ~1 ms the machine was busy and the latency
 numbers of that run are suspect.
 
+The pipeline shows frames in the order they are decoded, which is the order a console
+sends them in. A clip with B-frames (x265's default) therefore plays with its pictures
+out of order: anything that moves jumps back and forth. Encode test clips without them.
+
 Test clips (1080p60, no B-frames, periodic IDR) can be made with ffmpeg, e.g.
 `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=60 -t 10 -pix_fmt yuv420p10le -c:v libx265
 -x265-params bframes=0:keyint=120:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:hdr10=1

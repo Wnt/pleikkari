@@ -66,6 +66,8 @@ public:
 		video::HdrOutput hdr_output = video::HdrOutput::PQ;
 		int hdr_brightness = kHdrBrightnessDefault; // percent
 		video::HdrToneMap hdr_tone_map = video::HdrToneMap::App;
+		bool fullscreen_sync = true;
+		bool fullscreen_sync_applies = true; // false: --pacing fixed something else
 		bool hdr = false;            // the stream is asked for in HDR
 		bool hdr_switchable = false; // a PS5 stream: setHdr() can change that
 	};
@@ -78,6 +80,9 @@ public:
 	void setHdrToneMap(video::HdrToneMap tone_map);
 	/** What the display shows now, SDR white = 1 (video::usableDisplayHeadroom()). */
 	void setDisplayHeadroom(float headroom);
+	/** See effectivePacing(). The window tells when it is fullscreen. */
+	void setFullscreenSync(bool on);
+	void setWindowFullscreen(bool fullscreen);
 	/**
 	 * HDR on or off. The console fixes the codec when a session starts, so this ends the
 	 * session and starts a new one (a few seconds without picture); window, video pipeline,
@@ -106,6 +111,9 @@ private:
 	ChiakiCodec sdr_codec_ = CHIAKI_CODEC_H265; // what HDR off goes back to
 	uint64_t hdr_switch_restart_ = 0;           // the session restart count the last setHdr() waits for
 	std::atomic<float> display_headroom_{0.0f};
+	void applyPacing();
+	bool window_fullscreen_ = false;
+	video::PacingMode pacing_ = video::PacingMode::Immediate; // what the pipeline has
 	std::unique_ptr<struct RunnerSecrets> secrets_;
 
 	std::unique_ptr<FrameLogger> frame_logger_;

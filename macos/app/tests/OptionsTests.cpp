@@ -271,3 +271,30 @@ PLK_TEST(options_hdr_tone_map)
 	CHECK(resolveViewChoices(o).hdr_tone_map == video::HdrToneMap::App);
 	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-tone-map", "both" }, o));
 }
+
+PLK_TEST(options_fullscreen_sync)
+{
+	Options o;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164" }, o));
+	CHECK(!o.fullscreen_sync);
+	CHECK(resolveViewChoices(o).fullscreen_sync);
+	Options off;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--fullscreen-sync", "off" }, off));
+	CHECK(!resolveViewChoices(off).fullscreen_sync);
+	Options on;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--fullscreen-sync", "on" }, on));
+	CHECK(resolveViewChoices(on).fullscreen_sync);
+	Options bad;
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--fullscreen-sync", "maybe" }, bad));
+
+	// A window is composited and cannot tear: frames are shown at once. Fullscreen can
+	// go straight to the display: in step with it, unless switched off.
+	using video::PacingMode;
+	CHECK(effectivePacing(PacingMode::Immediate, false, true) == PacingMode::Immediate);
+	CHECK(effectivePacing(PacingMode::Immediate, true, true) == PacingMode::ImmediateVsync);
+	CHECK(effectivePacing(PacingMode::Immediate, true, false) == PacingMode::Immediate);
+	CHECK(effectivePacing(PacingMode::Immediate, false, false) == PacingMode::Immediate);
+	// A pacing other than the default is left as given.
+	CHECK(effectivePacing(PacingMode::DisplayLink, true, true) == PacingMode::DisplayLink);
+	CHECK(effectivePacing(PacingMode::ImmediateVsync, false, false) == PacingMode::ImmediateVsync);
+}

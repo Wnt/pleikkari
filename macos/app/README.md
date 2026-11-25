@@ -86,9 +86,10 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 | 1, 2, 3, 4 | scaling: bilinear, bicubic, Lanczos, MetalFX | with the next frame |
 | A, V | colour of an SDR picture: accurate (the console's colours), vivid (stretched to the display's full gamut, as a renderer without colour management shows it) | with the next frame; an HDR picture is not affected |
 | H | HDR stream on or off | **reconnects**: the console fixes the codec when a session starts, so the app ends the session and starts a new one. Window, video pipeline, audio output and controller stay; the picture is gone for a few seconds. PS5 only |
-| P, L | HDR output: PQ code values tone mapped by macOS, or linear light decoded in the shader | with the next frame; an SDR picture is not affected |
+| P, L | HDR output: PQ code values, or linear light | with the next frame; an SDR picture is not affected |
 | +, -, 0 | HDR brightness: 5 % brighter, 5 % darker (20 to 200 %; a held key keeps stepping), back to 100 % | with the next frame; an SDR picture is not affected. A factor on the picture's linear light, so colours keep their hue. At 100 % HDR reference white (203 nits) is as bright as the display's SDR white |
 | T | HDR tone mapping by macOS instead of the app | with the next frame. The app's own (the default) fits the picture to the display in the shader and puts no HDR metadata on the layer, so macOS hands a fullscreen picture straight to the display: frame ready to on screen 4.9 ms at the median, as for SDR. With macOS's, the picture goes through the compositor (about 10 ms), comes out about 1.7 times brighter in the midtones with its peak stretched to the display's full headroom, and in fullscreen stops for about 55 ms every 64 refreshes of the display |
+| S | Fullscreen in step with the display, or not | with the next frame. A fullscreen picture goes straight to the display, past the compositor. In step (the default) each frame is switched in at a refresh, so the picture cannot tear; otherwise it is switched in at once, wherever the refresh is, and tears. A window is composited either way and does not tear |
 
 What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) and used by the next run that does not give the matching option; `--no-saved-choices` neither uses nor remembers it. Headless runs never use it.
 
@@ -102,7 +103,8 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--feedback-interval MS` | 8 (lib) | minimum spacing of stick and motion packets |
 | `--no-reorder` | reordering on | the lib does not wait up to 16 ms for a missing video packet |
 | `--log PATH` | stderr | |
-| `--pacing immediate\|immediate-vsync\|displaylink` | immediate | |
+| `--pacing immediate\|immediate-vsync\|displaylink` | immediate | immediate: a frame is shown as soon as it is decoded, without display sync; immediate-vsync: with it |
+| `--fullscreen-sync on\|off` | the menu's choice, else on | on: `--pacing immediate` becomes immediate-vsync while the window is fullscreen |
 | `--scaler bilinear\|bicubic\|lanczos\|metalfx` | the menu's choice, else bilinear | |
 | `--color accurate\|vivid` | the menu's choice, else accurate | colour of an SDR picture |
 | `--hdr on\|off` | the menu's choice, else what the codec says | HDR stream or not, on top of `--codec` and the Qt setting |

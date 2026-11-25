@@ -144,3 +144,25 @@ PLK_TEST(saved_choices_hdr_tone_map)
 	forgetSavedChoices(kTestDomain);
 	CHECK(!loadSavedChoices(kTestDomain).hdr_tone_map);
 }
+
+PLK_TEST(saved_choices_fullscreen_sync)
+{
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).fullscreen_sync);
+	saveFullscreenSync(false, kTestDomain);
+	SavedChoices c = loadSavedChoices(kTestDomain);
+	REQUIRE(c.fullscreen_sync);
+	CHECK(!*c.fullscreen_sync);
+	Options o;
+	CHECK(applySavedChoices(c, o) == "fullscreen sync off");
+	REQUIRE(o.fullscreen_sync);
+	CHECK(!*o.fullscreen_sync);
+	Options given;
+	given.fullscreen_sync = true;
+	CHECK(applySavedChoices(c, given).empty());
+	CHECK(*given.fullscreen_sync);
+	saveFullscreenSync(true, kTestDomain);
+	CHECK(*loadSavedChoices(kTestDomain).fullscreen_sync);
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).fullscreen_sync);
+}
