@@ -17,6 +17,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cerrno>
@@ -77,6 +78,99 @@ bool plainName(const std::string &s)
 			return false;
 	}
 	return true;
+}
+
+std::string toStd(CFStringRef s)
+{
+	if(!s || CFGetTypeID(s) != CFStringGetTypeID())
+		return std::string();
+	char buf[256];
+	return CFStringGetCString(s, buf, sizeof(buf), kCFStringEncodingUTF8) ? std::string(buf) : std::string();
+}
+
+// One of the machine's own interfaces (Ethernet, Wi-Fi, a USB adapter), as the system lists them.
+bool isHardware(const std::string &ifname)
+{
+	bool found = false;
+	CFArrayRef all = SCNetworkInterfaceCopyAll();
+	if(!all)
+		return false;
+	for(CFIndex i = 0; i < CFArrayGetCount(all) && !found; i++)
+		found = toStd(SCNetworkInterfaceGetBSDName((SCNetworkInterfaceRef)CFArrayGetValueAtIndex(all, i))) == ifname;
+	CFRelease(all);
+	return found;
+}
+
+// A VPN's interface: point to point, and not one of the machine's own.
+bool isTunnel(const std::string &ifname)
+{
+	if(ifname.empty() || ifname.size() >= IFNAMSIZ)
+		return false;
+	const int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sock < 0)
+		return false;
+	struct ifreq ifr = {};
+	strlcpy(ifr.ifr_name, ifname.c_str(), sizeof(ifr.ifr_name));
+	const int r = ioctl(sock, SIOCGIFFLAGS, &ifr);
+	close(sock);
+	return r == 0 && (ifr.ifr_flags & IFF_POINTOPOINT) && !(ifr.ifr_flags & IFF_LOOPBACK);
+}
+
+// The services that are connected through a router, with their interfaces, and the system's
+// order of preference among services, from the dynamic store (what scutil shows).
+void activeServices(std::vector<std::string> &order, std::vector<std::pair<std::string, std::string>> &active)
+{
+	SCDynamicStoreRef store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("fi.madekivi.pleikkari.awdl"), nullptr, nullptr);
+	if(!store)
+		return;
+	CFStringRef setup_key = SCDynamicStoreKeyCreateNetworkGlobalEntity(kCFAllocatorDefault, kSCDynamicStoreDomainSetup, kSCEntNetIPv4);
+	CFPropertyListRef setup = SCDynamicStoreCopyValue(store, setup_key);
+	if(setup && CFGetTypeID(setup) == CFDictionaryGetTypeID())
+	{
+		CFArrayRef ids = (CFArrayRef)CFDictionaryGetValue((CFDictionaryRef)setup, kSCPropNetServiceOrder);
+		for(CFIndex i = 0; ids && CFGetTypeID(ids) == CFArrayGetTypeID() && i < CFArrayGetCount(ids); i++)
+			order.push_back(toStd((CFStringRef)CFArrayGetValueAtIndex(ids, i)));
+	}
+	if(setup)
+		CFRelease(setup);
+	CFRelease(setup_key);
+
+	const CFStringRef entities[][2] = {{kSCEntNetIPv4, kSCPropNetIPv4Router}, {kSCEntNetIPv6, kSCPropNetIPv6Router}};
+	for(const auto &protocol : entities)
+	{
+		const CFStringRef entity = protocol[0], router = protocol[1];
+		CFStringRef pattern = SCDynamicStoreKeyCreateNetworkServiceEntity(kCFAllocatorDefault, kSCDynamicStoreDomainState, kSCCompAnyRegex, entity);
+		CFArrayRef patterns = CFArrayCreate(kCFAllocatorDefault, (const void **)&pattern, 1, &kCFTypeArrayCallBacks);
+		CFDictionaryRef found = SCDynamicStoreCopyMultiple(store, nullptr, patterns);
+		const CFIndex n = found ? CFDictionaryGetCount(found) : 0;
+		std::vector<const void *> keys(n), values(n);
+		if(n > 0)
+			CFDictionaryGetKeysAndValues(found, keys.data(), values.data());
+		for(CFIndex i = 0; i < n; i++)
+		{
+			if(CFGetTypeID(values[i]) != CFDictionaryGetTypeID())
+				continue;
+			CFDictionaryRef service = (CFDictionaryRef)values[i];
+			// Without a router the service leads nowhere (a cable with a self-assigned address).
+			if(!CFDictionaryContainsKey(service, router))
+				continue;
+			const std::string ifname = toStd((CFStringRef)CFDictionaryGetValue(service, kSCPropInterfaceName));
+			// "State:/Network/Service/<identifier>/IPv4"
+			const std::string key = toStd((CFStringRef)keys[i]);
+			const size_t end = key.rfind('/');
+			const size_t begin = end == std::string::npos || end == 0 ? std::string::npos : key.rfind('/', end - 1);
+			if(ifname.empty() || begin == std::string::npos)
+				continue;
+			const std::pair<std::string, std::string> entry(key.substr(begin + 1, end - begin - 1), ifname);
+			if(std::find(active.begin(), active.end(), entry) == active.end())
+				active.push_back(entry);
+		}
+		if(found)
+			CFRelease(found);
+		CFRelease(patterns);
+		CFRelease(pattern);
+	}
+	CFRelease(store);
 }
 
 // 0 installed (and awdl0 taken down), 1 dialog dismissed, -1 failed
@@ -156,6 +250,41 @@ std::string AwdlGuard::outgoingInterface(const std::string &host)
 	}
 	freeaddrinfo(res);
 	return name;
+}
+
+std::string AwdlGuard::firstHardwareInterface(const std::vector<std::string> &order,
+		const std::vector<std::pair<std::string, std::string>> &active,
+		const std::function<bool(const std::string &)> &hardware)
+{
+	for(const std::string &id : order)
+	{
+		for(const auto &service : active)
+		{
+			if(service.first == id && hardware(service.second))
+				return service.second;
+		}
+	}
+	// A service the order does not name comes after those it does.
+	for(const auto &service : active)
+	{
+		if(std::find(order.begin(), order.end(), service.first) == order.end() && hardware(service.second))
+			return service.second;
+	}
+	return std::string();
+}
+
+std::string AwdlGuard::physicalInterface(const std::string &ifname)
+{
+	if(ifname.empty())
+		return std::string();
+	if(isHardware(ifname))
+		return ifname;
+	if(!isTunnel(ifname))
+		return std::string();
+	std::vector<std::string> order;
+	std::vector<std::pair<std::string, std::string>> active;
+	activeServices(order, active);
+	return firstHardwareInterface(order, active, isHardware);
 }
 
 bool AwdlGuard::isWifi(const std::string &ifname)
@@ -281,15 +410,19 @@ AwdlGuard &AwdlGuard::instance()
 
 bool AwdlGuard::acquire(const std::string &host, bool allow_prompt)
 {
+	// A stream through a VPN leaves from the tunnel's interface, and the tunnel's packets from
+	// a hardware one: the radio that AWDL takes away is under both.
 	const std::string ifname = outgoingInterface(host);
-	if(ifname.empty() || !isWifi(ifname) || awdlIsUp() < 0)
+	const std::string physical = physicalInterface(ifname);
+	if(physical.empty() || !isWifi(physical) || awdlIsUp() < 0)
 		return false;
+	const std::string path = physical == ifname ? "over Wi-Fi" : "through " + ifname + " over Wi-Fi (" + physical + ")";
 	Impl *impl = impl_;
 	dispatch_async(impl->queue, ^{
 		impl->release_generation++; // a pending bring-up is called off
 		impl->allow_prompt = allow_prompt;
 		if(impl->users++ == 0 && !impl->watching)
-			fprintf(stderr, "[awdl] stream runs over Wi-Fi: keeping awdl0 down while it lasts\n");
+			fprintf(stderr, "[awdl] stream runs %s: keeping awdl0 down while it lasts\n", path.c_str());
 		impl->tick();
 		if(!impl->gave_up)
 			impl->setWatching(true);

@@ -5,6 +5,10 @@
 //   plk-host-probe --list [--plist PATH]
 //       Registered consoles from the Qt app's settings: nickname and console type only.
 //
+//   plk-host-probe --path ADDRESS
+//       How a stream to ADDRESS would leave this machine and what the AWDL guard would do
+//       about it. Sends nothing and changes nothing.
+//
 //   plk-host-probe --connect NICKNAME ADDRESS [options]
 //       A real LAN session with no video output: counts frames, bytes and losses, and
 //       optionally writes every video sample to a PLKVDMP1 dump.
@@ -24,6 +28,7 @@
 // Never prints anything from a registration besides nickname and console type.
 
 #include "AudioOutput.h"
+#include "AwdlGuard.h"
 #include "Registration.h"
 #include "SessionHost.h"
 #include "VideoDump.h"
@@ -52,10 +57,29 @@ void usage()
 {
 	fprintf(stderr,
 		"usage: plk-host-probe --list [--plist PATH]\n"
+		"       plk-host-probe --path ADDRESS\n"
 		"       plk-host-probe --connect NICKNAME ADDRESS [--seconds N] [--dump FILE]\n"
 		"                      [--resolution 360p|540p|720p|1080p] [--fps 30|60] [--bitrate KBPS]\n"
 		"                      [--codec h264|h265|h265_hdr] [--no-dualsense] [--no-reorder]\n"
 		"                      [--audio] [--pin PIN] [--quiet] [--plist PATH]\n");
+}
+
+/** The way a stream to address leaves the machine, as AwdlGuard::acquire() sees it. */
+int showPath(const std::string &address)
+{
+	const std::string out = plk::AwdlGuard::outgoingInterface(address);
+	const std::string physical = plk::AwdlGuard::physicalInterface(out);
+	const bool wifi = !physical.empty() && plk::AwdlGuard::isWifi(physical);
+	const int awdl = plk::AwdlGuard::awdlIsUp();
+	printf("outgoing interface: %s\n", out.empty() ? "unknown" : out.c_str());
+	if(physical.empty())
+		printf("hardware interface: none found\n");
+	else
+		printf("hardware interface: %s (%s)%s\n", physical.c_str(), wifi ? "Wi-Fi" : "not Wi-Fi",
+				physical == out ? "" : ", which carries the tunnel");
+	printf("awdl0:              %s\n", awdl < 0 ? "no such interface" : awdl ? "up" : "down");
+	printf("a stream would:     %s\n", wifi && awdl >= 0 ? "keep awdl0 down while it lasts" : "leave AWDL alone");
+	return 0;
 }
 
 /** Does this Annex-B access unit contain an IDR picture? */
@@ -269,6 +293,7 @@ int main(int argc, char **argv)
 			return argv[++i];
 		};
 		if(a == "--list") list = true;
+		else if(a == "--path") return showPath(next("--path"));
 		else if(a == "--connect")
 		{
 			connect = true;

@@ -64,8 +64,8 @@ struct StreamSettings
 	// Sender") threads run at QOS_CLASS_USER_INTERACTIVE, so they stay on performance
 	// cores and wake promptly. Installed by the first start() that asks for it.
 	bool elevate_thread_qos = true;
-	// Keep awdl0 down while the stream runs over Wi-Fi (AwdlGuard.h). The first time this
-	// shows the system's password dialog.
+	// Keep awdl0 down while the stream runs over Wi-Fi, straight or inside a VPN tunnel
+	// (AwdlGuard.h). The first time this shows the system's password dialog.
 	bool suspend_awdl = true;
 	uint32_t log_mask = CHIAKI_LOG_INFO | CHIAKI_LOG_WARNING | CHIAKI_LOG_ERROR; // VERBOSE dumps request headers
 };
