@@ -98,7 +98,7 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 | P, L | HDR output: PQ code values, or linear light | with the next frame; an SDR picture is not affected |
 | +, -, 0 | HDR brightness: 5 % brighter, 5 % darker (20 to 200 %; a held key keeps stepping), back to 100 % | with the next frame; an SDR picture is not affected. A factor on the picture's linear light, so colours keep their hue. At 100 % HDR reference white (203 nits) is as bright as the display's SDR white |
 | T | HDR tone mapping by macOS instead of the app | with the next frame. The app's own (the default) fits the picture to the display in the shader and puts no HDR metadata on the layer, so macOS hands a fullscreen picture straight to the display: frame ready to on screen 4.9 ms at the median, as for SDR. With macOS's, the picture goes through the compositor (about 10 ms), comes out about 1.7 times brighter in the midtones with its peak stretched to the display's full headroom, and in fullscreen stops for about 55 ms every 64 refreshes of the display |
-| S | Fullscreen in step with the display, or not | with the next frame. A fullscreen picture goes straight to the display, past the compositor. In step (the default) each frame is switched in at a refresh, so the picture cannot tear; otherwise it is switched in at once, wherever the refresh is, and tears. A window is composited either way and does not tear |
+| S | Fullscreen in step with the display, or not | with the next frame. A fullscreen picture goes straight to the display, past the compositor. In step (the default) each frame is switched in at a refresh, so the picture cannot tear; otherwise it is switched in at once, wherever the refresh is, and tears. A window is composited either way and does not tear. Measured on the built-in 120 Hz panel with a 60 fps clip in a console's cadence: frame ready to on screen 9.4 to 10.0 ms at the median and 14 to 16 ms at p95 in step, 4.1 to 4.8 and 6.6 to 7.1 ms otherwise, so no tearing costs about 5 ms |
 | N | neural rendering on or off | on: with the first result, a fraction of a second after the model has loaded (0.3 to 0.5 s; several seconds the very first time). Off: with the next frame. On by default when the engine and a model are installed. An SDR and an HDR picture alike: of an HDR one the network is given an SDR rendition, and its change is made to the HDR picture in proportion, so highlights stay highlights (see [`macos/nr/README.md`](../nr/README.md)) |
 | 5, 6 | the network: performance model (small, the default), original model (HT, about half as fast) | loads the other model beside the stream; the old one keeps working until the new one is ready. A network whose model is not installed is not switched to, and a line says what is missing |
 | 7, 8, 9 | how much picture the network is given: 540p, 720p (the default), the stream's size | with the next result. Smaller is faster, so a result is fresher when it reaches a frame |
@@ -130,7 +130,7 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--no-reorder` | reordering on | the lib does not wait up to 16 ms for a missing video packet |
 | `--log PATH` | stderr | |
 | `--pacing immediate\|immediate-vsync\|displaylink` | immediate | immediate: a frame is shown as soon as it is decoded, without display sync; immediate-vsync: with it |
-| `--fullscreen-sync on\|off` | the menu's choice, else on | on: `--pacing immediate` becomes immediate-vsync while the window is fullscreen |
+| `--fullscreen-sync on\|off` | the menu's choice, else on | on: `--pacing immediate` becomes immediate-vsync while the window is fullscreen (no tearing, about 5 ms slower) |
 | `--scaler bilinear\|bicubic\|lanczos\|metalfx` | the menu's choice, else bilinear | |
 | `--color accurate\|vivid` | the menu's choice, else accurate | colour of an SDR picture |
 | `--hdr on\|off` | the menu's choice, else what the codec says | HDR stream or not, on top of `--codec` and the Qt setting |
@@ -232,7 +232,9 @@ $APP replay <dump.plkv> --loop --seconds 12 --no-saved-choices --stats-interval 
     --keys "2:3,4:v,6:m,7:down,7.4:down,8.2:enter" && grep 'keys\|Video:\|scaler=' /tmp/m.log
 ```
 
-The `video:` statistics line names the scaler in use and the colour space the layer is tagged with.
+The `video:` statistics line names the scaler and pacing in use and the colour space the layer is tagged with.
+
+A replay that is to measure a fullscreen picture needs its dump outside `~/Documents`, `~/Desktop` and `~/Downloads`. The app, started through `open`, has to ask before it may read a file there that it did not write itself, and it asks again after every rebuild (the build is signed ad hoc). While macOS's question is on screen the fullscreen picture is composited instead of going straight to the display, which measured 20 ms from GPU work to screen instead of 6; and the question stays up after the app has ended.
 
 `--keys` also works with `--headless`, for the keys that need no window (everything in the table above except H, S and I, and not the menu itself). One replay then measures a choice against another on the same pictures. This one runs 10 s without neural rendering, 20 s with it and 10 s without, and prints what the frames paid for it:
 

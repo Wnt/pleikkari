@@ -47,7 +47,14 @@ enum class PacingMode {
 	// Same, with displaySyncEnabled = YES: the drawable waits for a vsync in
 	// the layer's swap queue. No tearing in direct-to-display fullscreen;
 	// measured 2.5-20 ms slower than Immediate in a window, depending on
-	// what else the compositor was showing.
+	// what else the compositor was showing. Straight to the display
+	// (fullscreen, built-in 120 Hz panel, 60 fps with a console's jitter):
+	// a frame is on screen 6 ms after its GPU work at the median and 11 ms at
+	// p95, against 1.1 and 2.8 ms for Immediate. The panel takes a new frame
+	// every 4.17 ms once the last one has had 8.33 ms, but the system shows
+	// none sooner than about 3 ms after the GPU work, and most later than
+	// the first chance. presentDrawable:afterMinimumDuration:, :atTime: and
+	// presenting right after the commit all measured the same.
 	ImmediateVsync,
 	// Present the newest decoded frame at each CAMetalDisplayLink update
 	// (preferredFrameLatency 1, frame rate range pinned to displayRefreshHz).
