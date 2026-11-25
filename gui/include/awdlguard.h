@@ -12,7 +12,8 @@
 class QProcess;
 
 /**
- * Keeps Apple Wireless Direct Link down while a stream runs over Wi-Fi (macOS).
+ * Keeps Apple Wireless Direct Link down while a stream runs over Wi-Fi (macOS): straight
+ * over it, or inside a VPN tunnel that does.
  *
  * AWDL (AirDrop, AirPlay, Handoff) shares the Wi-Fi radio: while it is up the radio leaves the
  * access point's channel for up to 100 ms every 0.5 to 2 s. Measured on a stream: ping to the
@@ -41,7 +42,8 @@ class AwdlGuard : public QObject
 		 * @param host the console's address or name, as the session connects to it
 		 * @param on_declined called if the password dialog is dismissed: the caller switches
 		 *                    the setting off, so that the dialog is not shown at every stream
-		 * @return true when the stream leaves over Wi-Fi and Release() has to follow
+		 * @return true when the stream leaves over Wi-Fi, as it is or inside a tunnel, and
+		 *         Release() has to follow
 		 */
 		bool Acquire(const QString &host, std::function<void()> on_declined);
 		/** A stream that Acquire() answered true for has ended. */

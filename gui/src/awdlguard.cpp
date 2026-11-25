@@ -3,9 +3,12 @@
 #include <awdlguard.h>
 
 #include <QCoreApplication>
+#include <QList>
 #include <QLoggingCategory>
+#include <QPair>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QStringList>
 
 #include <SystemConfiguration/SystemConfiguration.h>
 
@@ -108,6 +111,126 @@ static int AwdlIsUp()
 	return (ifr.ifr_flags & IFF_UP) ? 1 : 0;
 }
 
+// One of the machine's own interfaces (Ethernet, Wi-Fi, a USB adapter), as the system lists them.
+static bool IsHardware(const QString &ifname)
+{
+	bool found = false;
+	CFArrayRef all = SCNetworkInterfaceCopyAll();
+	if(!all)
+		return false;
+	for(CFIndex i = 0; i < CFArrayGetCount(all) && !found; i++)
+	{
+		CFStringRef bsd = SCNetworkInterfaceGetBSDName((SCNetworkInterfaceRef)CFArrayGetValueAtIndex(all, i));
+		found = bsd && QString::fromCFString(bsd) == ifname;
+	}
+	CFRelease(all);
+	return found;
+}
+
+// A VPN's interface: point to point, and not one of the machine's own.
+static bool IsTunnel(const QString &ifname)
+{
+	const QByteArray name = ifname.toUtf8();
+	if(name.isEmpty() || name.size() >= IFNAMSIZ)
+		return false;
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sock < 0)
+		return false;
+	struct ifreq ifr = {};
+	strlcpy(ifr.ifr_name, name.constData(), sizeof(ifr.ifr_name));
+	int r = ioctl(sock, SIOCGIFFLAGS, &ifr);
+	close(sock);
+	return r == 0 && (ifr.ifr_flags & IFF_POINTOPOINT) && !(ifr.ifr_flags & IFF_LOOPBACK);
+}
+
+// The hardware interface the packets of ifname are sent from: ifname itself when it is one,
+// and for a tunnel (a VPN's utun, ipsec or ppp interface) the interface of the first network
+// service, in the system's order, that is connected through a router. That is the interface
+// macOS sends a tunnel's own packets from, and the radio AWDL takes away is under both.
+// Empty for anything else and when no such service is up. The same choice as the native
+// app's guard makes (macos/host/AwdlGuard.cpp).
+static QString PhysicalInterface(const QString &ifname)
+{
+	if(ifname.isEmpty())
+		return QString();
+	if(IsHardware(ifname))
+		return ifname;
+	if(!IsTunnel(ifname))
+		return QString();
+
+	SCDynamicStoreRef store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("chiaki.gui.awdl"), nullptr, nullptr);
+	if(!store)
+		return QString();
+	QStringList order;
+	CFStringRef setup_key = SCDynamicStoreKeyCreateNetworkGlobalEntity(kCFAllocatorDefault, kSCDynamicStoreDomainSetup, kSCEntNetIPv4);
+	CFPropertyListRef setup = SCDynamicStoreCopyValue(store, setup_key);
+	if(setup && CFGetTypeID(setup) == CFDictionaryGetTypeID())
+	{
+		CFArrayRef ids = (CFArrayRef)CFDictionaryGetValue((CFDictionaryRef)setup, kSCPropNetServiceOrder);
+		for(CFIndex i = 0; ids && CFGetTypeID(ids) == CFArrayGetTypeID() && i < CFArrayGetCount(ids); i++)
+		{
+			CFTypeRef id = CFArrayGetValueAtIndex(ids, i);
+			if(CFGetTypeID(id) == CFStringGetTypeID())
+				order.append(QString::fromCFString((CFStringRef)id));
+		}
+	}
+	if(setup)
+		CFRelease(setup);
+	CFRelease(setup_key);
+
+	// (service identifier, interface) of the services that are connected through a router
+	QList<QPair<QString, QString>> active;
+	const CFStringRef entities[][2] = {{kSCEntNetIPv4, kSCPropNetIPv4Router}, {kSCEntNetIPv6, kSCPropNetIPv6Router}};
+	for(const auto &protocol : entities)
+	{
+		CFStringRef pattern = SCDynamicStoreKeyCreateNetworkServiceEntity(kCFAllocatorDefault, kSCDynamicStoreDomainState, kSCCompAnyRegex, protocol[0]);
+		CFArrayRef patterns = CFArrayCreate(kCFAllocatorDefault, (const void **)&pattern, 1, &kCFTypeArrayCallBacks);
+		CFDictionaryRef found = SCDynamicStoreCopyMultiple(store, nullptr, patterns);
+		const CFIndex n = found ? CFDictionaryGetCount(found) : 0;
+		QList<const void *> keys(n), values(n);
+		if(n > 0)
+			CFDictionaryGetKeysAndValues(found, keys.data(), values.data());
+		for(CFIndex i = 0; i < n; i++)
+		{
+			if(CFGetTypeID(values[i]) != CFDictionaryGetTypeID() || CFGetTypeID(keys[i]) != CFStringGetTypeID())
+				continue;
+			CFDictionaryRef service = (CFDictionaryRef)values[i];
+			CFTypeRef name = CFDictionaryGetValue(service, kSCPropInterfaceName);
+			// Without a router the service leads nowhere (a cable with a self-assigned address).
+			if(!CFDictionaryContainsKey(service, protocol[1]) || !name || CFGetTypeID(name) != CFStringGetTypeID())
+				continue;
+			// "State:/Network/Service/<identifier>/IPv4"
+			const QStringList parts = QString::fromCFString((CFStringRef)keys[i]).split('/');
+			if(parts.size() < 2)
+				continue;
+			const QPair<QString, QString> entry(parts[parts.size() - 2], QString::fromCFString((CFStringRef)name));
+			if(!active.contains(entry))
+				active.append(entry);
+		}
+		if(found)
+			CFRelease(found);
+		CFRelease(patterns);
+		CFRelease(pattern);
+	}
+	CFRelease(store);
+
+	for(const QString &id : order)
+	{
+		for(const auto &service : active)
+		{
+			if(service.first == id && IsHardware(service.second))
+				return service.second;
+		}
+	}
+	// A service the order does not name comes after those it does.
+	for(const auto &service : active)
+	{
+		if(!order.contains(service.first) && IsHardware(service.second))
+			return service.second;
+	}
+	return QString();
+}
+
 AwdlGuard *AwdlGuard::Instance()
 {
 	static AwdlGuard *instance = new AwdlGuard(QCoreApplication::instance());
@@ -132,15 +255,19 @@ AwdlGuard::AwdlGuard(QObject *parent) : QObject(parent)
 
 bool AwdlGuard::Acquire(const QString &host, std::function<void()> declined)
 {
+	// A stream through a VPN leaves from the tunnel's interface, and the tunnel's packets
+	// from a hardware one.
 	const QString ifname = OutgoingInterface(host);
-	if(ifname.isEmpty() || !IsWifi(ifname) || AwdlIsUp() < 0)
+	const QString physical = PhysicalInterface(ifname);
+	if(physical.isEmpty() || !IsWifi(physical) || AwdlIsUp() < 0)
 		return false;
 	on_declined = std::move(declined);
 	release_timer.stop();
 	users++;
 	// Said once per stream, not once per attempt of a stream that is being retried.
 	if(!watch_timer.isActive() && !gave_up)
-		qCInfo(awdlGuard) << "Stream runs over Wi-Fi (" << ifname << "): keeping" << AWDL_IF << "down while it lasts";
+		qCInfo(awdlGuard) << "Stream runs over Wi-Fi (" << (physical == ifname ? ifname : ifname + " over " + physical)
+				<< "): keeping" << AWDL_IF << "down while it lasts";
 	if(!gave_up)
 	{
 		Tick();
