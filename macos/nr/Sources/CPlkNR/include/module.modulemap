@@ -1,0 +1,5 @@
+module CPlkNR {
+	header "plknr_swift.h"
+	textual header "plknr.h"
+	export *
+}
