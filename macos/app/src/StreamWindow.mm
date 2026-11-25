@@ -331,7 +331,7 @@ NSMenu *PLKMakeVideoMenu(void)
 	// much picture it is given, how much of its change is shown, which look.
 	using plk::app::NrLook;
 	using plk::app::NrNetwork;
-	addHeader(menu, @"Neural rendering of an SDR picture");
+	addHeader(menu, @"Neural rendering");
 	// Its title carries the state (the app delegate sets it).
 	addChoice(menu, @"Neural rendering", @selector(plkToggleNr:), 0, @"n");
 	addChoice(menu, @"Performance model (small network)", @selector(plkSelectNrNetwork:), (NSInteger)NrNetwork::Small, @"5");

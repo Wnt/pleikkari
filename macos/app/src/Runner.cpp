@@ -372,9 +372,6 @@ bool Runner::setHdr(bool on)
 	stream_config_.session = settings;
 	if(analysis_)
 		analysis_->clearBaseline();
-	// An SDR stream from here on: the engine that was not loaded for an HDR one is wanted now.
-	if(!on)
-		requestNrEngine();
 	return true;
 }
 
@@ -430,24 +427,11 @@ void Runner::syncAnalysisActiveLocked()
 		analysis_->setEnhancerActive(view_.nr && (nr_engine_ || nr_loading_ || nr_request_));
 }
 
-// The stream is asked for in HDR: no frame of it is ever given to the engine.
-bool Runner::streamAskedHdr() const
-{
-	return options_.command == Command::Stream && stream_config_.session.codec == CHIAKI_CODEC_H265_HDR;
-}
-
-// Asks the loader for the engine of the chosen network, unless it is the one in use. Not
-// for an HDR stream: a model costs a load at the start of the stream and memory for as
-// long as it lasts, and would do nothing. It is loaded when the stream turns SDR (H).
+// Asks the loader for the engine of the chosen network, unless it is the one in use.
 void Runner::requestNrEngine()
 {
 	if(!pipeline_ || !view_.nr)
 		return;
-	if(streamAskedHdr())
-	{
-		PLK_LOGI("Neural rendering: on, and waiting for an SDR picture (this stream is HDR; H in the Video menu switches)");
-		return;
-	}
 	{
 		std::lock_guard<std::mutex> lk(nr_mutex_);
 		if(nr_stop_ || (nr_engine_ && nr_engine_network_ == view_.nr_network && !nr_loading_ && !nr_request_))
@@ -648,20 +632,19 @@ AnalysisReport Runner::analysis() const
 		r.enhancer = "loading the model";
 	else if(!v.nr_available)
 		r.enhancer = "not installed";
-	else if(s.hdr)
-		r.enhancer = "waiting: an HDR picture is left as it is";
 	else
 	{
-		snprintf(buf, sizeof(buf), "%s model, %dx%d, strength %d %%, %s%s",
-				v.nr_network == NrNetwork::HT ? "original (HT)" : "performance", s.enhanceWidth, s.enhanceHeight, v.nr_strength,
-				toString(v.nr_look), v.nr_compare ? ", comparison" : "");
+		// Of an HDR picture the network is given an SDR rendition.
+		snprintf(buf, sizeof(buf), "%s model, %dx%d%s, strength %d %%, %s%s",
+				v.nr_network == NrNetwork::HT ? "original (HT)" : "performance", s.enhanceWidth, s.enhanceHeight,
+				s.hdr ? " SDR rendition" : "", v.nr_strength, toString(v.nr_look), v.nr_compare ? ", comparison" : "");
 		r.enhancer = buf;
 	}
 	r.signal.emplace_back("Neural rendering", r.enhancer);
-	r.signal.emplace_back("Order", v.nr && v.nr_available && !s.hdr ? "decode > scale + mix > display; network beside"
+	r.signal.emplace_back("Order", v.nr && v.nr_available ? "decode > scale + mix > display; network beside"
 			: "decode > scale > display");
 
-	const bool enhancing = v.nr && v.nr_available && !v.nr_loading && !s.hdr;
+	const bool enhancing = v.nr && v.nr_available && !v.nr_loading;
 	if(t.not_presented > 0)
 	{
 		snprintf(buf, sizeof(buf), "%llu of the last second's frames were not shown", (unsigned long long)t.not_presented);

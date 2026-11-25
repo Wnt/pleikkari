@@ -512,8 +512,6 @@ int runHeadless(const Options &o)
 		text = [text stringByAppendingString:@" - neural rendering is off (N)"];
 	else if(!v.nr_available)
 		text = [text stringByAppendingString:@" - neural rendering is not installed"];
-	else if(_runner->pictureIsHdr())
-		text = [text stringByAppendingString:@" - for an SDR picture; this one is HDR"];
 	[_window.videoView showNotice:text];
 }
 
@@ -532,8 +530,6 @@ int runHeadless(const Options &o)
 	else if(!v.nr_available)
 		// The reason is long (a path): the log has it in full, the notice stays a while.
 		text = [@"Neural rendering is not installed: " stringByAppendingString:@(v.nr_status.c_str())];
-	else if(_runner->pictureIsHdr())
-		text = @"Neural rendering on - for an SDR picture; this one is HDR";
 	else
 		text = v.nr_loading ? @"Neural rendering on: loading the model..." : @"Neural rendering on";
 	[_window.videoView showNotice:text seconds:on && !v.nr_available ? 6.0 : 2.0];

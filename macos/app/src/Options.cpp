@@ -134,7 +134,7 @@ std::string usageText()
 		"                          (right click or M; keys 1-4, A, V, H, P, L). A choice made\n"
 		"                          there is remembered for the next run that does not give the\n"
 		"                          option.\n"
-		"  --nr on|off             neural rendering of an SDR picture (default on in a window, when the\n"
+		"  --nr on|off             neural rendering of the picture (default on in a window, when the\n"
 		"                          engine and a model are installed: see macos/nr/README.md)\n"
 		"  --nr-network small|ht   which network of the model (default small: about twice as fast)\n"
 		"  --nr-height N           height of the picture the network is given, 360 to 2160, or 0 for\n"

@@ -71,7 +71,7 @@ struct Options
 	std::optional<video::HdrToneMap> hdr_tone_map; // default app
 	std::optional<bool> fullscreen_sync;        // default on, see effectivePacing()
 	std::optional<bool> hdr;         // HDR on or off, whatever --codec, Qt settings or default say
-	// Neural rendering of an SDR picture; these five are in the Video menu and remembered too.
+	// Neural rendering of the picture; these five are in the Video menu and remembered too.
 	std::optional<bool> nr;                 // default on in a window when engine and model are there
 	std::optional<NrNetwork> nr_network;    // default small
 	std::optional<int> nr_height;           // height of the picture the network gets; 0 = the stream's

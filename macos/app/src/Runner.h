@@ -143,7 +143,6 @@ private:
 	void logStats(bool final_report);
 	void nrLoop();
 	void requestNrEngine();
-	bool streamAskedHdr() const;
 	void syncAnalysisActiveLocked();
 	void applyEnhanceConfig();
 
