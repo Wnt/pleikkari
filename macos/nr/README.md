@@ -172,6 +172,19 @@ costs an SDR picture: nothing at the median, about 2 ms at the 95th percentile. 
 scalers do it at the display's size (3456x2234 here), and there it adds 0.6 to 1.3 ms to
 the median frame.
 
+**A PS5's own HDR stream** (72 s of one game at dusk, recorded with `--dump`; one scene,
+so one data point). Four frames across it: the median of the picture is at 3 nits, a
+tenth of it is above 203 nits, the brightest pixels are at about 500 nits (700 in one
+channel), and about 1 % of the pixels are outside BT.709. The rendition of that is a
+normally exposed SDR picture (mean code value 0.30) in which nothing reaches 1.0, so SDR
+white at 203 nits suits this game. Given one rendition (`plk-nr-bench --image`, small
+network, 1920x1080, as an 8-bit PNG), the network raised what was dark by 7/255 on
+average and lowered what was bright, the sky, by 19/255, which the mix makes about a
+fifth less light there; on a frame of the same place from the SDR stream it lowered the
+bright parts by 14/255. Replayed headless with the network at 1280x720, the recording
+took 44 to 46 ms a picture, no result failed, and a frame's own pass took 2.2 to 2.3 ms of
+GPU time at the median (2.0 for the SDR recording of the same session).
+
 **Memory**, peak footprint of the app in a 10 s replay (`/usr/bin/time -l`; on Apple
 Silicon it includes what the GPU holds):
 
@@ -206,8 +219,8 @@ Not yet looked at on a screen (everything above was measured headless):
   results disagree, a surface may shimmer; a cross-fade between results would be the
   remedy.
 - How the picture looks while the change fades in and out around moving things.
-- **An HDR picture from a console.** The HDR path is checked by numbers
-  (`plk-video-enhancer-hdr-test`) and was run with the network on a recording converted
-  to HDR10, which has the levels the rendition expects by construction. What the network
-  makes of a real PS5 HDR picture has not been looked at.
+- **An HDR picture on an HDR display.** The HDR path is checked by numbers
+  (`plk-video-enhancer-hdr-test`) and was run with the network on a PS5's own HDR
+  stream, headless (above): one game, one scene. What the mixed picture looks like on a
+  display, and what a game with other levels does to the rendition, has not been looked at.
 - Frame ready to on glass with the engine on, in a window and in fullscreen.
