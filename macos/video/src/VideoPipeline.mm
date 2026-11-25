@@ -327,6 +327,16 @@ struct DecodedFrame {
 	std::shared_ptr<FrameRecord> rec;
 };
 
+// A rendered frame kept for PipelineConfig::captureDir.
+struct CapturedFrame {
+	id<MTLBuffer> bytes;
+	NSUInteger width = 0, height = 0, bytesPerPixel = 0;
+	MTLPixelFormat format = MTLPixelFormatInvalid;
+	uint64_t seq = 0, keySeq = 0;
+	uint16_t frameIndex = 0;
+	double decodedUs = 0, enhanceAgeMs = -1;
+};
+
 // ---- enhancer -------------------------------------------------------------
 
 // A frame the enhancer was given: the R'G'B' copy of one decoded frame, BGRA8 of an SDR
@@ -600,6 +610,8 @@ struct VideoPipeline::Impl {
 	id<MTLFXSpatialScaler> fx;
 	id<MTLTexture> fxIn, fxOut;
 	id<MTLTexture> offscreen;
+	std::vector<CapturedFrame> captured;  // render thread, then the destructor
+	uint64_t captureSeen = 0;
 	id<MTLTexture> lastTarget;
 	id<MTLCommandBuffer> lastCommandBuffer;
 	uint64_t framesSinceFlush = 0;
@@ -1911,6 +1923,8 @@ struct VideoPipeline::Impl {
 				shared->enhanceAge.add(nrAgeMs);
 			}
 		}
+		if(off && cfg.captureCount > 0 && !cfg.captureDir.empty())
+			captureFrame(cb, target, *rec, mixed ? nr.get() : nullptr, nrAgeMs);
 		[cb commit];
 		lastCommandBuffer = cb;
 		lastTarget = target;
@@ -1970,6 +1984,66 @@ struct VideoPipeline::Impl {
 		[fx encodeToCommandBuffer:cb];
 		drawPass(cb, target, dest, pipelineFor(FragCopy, target.pixelFormat), fxOut, nil, nullptr);
 		return true;
+	}
+
+	// PipelineConfig::captureDir: a copy of the frame just drawn into `target`, made by `cb`.
+	void captureFrame(id<MTLCommandBuffer> cb, id<MTLTexture> target, const FrameRecord &rec, const EnhancedFrame *mixedIn, double ageMs)
+	{
+		const uint64_t n = captureSeen++;
+		const uint32_t every = cfg.captureEvery ? cfg.captureEvery : 1;
+		if(n < cfg.captureSkip || (n - cfg.captureSkip) % every != 0 || captured.size() >= cfg.captureCount)
+			return;
+		CapturedFrame c;
+		c.width = target.width;
+		c.height = target.height;
+		c.format = target.pixelFormat;
+		c.bytesPerPixel = c.format == MTLPixelFormatRGBA16Float ? 8 : 4;
+		c.bytes = [device newBufferWithLength:c.width * c.height * c.bytesPerPixel options:MTLResourceStorageModeShared];
+		if(!c.bytes)
+			return;
+		c.seq = rec.seq;
+		c.frameIndex = rec.frameIndex;
+		c.decodedUs = rec.decodedUs;
+		c.enhanceAgeMs = mixedIn ? ageMs : -1.0;
+		c.keySeq = mixedIn && mixedIn->key ? mixedIn->key->seq : 0;
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit copyFromTexture:target sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+				   sourceSize:MTLSizeMake(c.width, c.height, 1) toBuffer:c.bytes destinationOffset:0
+		destinationBytesPerRow:c.width * c.bytesPerPixel destinationBytesPerImage:c.width * c.height * c.bytesPerPixel];
+		[blit endEncoding];
+		captured.push_back(c);
+	}
+
+	// After the last command buffer has completed.
+	void writeCaptured()
+	{
+		if(captured.empty() || cfg.captureDir.empty())
+			return;
+		FILE *csv = fopen((cfg.captureDir + "/frames.csv").c_str(), "w");
+		if(!csv)
+		{
+			NSLog(@"plk-video: cannot write to %s", cfg.captureDir.c_str());
+			captured.clear();
+			return;
+		}
+		fprintf(csv, "file,width,height,format,seq,frame_index,decoded_us,enhance_age_ms,enhance_key_seq\n");
+		for(size_t i = 0; i < captured.size(); i++)
+		{
+			const CapturedFrame &c = captured[i];
+			char name[32];
+			snprintf(name, sizeof(name), "%04zu.raw", i);
+			if(FILE *f = fopen((cfg.captureDir + "/" + name).c_str(), "wb"))
+			{
+				fwrite(c.bytes.contents, 1, c.width * c.height * c.bytesPerPixel, f);
+				fclose(f);
+			}
+			const char *format = c.format == MTLPixelFormatBGRA8Unorm ? "bgra8" : c.format == MTLPixelFormatBGR10A2Unorm ? "bgr10a2"
+				: c.format == MTLPixelFormatRGBA16Float ? "rgba16f" : "other";
+			fprintf(csv, "%s,%lu,%lu,%s,%llu,%u,%.0f,%.2f,%llu\n", name, (unsigned long)c.width, (unsigned long)c.height, format,
+					(unsigned long long)c.seq, (unsigned)c.frameIndex, c.decodedUs, c.enhanceAgeMs, (unsigned long long)c.keySeq);
+		}
+		fclose(csv);
+		captured.clear();
 	}
 
 	bool readPixel(int x, int y, float rgba[4])
@@ -2116,6 +2190,7 @@ VideoPipeline::~VideoPipeline()
 	{
 		[d->lastCommandBuffer waitUntilCompleted];
 		[d->lastKeyCommandBuffer waitUntilCompleted];
+		d->writeCaptured();
 		// A result still on its way lands in the state its callback holds and is dropped there.
 		d->dropEnhanced();
 		if(d->keyPool)

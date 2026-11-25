@@ -173,6 +173,10 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 	{
 		pc.offscreenWidth = options_.offscreen_width;
 		pc.offscreenHeight = options_.offscreen_height;
+		pc.captureDir = options_.capture_dir;
+		pc.captureSkip = options_.capture_skip;
+		pc.captureCount = options_.capture_frames;
+		pc.captureEvery = options_.capture_every;
 	}
 	analysis_ = std::make_unique<FrameAnalysis>();
 	FrameLogger *logger = frame_logger_.get();

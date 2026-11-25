@@ -150,6 +150,7 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--no-frame-log` | per-frame lines on | |
 | `--no-controller`, `--no-controller-output`, `--no-realtime-controller` | | |
 | `--bt-haptics on\|off`, `--haptic-gain G` | Qt settings | |
+| `--capture DIR` | | with `--headless`: keep copies of rendered frames and write them to DIR at the end (`NNNN.raw`, `frames.csv` with each frame's stream index and the age of the neural rendering result mixed into it). `--capture-skip N` lets N rendered frames pass first, `--capture-frames N` keeps N (default 120; 8 MB each at 1920x1080, in memory), `--capture-every N` one in N. `tools/capture-to-png.py DIR [--pq]` makes pictures of them |
 | `--dump PATH` | | record the video samples (PLKVDMP1). PATH gets the first stream. A different stream that starts later (H restarts the session in the other codec; the console may change the stream) goes to a file of its own beside it, named after what it is: `video.plkv`, `video-2-sdr.plkv`, `video-3-hdr.plkv`. Each file starts with its own config sample and replays by itself. `DUMP=1 run-pleikkari.sh <label>` records into the run directory |
 | `--headless` | | no window or NSApplication; video renders offscreen; the controller is only read |
 | `--retry-window S` | 20 | restart a session that ends before it connects |

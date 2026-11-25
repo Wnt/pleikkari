@@ -185,6 +185,29 @@ bright parts by 14/255. Replayed headless with the network at 1280x720, the reco
 took 44 to 46 ms a picture, no result failed, and a frame's own pass took 2.2 to 2.3 ms of
 GPU time at the median (2.0 for the SDR recording of the same session).
 
+**What a moving picture gets** (a PS5's SDR stream, 2.4 s with the camera circling, HT
+network at 1280x720; `replay --headless --capture` writes the rendered frames, and
+`plk-nr-bench --image` gives what the network makes of each frame by itself, which is
+what the mix is measured against). The mix was worked out again on 78 distinct game
+frames with a result made from a frame 100, 166 and 266 ms older. Mean error of 255, of
+the smooth part of the picture (tone, light) and of its detail (what is left after a
+blur of 6 pixels; detail in the wrong place is a ghost):
+
+| what is shown | smooth part | detail |
+|---|---|---|
+| the stream as it is | 6.5 | 1.35 |
+| the mix as it is (fade 0.03 to 0.10) | 2.2 / 2.7 / 3.4 | 1.63 / 1.70 / 1.77 |
+| a stricter fade (0.01 to 0.03) | 3.0 / 3.8 / 4.5 | 1.97 / 2.01 / 1.99 |
+| only the change blurred (24 pixels), no fade | 2.5 / 2.9 / 3.4 | 1.35 |
+| the change moved along the picture's motion, then the fade | 1.4 / 1.9 / 2.6 | 1.15 / 1.34 / 1.55 |
+| the same, the blurred change everywhere and only its detail faded | 1.4 / 1.8 / 2.5 | 1.06 / 1.22 / 1.38 |
+
+So the tone the mix adds is right and its detail is further off than adding none. A
+stricter test makes it worse: a mask that changes from pixel to pixel cuts a smooth
+change into noise. Moving the change along the motion (block matching, exact to a pixel)
+puts the detail ahead of the plain stream up to about 170 ms and level with it at 270 ms;
+that was a simulation in Python on the captured frames, not the app.
+
 **Memory**, peak footprint of the app in a 10 s replay (`/usr/bin/time -l`; on Apple
 Silicon it includes what the GPU holds):
 
@@ -202,10 +225,19 @@ windowed one takes the screen of a machine that is in use. The app's analysis pa
 
 By design:
 
-- **No motion compensation.** The change is applied where the picture still looks like
-  the frame it was made from. Fast motion therefore shows mostly the plain stream, and a
-  still or slowly moving picture shows all of the network's work. Veyra warps its result
-  along optical flow; that is not done here.
+- **A moving picture ghosts: the feature is for a still picture as it is.** The change is
+  made from a frame 45 to 270 ms old (small network: median 95 ms; HT: 135 ms) and added
+  at the same place on the screen. It was meant to fade out where the picture has moved
+  on, but the test that decides it, a difference of code values between the frame and
+  the key frame fading from 0.03 to 0.10, lets most of a dark or low-contrast picture
+  through. In a recording of a PS5 game at dusk with the camera circling (the game at 30
+  frames a second), 82 to 89 % of the change was kept, and the edges of the older frame
+  stand beside those of the frame on screen: doubled aerials, roof lines, bushes, a car
+  where it was. See "What a moving picture gets" below for the numbers. Veyra warps its
+  result along optical flow; that is what is missing here.
+- **With the HT network the change pulses.** A result is often over 200 ms old when the
+  next one arrives (7 to 10 frames in every 110 to 135), and the fade by age, over the
+  second half of 400 ms, then takes up to a quarter of the change away until it does.
 - **An HDR picture is enhanced through an SDR rendition.** The network never sees more
   than 1000 nits (brighter is clipped for it, not for the picture), and it sees the
   highlights with less contrast than they have. Where SDR white sits is fixed at 203
@@ -218,7 +250,6 @@ Not yet looked at on a screen (everything above was measured headless):
 - A result replaces the one before it at once, 10 to 25 times a second. Where two
   results disagree, a surface may shimmer; a cross-fade between results would be the
   remedy.
-- How the picture looks while the change fades in and out around moving things.
 - **An HDR picture on an HDR display.** The HDR path is checked by numbers
   (`plk-video-enhancer-hdr-test`) and was run with the network on a PS5's own HDR
   stream, headless (above): one game, one scene. What the mixed picture looks like on a

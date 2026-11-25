@@ -234,6 +234,18 @@ struct PipelineConfig {
 	// without covering the screen). Pacing is forced to Immediate.
 	int offscreenWidth = 0;
 	int offscreenHeight = 0;
+	// Offscreen mode, for looking at what was rendered: after captureSkip rendered frames,
+	// one frame in captureEvery is copied, captureCount of them, in the frame's own command
+	// buffer. When the pipeline ends they are written to captureDir: NNNN.raw, the target's
+	// bytes row by row, and frames.csv with a line for each (file, width, height, pixel
+	// format, the frame's number and stream index, when it was decoded in microseconds,
+	// the age in ms of the enhancer's result mixed into it and the number of the frame
+	// that result was made from, or -1 and 0). The copies stay in memory until then: a
+	// 1920x1080 frame is 8 MB.
+	std::string captureDir;
+	uint64_t captureSkip = 0;
+	uint32_t captureCount = 0;
+	uint32_t captureEvery = 1;
 	uint32_t statsWindow = 36000;       // samples kept per distribution (rolling)
 	FrameCallback onFrame;              // optional per-frame timeline (see FrameTiming)
 	EnhanceCallback onEnhance;          // optional, one call per enhancer result (see EnhanceTiming)

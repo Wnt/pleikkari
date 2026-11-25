@@ -85,6 +85,10 @@ struct Options
 	bool headless = false;           // no window, no NSApplication: video renders offscreen
 	int offscreen_width = 3456;      // headless target size (the panel's)
 	int offscreen_height = 2234;
+	std::string capture_dir;         // headless: rendered frames are written here at the end
+	uint64_t capture_skip = 0;       // rendered frames to let pass first
+	unsigned capture_frames = 120;
+	unsigned capture_every = 1;
 
 	// Controller.
 	bool controller = true;

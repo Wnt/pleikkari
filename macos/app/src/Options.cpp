@@ -151,6 +151,12 @@ std::string usageText()
 		"  --no-saved-choices      neither use nor remember the menu's choices\n"
 		"  --headless              no window: render offscreen, controller read-only\n"
 		"  --offscreen WxH         headless render size (default 3456x2234)\n"
+		"  --capture DIR           headless test tool: write rendered frames to DIR at the end, as\n"
+		"                          NNNN.raw and frames.csv (macos/app/tools/capture-to-png.py makes\n"
+		"                          pictures of them). They are held in memory: 8 MB for 1920x1080\n"
+		"  --capture-skip N        rendered frames to let pass first (default 0)\n"
+		"  --capture-frames N      how many to keep, 1 to 2000 (default 120)\n"
+		"  --capture-every N       keep one frame in N (default 1)\n"
 		"controller\n"
 		"  --no-controller         do not open the DualSense\n"
 		"  --no-controller-output  read the DualSense, never write to it\n"
@@ -385,6 +391,25 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&v) || !parseSize(v, &o.offscreen_width, &o.offscreen_height))
 				return fail("--offscreen wants WxH");
 		}
+		else if(a == "--capture")
+		{
+			if(!value(&v) || v.empty())
+				return fail("--capture wants a directory");
+			o.capture_dir = v;
+		}
+		else if(a == "--capture-skip" || a == "--capture-frames" || a == "--capture-every")
+		{
+			unsigned long long n;
+			const bool count = a != "--capture-skip";
+			if(!value(&v) || !parseUnsigned(v, a == "--capture-frames" ? 2000 : 1000000, &n) || (count && n == 0))
+				return fail(a + " wants a number" + (a == "--capture-frames" ? " from 1 to 2000" : count ? " from 1" : ""));
+			if(a == "--capture-skip")
+				o.capture_skip = n;
+			else if(a == "--capture-frames")
+				o.capture_frames = (unsigned)n;
+			else
+				o.capture_every = (unsigned)n;
+		}
 		else if(a == "--no-controller")
 			o.controller = false;
 		else if(a == "--no-controller-output")
@@ -480,6 +505,8 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 		return fail("unknown command " + cmd);
 	if(o.headless)
 		o.controller_output = false;
+	else if(!o.capture_dir.empty())
+		return fail("--capture needs --headless");
 	return true;
 }
 
