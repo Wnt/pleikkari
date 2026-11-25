@@ -180,6 +180,45 @@ void FrameAnalysis::updateBaseline(double now_us)
 	baseline_ = b;
 }
 
+PaceSnapshot FrameAnalysis::pace(double now_us) const
+{
+	PaceSnapshot p;
+	std::lock_guard<std::mutex> lk(mutex_);
+	double second = 0, quarter = 0;
+	size_t in_second = 0, in_quarter = 0;
+	// From the newest back, as far as the graph reaches.
+	for(auto it = frames_.rbegin(); it != frames_.rend() && p.intervals_ms.size() < kIntervals; ++it)
+	{
+		if(it->interval < 0 || it->at_us > now_us)
+			continue;
+		p.intervals_ms.push_back(it->interval);
+		if(it->at_us > now_us - window_us_)
+		{
+			second += it->interval;
+			in_second++;
+		}
+		if(it->at_us > now_us - window_us_ / 4)
+		{
+			quarter += it->interval;
+			in_quarter++;
+		}
+	}
+	std::reverse(p.intervals_ms.begin(), p.intervals_ms.end());
+	if(in_second >= 2 && second > 0)
+		p.fps = 1000.0 * (double)in_second / second;
+	if(in_quarter)
+		p.frame_ms = quarter / (double)in_quarter;
+	else if(in_second)
+		p.frame_ms = second / (double)in_second;
+	if(arrivals_.size() >= 5)
+	{
+		std::vector<float> a(arrivals_.begin(), arrivals_.end());
+		std::nth_element(a.begin(), a.begin() + (long)(a.size() / 2), a.end());
+		p.budget_ms = a[a.size() / 2];
+	}
+	return p;
+}
+
 AnalysisSnapshot FrameAnalysis::snapshot(double now_us) const
 {
 	AnalysisSnapshot s;

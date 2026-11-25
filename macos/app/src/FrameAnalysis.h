@@ -69,12 +69,34 @@ struct AnalysisSnapshot
 	std::vector<float> intervals_ms;  // the last present intervals, oldest first
 };
 
+/** What the frame rate overlay shows (FrameHud.h): asked ten times a second, so a small part of a snapshot. */
+struct PaceSnapshot
+{
+	double fps = 0;        // frames on glass over the last second (headless: rendered)
+	double frame_ms = 0;   // the mean of the last quarter second's intervals
+	double budget_ms = 0;  // the stream's frame interval; 0: not known yet
+	std::vector<float> intervals_ms;  // the last present intervals, oldest first
+};
+
 const char *stageName(AnalysisSnapshot::Stage stage);
+
+/** The sizes a frame goes through, and what it is: for the panels' own wording. */
+struct SignalInfo
+{
+	int stream_width = 0, stream_height = 0;    // 0: no frame yet
+	int nr_width = 0, nr_height = 0;            // what the neural rendering is given; 0: nothing
+	int picture_width = 0, picture_height = 0;  // the picture on the target
+	int target_width = 0, target_height = 0;    // the whole target (the window's pixels)
+	int bit_depth = 0;
+	bool hdr = false;
+	std::string codec, scaler, pacing;
+};
 
 /** What the panel shows: the numbers, and the words around them. */
 struct AnalysisReport
 {
 	AnalysisSnapshot timing;
+	SignalInfo info;
 	std::vector<std::pair<std::string, std::string>> signal;  // label, value
 	std::string enhancer;  // one line about the enhancer: what it is working with
 	std::string status;
@@ -99,6 +121,7 @@ public:
 	void clearBaseline();
 
 	AnalysisSnapshot snapshot(double now_us) const;
+	PaceSnapshot pace(double now_us) const;
 
 private:
 	struct Frame

@@ -77,6 +77,10 @@ struct Options
 	std::optional<int> nr_height;           // height of the picture the network gets; 0 = the stream's
 	std::optional<int> nr_strength;         // percent of the network's change that is shown
 	std::optional<NrLook> nr_look;          // default standard
+	// The frame rate over the picture's corner, and where the picture is while the pipeline
+	// panel is open (PipelinePanel.h): both in the Video menu and remembered too.
+	std::optional<bool> fps_overlay;        // default on in a window
+	std::optional<bool> panel_beside;       // default true: the picture is fitted beside the panel
 	std::string nr_library;          // libplknr.dylib (default: the one in the app bundle)
 	std::string nr_models;           // directory of the .dlssmodel packages (default: defaultNrModelsDirectory())
 	std::string nr_model;            // one package, whatever the network choice says
@@ -164,6 +168,8 @@ struct ViewChoices
 	int nr_height = kNrHeightDefault;
 	int nr_strength = kNrStrengthDefault;
 	NrLook nr_look = NrLook::Standard;
+	bool fps_overlay = true;
+	bool panel_beside = true;
 };
 ViewChoices resolveViewChoices(const Options &options);
 

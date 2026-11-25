@@ -38,6 +38,39 @@ constexpr double kFrameUs = 1e6 / 60.0;
 
 } // namespace
 
+// What the frame rate overlay asks for: the rate, the latest frame time and the intervals.
+PLK_TEST(analysis_pace)
+{
+	FrameAnalysis a;
+	PaceSnapshot none = a.pace(1e6);
+	CHECK(none.fps == 0 && none.frame_ms == 0 && none.intervals_ms.empty());
+
+	double at = 1e6;
+	for(int i = 0; i < 300; i++, at += kFrameUs)
+		a.onFrame(frame(at));
+	PaceSnapshot p = a.pace(at);
+	CHECK(near(p.fps, 60.0, 1.01));
+	CHECK(near(p.frame_ms, 16.67, 0.05));
+	CHECK(near(p.budget_ms, 16.67, 0.05));
+	CHECK(p.intervals_ms.size() == 120);
+	for(float ms : p.intervals_ms)
+		CHECK(near(ms, 16.67, 0.05));
+
+	// One frame 50 ms late: it is the newest interval, and the mean of the last quarter
+	// second moves while the budget, a median, does not.
+	at += 50000;
+	a.onFrame(frame(at));
+	p = a.pace(at + kFrameUs);
+	REQUIRE(!p.intervals_ms.empty());
+	CHECK(near(p.intervals_ms.back(), 66.67, 0.1));
+	CHECK(p.frame_ms > 18.0);
+	CHECK(near(p.budget_ms, 16.67, 0.05));
+
+	// A stream that stopped: no frames in the last second, no rate.
+	p = a.pace(at + 3e6);
+	CHECK(p.fps == 0);
+}
+
 PLK_TEST(analysis_stages_add_up)
 {
 	FrameAnalysis a;

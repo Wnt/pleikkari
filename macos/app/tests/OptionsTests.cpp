@@ -272,6 +272,32 @@ PLK_TEST(options_hdr_tone_map)
 	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-tone-map", "both" }, o));
 }
 
+PLK_TEST(options_overlay_and_panel)
+{
+	// The frame rate overlay is on in a window and off without one, unless said.
+	Options o;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164" }, o));
+	CHECK(!o.fps_overlay && !o.panel_beside);
+	CHECK(resolveViewChoices(o).fps_overlay);
+	CHECK(resolveViewChoices(o).panel_beside);
+	Options headless;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--headless" }, headless));
+	CHECK(!resolveViewChoices(headless).fps_overlay);
+	Options shown;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--headless", "--fps-overlay", "on" }, shown));
+	CHECK(resolveViewChoices(shown).fps_overlay);
+	Options off;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--fps-overlay", "off", "--panel-picture", "under" }, off));
+	CHECK(!resolveViewChoices(off).fps_overlay);
+	CHECK(!resolveViewChoices(off).panel_beside);
+	Options beside;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--panel-picture", "beside" }, beside));
+	CHECK(resolveViewChoices(beside).panel_beside);
+	Options bad;
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--fps-overlay", "maybe" }, bad));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--panel-picture", "over" }, bad));
+}
+
 PLK_TEST(options_fullscreen_sync)
 {
 	Options o;

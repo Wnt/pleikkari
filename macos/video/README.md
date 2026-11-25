@@ -37,6 +37,25 @@ cfg.onFrame = [](const plk::video::FrameTiming &t) { /* one call per rendered fr
 render start, commit, GPU start/end, presented) on a Metal callback thread once its
 presentation time is known; it is never called after the destructor returns.
 
+**Insets and overlay.** `setContentInsets(left, top, right, bottom)` keeps the picture
+out of the edges of the target that something else covers (the app's panels): it is
+fitted, with its aspect ratio, into what is left, and the rest stays black. Insets that
+would leave less than 64 pixels either way are not used. `Stats::pictureWidth` and
+`pictureHeight` say what the picture was fitted into.
+
+`setOverlay(OverlayImage)` gives the pipeline a small picture (BGRA8, premultiplied
+alpha, sRGB, top row first) to draw over the frame at a place counted from the picture's
+top left corner; a null `bgra` takes it away. It is a second draw in the frame's last
+render pass (the scaler's, or MetalFX's copy to the target), with blending, so it adds
+no pass and no view: a fullscreen picture still goes straight to the display. The
+texture is made on the caller's thread and handed over with the next frame, so it can be
+replaced several times a second (the app's frame rate overlay does, at 10 Hz). On an SDR
+target its code values are written as they are. On an HDR target its white is 100 nits
+on a PQ target and 1.0 on a linear one, which is the display's SDR white in both, and
+its colours are taken from BT.709 to the target's primaries (`fs_overlay` in
+`Shaders.metal`; `tests/test_overlay.mm`, and `tests/test_enhancer_hdr.mm` for the HDR
+levels).
+
 **Enhancer** (`include/plk/FrameEnhancer.h`). `setEnhancer()` gives the pipeline something
 that turns one R'G'B' picture into another, slowly: the neural rendering engine of
 `macos/nr`, or a test's stand-in. `setEnhanceConfig()` says how (`EnhanceConfig`: on or

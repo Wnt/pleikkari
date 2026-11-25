@@ -10,7 +10,8 @@
 // picture, HDR on or off, HDR output. It is in the menu bar, under a right click on the
 // picture and under the M key (arrow keys and Return work in it), and each choice has a
 // key of its own without a modifier: the DualSense is the input device, so the keyboard is
-// free. Other key presses are swallowed (no beep).
+// free. Other key presses are swallowed (no beep). The same choices, laid out as the
+// pipeline they change, are in the pipeline panel (G; PipelinePanelView.h).
 
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -30,6 +31,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)showNotice:(NSString *)text seconds:(double)seconds;
 /** Points at the bottom of the view that something else covers (the analysis panel): notices go above. */
 @property(nonatomic) CGFloat bottomInset;
+/**
+ * Points at the right of the view that the pipeline panel covers: notices and the menu
+ * opened from the keyboard are centred in the rest, and the pointer is not hidden there.
+ */
+@property(nonatomic) CGFloat rightInset;
 @end
 
 /**
@@ -63,6 +69,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)plkToggleNrCompare:(id)sender;
 /** The analysis panel (AnalysisView.h). */
 - (void)plkToggleAnalysis:(id)sender;
+/** The pipeline panel (PipelinePanelView.h). */
+- (void)plkTogglePanel:(id)sender;
+/** The frame rate over the picture's corner (FrameHud.h). */
+- (void)plkToggleFpsOverlay:(id)sender;
 @end
 
 /** A new Video menu (an item belongs to one menu: the menu bar and the pop-up each get their own). */

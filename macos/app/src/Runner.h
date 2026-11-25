@@ -83,6 +83,8 @@ public:
 		bool nr_available = false;   // the engine is loaded, or it and the chosen network's model are on disk
 		bool nr_loading = false;
 		std::string nr_status;       // the loaded model, or why there is none
+		bool fps_overlay = false;    // the frame rate over the picture's corner (FrameHud.h)
+		bool panel_beside = true;    // with the pipeline panel open, the picture is fitted beside it
 	};
 	ViewState viewState() const;
 	void setScaler(video::Scaler scaler);
@@ -123,6 +125,15 @@ public:
 	int setNrStrength(int percent);
 	void setNrLook(NrLook look);
 	void setNrCompare(bool on);
+	// The frame rate overlay: drawn about ten times a second on a thread of its own and
+	// handed to the pipeline, which puts it over the picture's corner.
+	void setFpsOverlay(bool on);
+	/** Pixels per point of the display the picture is on (a headless run picks its own). */
+	void setOverlayScale(int scale);
+	/** Remembered here only: the window does the fitting, through setContentInsets(). */
+	void setPanelBeside(bool beside);
+	/** Pixels of the drawable, from each edge, that a panel covers: the picture is fitted into the rest. */
+	void setContentInsets(int left, int top, int right, int bottom);
 	void setNoticeHandler(std::function<void(const std::string &)> handler);
 	/** What each stage of a frame costs right now (FrameAnalysis.h), with the words around it. */
 	AnalysisReport analysis() const;
@@ -142,6 +153,7 @@ private:
 	void statsLoop();
 	void logStats(bool final_report);
 	void nrLoop();
+	void hudLoop();
 	void requestNrEngine();
 	void syncAnalysisActiveLocked();
 	void applyEnhanceConfig();
@@ -201,6 +213,14 @@ private:
 	NrNetwork nr_engine_network_ = NrNetwork::Small;
 	std::string nr_failure_;
 	std::function<void(const std::string &)> notice_;
+
+	// The frame rate overlay's thread; hud_mutex_ guards the three below it.
+	std::thread hud_thread_;
+	std::mutex hud_mutex_;
+	std::condition_variable hud_cond_;
+	bool hud_stop_ = false;
+	bool hud_on_ = false;
+	int hud_scale_ = 1;
 
 	bool workers_down_ = false;
 	bool video_down_ = false;

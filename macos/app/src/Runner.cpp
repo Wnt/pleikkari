@@ -4,6 +4,7 @@
 
 #include "AudioOutput.h"
 #include "Controller.h"
+#include "FrameHud.h"
 #include "FrameTelemetry.h"
 #include "Gamepads.h"
 #include "Log.h"
@@ -221,6 +222,15 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 					dumpSegmentPath(options_.dump_path, 2, stream ? "hdr|sdr" : "").c_str());
 		}
 	}
+	{
+		std::lock_guard<std::mutex> lk(hud_mutex_);
+		hud_on_ = view_.fps_overlay;
+		// The window says what its display's is; an offscreen target of a Retina panel's
+		// size gets the scale such a panel has.
+		if(options_.headless)
+			hud_scale_ = options_.offscreen_height >= 1600 ? 2 : 1;
+	}
+	hud_thread_ = std::thread([this] { hudLoop(); });
 	// Neural rendering: the engine is loaded beside the stream, which starts without it.
 	nr_thread_ = std::thread([this] { nrLoop(); });
 	applyEnhanceConfig();
@@ -266,6 +276,8 @@ Runner::ViewState Runner::viewState() const
 	v.nr_strength = view_.nr_strength;
 	v.nr_look = view_.nr_look;
 	v.nr_compare = nr_compare_;
+	v.fps_overlay = view_.fps_overlay;
+	v.panel_beside = view_.panel_beside;
 	std::string failure;
 	{
 		std::lock_guard<std::mutex> lk(nr_mutex_);
@@ -361,6 +373,81 @@ void Runner::applyPacing()
 		analysis_->clearBaseline();
 	PLK_LOGI("Video: pacing %s (%s, fullscreen sync %s)", video::toString(mode),
 			window_fullscreen_ ? "fullscreen" : "window", view_.fullscreen_sync ? "on" : "off");
+}
+
+void Runner::setFpsOverlay(bool on)
+{
+	view_.fps_overlay = on;
+	{
+		std::lock_guard<std::mutex> lk(hud_mutex_);
+		hud_on_ = on;
+	}
+	hud_cond_.notify_all();
+	PLK_LOGI("Video: frame rate overlay %s", on ? "on" : "off");
+}
+
+void Runner::setOverlayScale(int scale)
+{
+	{
+		std::lock_guard<std::mutex> lk(hud_mutex_);
+		hud_scale_ = scale < 1 ? 1 : scale > 4 ? 4 : scale;
+	}
+	hud_cond_.notify_all();
+}
+
+void Runner::setPanelBeside(bool beside)
+{
+	view_.panel_beside = beside;
+}
+
+void Runner::setContentInsets(int left, int top, int right, int bottom)
+{
+	if(pipeline_)
+		pipeline_->setContentInsets(left, top, right, bottom);
+	// A picture of another size costs the scaler another amount.
+	if(analysis_)
+		analysis_->clearBaseline();
+}
+
+// Draws the overlay ten times a second while it is on; the pipeline shows the newest one
+// with every frame.
+void Runner::hudLoop()
+{
+	pthread_setname_np("plk.hud");
+	std::unique_lock<std::mutex> lk(hud_mutex_);
+	bool shown = false;
+	while(!hud_stop_)
+	{
+		if(!hud_on_)
+		{
+			if(shown)
+			{
+				lk.unlock();
+				pipeline_->setOverlay(video::OverlayImage());
+				lk.lock();
+				shown = false;
+				continue;
+			}
+			hud_cond_.wait(lk, [this] { return hud_stop_ || hud_on_; });
+			continue;
+		}
+		const int scale = hud_scale_;
+		lk.unlock();
+		const HudImage image = renderFrameHud(analysis_->pace(video::hostTimeUs()), scale);
+		if(image.width > 0)
+		{
+			video::OverlayImage overlay;
+			overlay.bgra = image.bgra.data();
+			overlay.width = image.width;
+			overlay.height = image.height;
+			overlay.bytesPerRow = image.bytes_per_row;
+			overlay.x = overlay.y = kHudMargin * scale;
+			pipeline_->setOverlay(overlay);
+			shown = true;
+		}
+		lk.lock();
+		hud_cond_.wait_for(lk, std::chrono::milliseconds(100), [this, scale] { return hud_stop_ || !hud_on_ || hud_scale_ != scale; });
+	}
 }
 
 void Runner::setDisplayHeadroom(float headroom)
@@ -624,6 +711,19 @@ AnalysisReport Runner::analysis() const
 	r.timing = analysis_->snapshot(video::hostTimeUs());
 	const video::Stats s = pipeline_->counters(); // asked four times a second: nothing sorted
 	const ViewState v = viewState();
+	r.info.stream_width = s.width;
+	r.info.stream_height = s.height;
+	r.info.nr_width = s.enhanceWidth;
+	r.info.nr_height = s.enhanceHeight;
+	r.info.picture_width = s.pictureWidth;
+	r.info.picture_height = s.pictureHeight;
+	r.info.target_width = s.targetWidth;
+	r.info.target_height = s.targetHeight;
+	r.info.bit_depth = s.bitDepth;
+	r.info.hdr = s.hdr;
+	r.info.codec = s.codec;
+	r.info.scaler = s.scaler;
+	r.info.pacing = s.pacing;
 	const AnalysisSnapshot &t = r.timing;
 	char buf[200];
 
@@ -637,8 +737,11 @@ AnalysisReport Runner::analysis() const
 			stream += buf;
 		}
 		r.signal.emplace_back("Stream", stream);
-		snprintf(buf, sizeof(buf), "%dx%d, %s%s%s%s", s.targetWidth, s.targetHeight, s.scaler.empty() ? "-" : s.scaler.c_str(),
-				s.pacing.empty() ? "" : ", ", s.pacing.c_str(), t.offscreen ? ", offscreen" : "");
+		// The picture's own size on the target: less than the target's beside a panel.
+		const bool fitted = s.pictureWidth > 0 && s.pictureHeight > 0;
+		snprintf(buf, sizeof(buf), "%dx%d, %s%s%s%s", fitted ? s.pictureWidth : s.targetWidth, fitted ? s.pictureHeight : s.targetHeight,
+				s.scaler.empty() ? "-" : s.scaler.c_str(), s.pacing.empty() ? "" : ", ", s.pacing.c_str(),
+				t.offscreen ? ", offscreen" : "");
 		r.signal.emplace_back("Output", buf);
 		if(!s.layerColorSpace.empty())
 			r.signal.emplace_back("Colour", s.layerColorSpace);
@@ -734,6 +837,7 @@ bool Runner::pressKey(const std::string &key, std::string *what)
 		case 'z': setNrStrength(stepNrStrength(v.nr_strength, -1)); done = "neural rendering weaker"; break;
 		case 'e': setNrLook(nextNrLook(v.nr_look)); done = std::string("neural rendering look ") + toString(nextNrLook(v.nr_look)); break;
 		case 'c': setNrCompare(!v.nr_compare); done = v.nr_compare ? "comparison off" : "comparison on"; break;
+		case 'f': setFpsOverlay(!v.fps_overlay); done = v.fps_overlay ? "frame rate overlay off" : "frame rate overlay on"; break;
 		default: return false;
 	}
 	if(what)
@@ -891,7 +995,7 @@ void Runner::shutdownVideo()
 	video_down_ = true;
 	if(pipeline_)
 		logStats(true);
-	// The engine loader calls into the pipeline: it ends first.
+	// The engine loader and the overlay's thread call into the pipeline: they end first.
 	{
 		std::lock_guard<std::mutex> lk(nr_mutex_);
 		nr_stop_ = true;
@@ -899,6 +1003,13 @@ void Runner::shutdownVideo()
 	nr_cond_.notify_all();
 	if(nr_thread_.joinable())
 		nr_thread_.join();
+	{
+		std::lock_guard<std::mutex> lk(hud_mutex_);
+		hud_stop_ = true;
+	}
+	hud_cond_.notify_all();
+	if(hud_thread_.joinable())
+		hud_thread_.join();
 	// Nothing submits any more (shutdownWorkers() joined the session or the replay). The
 	// pipeline goes first: its error callback may still reach session_ until it is gone.
 	video_path_.reset();

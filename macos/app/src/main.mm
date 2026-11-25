@@ -4,6 +4,7 @@
 // See macos/app/README.md.
 
 #import "AnalysisView.h"
+#import "PipelinePanelView.h"
 #import "StreamWindow.h"
 
 #include "Log.h"
@@ -159,7 +160,9 @@ int runHeadless(const Options &o)
 	id _screenObserver;
 	NSArray *_fullscreenObservers;
 	PLKAnalysisView *_analysisView;
-	NSTimer *_analysisTimer;
+	PLKPipelinePanelView *_panelView;
+	NSTimer *_panelTimer;  // while either panel is shown: what they show, four times a second
+	int _insets[4];        // what the pipeline was last told the panels cover, in pixels
 }
 
 - (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
@@ -213,8 +216,11 @@ int runHeadless(const Options &o)
 		return;
 	}
 	Runner *runner = _runner.get();
+	PLKAppDelegate *__weak sizeSelf = self;
 	_window.videoView.onDrawableSize = ^(int w, int h) {
 		runner->setDrawableSize(w, h);
+		// The panels follow the window, and the overlay the display's pixels per point.
+		[sizeSelf layoutPanels];
 	};
 	[_window makeKeyAndOrderFront:nil];
 	[self updateDisplayHeadroom];
@@ -295,7 +301,8 @@ int runHeadless(const Options &o)
 			|| action == @selector(plkToggleNr:) || action == @selector(plkSelectNrNetwork:)
 			|| action == @selector(plkSelectNrHeight:) || action == @selector(plkStepNrStrength:)
 			|| action == @selector(plkSelectNrLook:) || action == @selector(plkToggleNrCompare:)
-			|| action == @selector(plkToggleAnalysis:);
+			|| action == @selector(plkToggleAnalysis:) || action == @selector(plkTogglePanel:)
+			|| action == @selector(plkToggleFpsOverlay:);
 	if(!ours)
 		return YES;
 	if(!_runner || _terminating || _cleanedUp)
@@ -353,6 +360,10 @@ int runHeadless(const Options &o)
 		on = v.nr_compare;
 	else if(action == @selector(plkToggleAnalysis:))
 		on = _analysisView != nil;
+	else if(action == @selector(plkTogglePanel:))
+		on = _panelView != nil;
+	else if(action == @selector(plkToggleFpsOverlay:))
+		on = v.fps_overlay;
 	else
 	{
 		on = v.hdr;
@@ -608,38 +619,175 @@ int runHeadless(const Options &o)
 	PLKVideoView *view = _window.videoView;
 	if(_analysisView)
 	{
-		[_analysisTimer invalidate];
-		_analysisTimer = nil;
 		[_analysisView removeFromSuperview];
 		_analysisView = nil;
-		view.bottomInset = 0;
 		PLK_LOGI("Analysis panel off");
-		return;
 	}
-	const CGFloat margin = 12, height = [PLKAnalysisView preferredHeight];
-	_analysisView = [[PLKAnalysisView alloc]
-			initWithFrame:NSMakeRect(margin, margin, MAX(100, view.bounds.size.width - 2 * margin), height)];
-	_analysisView.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
-	[view addSubview:_analysisView];
-	view.bottomInset = height + margin;
-	PLKAppDelegate *__weak weakSelf = self;
-	_analysisTimer = [NSTimer timerWithTimeInterval:0.25
-											repeats:YES
-											  block:^(NSTimer *timer) {
-												  [weakSelf updateAnalysis];
-											  }];
-	_analysisTimer.tolerance = 0.05;
-	[NSRunLoop.mainRunLoop addTimer:_analysisTimer forMode:NSRunLoopCommonModes];
-	[self updateAnalysis];
-	// A view over the picture: a fullscreen picture is composited with it while it shows.
-	PLK_LOGI("Analysis panel on");
+	else
+	{
+		_analysisView = [[PLKAnalysisView alloc] initWithFrame:NSMakeRect(0, 0, 100, [PLKAnalysisView preferredHeight])];
+		// Under the pipeline panel where the two meet.
+		[view addSubview:_analysisView positioned:NSWindowBelow relativeTo:_panelView];
+		// A view over the picture: a fullscreen picture is composited with it while it shows.
+		PLK_LOGI("Analysis panel on");
+	}
+	[self panelsChanged];
 }
 
-- (void)updateAnalysis
+#pragma mark - Pipeline panel
+
+- (void)plkTogglePanel:(id)sender
 {
-	if(!_analysisView || !_runner || _terminating || _cleanedUp)
+	if(!_runner || _terminating || _cleanedUp)
 		return;
-	[_analysisView showReport:_runner->analysis()];
+	PLKVideoView *view = _window.videoView;
+	if(_panelView)
+	{
+		[_panelView removeFromSuperview];
+		_panelView = nil;
+		PLK_LOGI("Pipeline panel off");
+	}
+	else
+	{
+		_panelView = [[PLKPipelinePanelView alloc] initWithFrame:NSMakeRect(0, 0, [PLKPipelinePanelView preferredWidth], 100)];
+		PLKAppDelegate *__weak weakSelf = self;
+		_panelView.onAction = ^(const PanelAction &action) {
+			[weakSelf performPanelAction:action];
+		};
+		[view addSubview:_panelView];
+		PLK_LOGI("Pipeline panel on");
+	}
+	[self panelsChanged];
+}
+
+- (void)plkToggleFpsOverlay:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const bool on = !_runner->viewState().fps_overlay;
+	_runner->setFpsOverlay(on);
+	if(_options.saved_choices)
+		saveFpsOverlay(on);
+	[_window.videoView showNotice:on ? @"Frame rate overlay on" : @"Frame rate overlay off"];
+}
+
+// A click in the panel: the Video menu's own action for it, with a sender that carries
+// what a menu item would (the tag and the choice's wording), so the two ways to a setting
+// do, remember and announce the same thing.
+- (void)performPanelAction:(const PanelAction &)action
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@(action.title.c_str()) action:nil keyEquivalent:@""];
+	item.tag = action.tag;
+	switch(action.command)
+	{
+		case PanelCommand::None: break;
+		case PanelCommand::SelectScaler: [self plkSelectScaler:item]; break;
+		case PanelCommand::SelectSdrColor: [self plkSelectSdrColor:item]; break;
+		case PanelCommand::SelectHdrOutput: [self plkSelectHdrOutput:item]; break;
+		case PanelCommand::StepHdrBrightness: [self plkStepHdrBrightness:item]; break;
+		case PanelCommand::ToggleHdrToneMap: [self plkToggleHdrToneMap:item]; break;
+		case PanelCommand::ToggleFullscreenSync: [self plkToggleFullscreenSync:item]; break;
+		case PanelCommand::ToggleHdr: [self plkToggleHdr:item]; break;
+		case PanelCommand::ToggleNr: [self plkToggleNr:item]; break;
+		case PanelCommand::SelectNrNetwork: [self plkSelectNrNetwork:item]; break;
+		case PanelCommand::SelectNrHeight: [self plkSelectNrHeight:item]; break;
+		case PanelCommand::StepNrStrength: [self plkStepNrStrength:item]; break;
+		case PanelCommand::SelectNrLook: [self plkSelectNrLook:item]; break;
+		case PanelCommand::ToggleNrCompare: [self plkToggleNrCompare:item]; break;
+		case PanelCommand::ToggleAnalysis: [self plkToggleAnalysis:item]; break;
+		case PanelCommand::ToggleFpsOverlay: [self plkToggleFpsOverlay:item]; break;
+		case PanelCommand::SelectPanelPicture:
+		{
+			const bool beside = action.tag != 0;
+			_runner->setPanelBeside(beside);
+			if(_options.saved_choices)
+				savePanelBeside(beside);
+			[self layoutPanels];
+			[_window.videoView showNotice:@(action.title.c_str())];
+			break;
+		}
+	}
+	[self updatePanels];
+}
+
+// A panel came or went: the timer that feeds them runs while there is one.
+- (void)panelsChanged
+{
+	const bool any = _analysisView || _panelView;
+	if(any && !_panelTimer)
+	{
+		PLKAppDelegate *__weak weakSelf = self;
+		_panelTimer = [NSTimer timerWithTimeInterval:0.25
+											 repeats:YES
+											   block:^(NSTimer *timer) {
+												   [weakSelf updatePanels];
+											   }];
+		_panelTimer.tolerance = 0.05;
+		[NSRunLoop.mainRunLoop addTimer:_panelTimer forMode:NSRunLoopCommonModes];
+	}
+	else if(!any && _panelTimer)
+	{
+		[_panelTimer invalidate];
+		_panelTimer = nil;
+	}
+	[self layoutPanels];
+	[self updatePanels];
+}
+
+// Where the panels are, and what that leaves for the picture. The pipeline panel takes
+// the window's right edge. Beside it the picture is fitted into the rest, above the
+// analysis panel when that is open as well; otherwise the picture keeps the whole window
+// and the panels lie over it.
+- (void)layoutPanels
+{
+	if(!_runner || !_window || _terminating || _cleanedUp)
+		return;
+	PLKVideoView *view = _window.videoView;
+	const NSRect bounds = view.bounds;
+	const CGFloat margin = 12, scale = _window.backingScaleFactor;
+	_runner->setOverlayScale((int)lround(scale));
+	CGFloat panelWidth = 0;
+	if(_panelView)
+	{
+		panelWidth = MIN([PLKPipelinePanelView preferredWidth], floor(bounds.size.width * 0.5));
+		_panelView.frame = NSMakeRect(NSMaxX(bounds) - panelWidth, 0, panelWidth, bounds.size.height);
+	}
+	const CGFloat analysisHeight = _analysisView ? [PLKAnalysisView preferredHeight] : 0;
+	if(_analysisView)
+		_analysisView.frame = NSMakeRect(margin, margin, MAX(100, bounds.size.width - panelWidth - 2 * margin), analysisHeight);
+	view.bottomInset = _analysisView ? analysisHeight + margin : 0;
+	view.rightInset = panelWidth;
+	int insets[4] = { 0, 0, 0, 0 };
+	if(_panelView && _runner->viewState().panel_beside)
+	{
+		insets[2] = (int)lround(panelWidth * scale);
+		insets[3] = _analysisView ? (int)lround((analysisHeight + 2 * margin) * scale) : 0;
+	}
+	if(memcmp(insets, _insets, sizeof(insets)) != 0)
+	{
+		memcpy(_insets, insets, sizeof(insets));
+		_runner->setContentInsets(insets[0], insets[1], insets[2], insets[3]);
+	}
+}
+
+- (void)updatePanels
+{
+	if((!_analysisView && !_panelView) || !_runner || _terminating || _cleanedUp)
+		return;
+	const AnalysisReport report = _runner->analysis();
+	if(_analysisView)
+		[_analysisView showReport:report];
+	if(_panelView)
+	{
+		PanelState state;
+		state.view = _runner->viewState();
+		state.report = report;
+		state.picture_hdr = _runner->pictureIsHdr();
+		state.analysis_shown = _analysisView != nil;
+		[_panelView showState:state];
+	}
 }
 
 #pragma mark - --keys (test tool)
@@ -676,7 +824,7 @@ int runHeadless(const Options &o)
 		{ '1', 18 }, { '2', 19 }, { '3', 20 }, { '4', 21 }, { 'a', 0 }, { 'v', 9 }, { 'h', 4 }, { 'p', 35 },
 		{ 'l', 37 }, { 'm', 46 }, { 'f', 3 }, { '5', 23 }, { '6', 22 }, { '7', 26 }, { '8', 28 }, { '9', 25 },
 		{ '0', 29 }, { 't', 17 }, { 'n', 45 }, { 's', 1 }, { 'x', 7 }, { 'z', 6 }, { 'e', 14 }, { 'c', 8 },
-		{ 'i', 34 },
+		{ 'i', 34 }, { 'g', 5 },
 	};
 	NSString *characters = name;
 	unsigned short code = 90;
@@ -748,8 +896,8 @@ int runHeadless(const Options &o)
 {
 	[_headroomTimer invalidate];
 	_headroomTimer = nil;
-	[_analysisTimer invalidate];
-	_analysisTimer = nil;
+	[_panelTimer invalidate];
+	_panelTimer = nil;
 	if(_screenObserver)
 		[NSNotificationCenter.defaultCenter removeObserver:_screenObserver];
 	_screenObserver = nil;

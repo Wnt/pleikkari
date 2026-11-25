@@ -106,6 +106,8 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 | E | next look: standard, natural, cinematic, neutral (the network's own rendering profiles); the menu also has one item for each | with the next result |
 | C | compare: the left half of the picture is shown without the network's change, with a line between | with the next frame |
 | I | frame time analysis: a panel over the bottom of the picture, see below | at once. Not remembered |
+| G | the pipeline panel: every choice above, laid out as the pipeline it changes, at the right of the window; see below | at once. Not remembered |
+| F | frame rate overlay: frames a second, the frame time and the last 120 frame intervals over the picture's top left corner; see below | with the next frame. On by default in a window |
 
 Neural rendering runs **beside** the stream: every frame is decoded, scaled and presented as before, and the network's change to an earlier frame is mixed in where the picture still looks like that frame. Nothing waits for the network. What it costs is GPU time that the frames share with it; [`macos/nr/README.md`](../nr/README.md) has the numbers and the limits.
 
@@ -116,6 +118,19 @@ Neural rendering runs **beside** the stream: every frame is decoded, scaled and 
 - **Frame rate and pacing**: frames a second on glass, the 1 % low (from the 99th percentile of the frame intervals of the last 10 s), the last 120 intervals against the budget, and three gauges: processing time against the budget, the share of frames that carried a result, and the result's age. The line at the bottom turns orange when frames are not shown or processing exceeds the budget.
 
 The panel is an ordinary view over the picture, so while it is up macOS composites a fullscreen picture instead of handing it straight to the display. Measure latency with the log, and use the panel to see what a choice does.
+
+**The pipeline panel** (G) is the Video menu as a picture of the pipeline, after the panel of Veyra-NRVideo. It takes 384 points at the right of the window (never more than half of it) and is used with the mouse; the keys keep working while it is open.
+
+- **Tabs**: Quality (neural rendering, scaling), Colour (HDR stream, HDR picture, SDR colour), Display (in step with the display, frame rate overlay, frame time analysis, the panel itself).
+- **Processing order**: the stages a frame goes through, in order: input, neural rendering, HDR, scaling, colour, display. A stage that does nothing to the picture as it is now (neural rendering off or not installed, the fitting of an HDR picture while the picture is SDR, vivid colour while it is accurate or the picture is HDR) is struck out. A click on a stage shows its card, on whichever tab that is.
+- **Cards**: one for each stage, with an icon, a line about what it is doing now (the size, the strength and what a result takes for the neural rendering; the sizes and the GPU time for the scaler), a switch where the stage can be off, and its settings: a row of named buttons, a switch, or a number with − and + (a click on the number takes it back to 100 %). A click on a card's head folds its settings away. A card that does nothing to this picture is dimmed and still works. The neural rendering card says how old a result is when it is shown, in orange, because that age is what a moving picture ghosts by.
+- **Footer**: a dot (green, or orange when the analysis says something is not keeping up), the sizes a frame goes through (`Input 1920×1080 / NR 1280×720 / output 2880×1620`), and **Reset this page**, which takes the tab's settings back to their defaults. It leaves the HDR stream alone: that one reconnects.
+
+A click does what the menu item or the key does, by the same code: the choice is announced over the picture and remembered the same way. With the panel open the picture is fitted **beside** it, whole and smaller, above the analysis panel when that is open too; the panel's own card has the other choice, **under**, where the picture keeps the size it is played at and the panel lies over its right edge. That is the size to judge the scaler at: fitted beside the panel, a 1080p stream is scaled to a different size than in play. The choice is remembered.
+
+Like the analysis panel it is a view over the picture, so a fullscreen picture is composited while it is open. Veyra's panel has tabs and cards for stages this pipeline does not have (DLAA, frame generation, RTX Video HDR, several effect layers and their order, an output stabiliser, protected areas, audio). They are not in this panel: a control that does nothing would say otherwise.
+
+**The frame rate overlay** (F) is drawn by the video pipeline into the frame itself, in the pass that scales the picture, not by a view. So it costs no extra pass, it is there in a fullscreen picture that goes straight to the display, and a headless `--capture` shows it. It has the frames a second on glass over the last second (white, orange under 95 % of the stream's rate, red under 80 %), the mean frame time of the last quarter second, and the last 120 intervals between frames as a line, against a dashed line at the stream's frame interval. It is redrawn ten times a second on a thread of its own. Over an HDR picture its white is the display's SDR white.
 
 What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) and used by the next run that does not give the matching option; `--no-saved-choices` neither uses nor remembers it. Headless runs never use it.
 
@@ -145,6 +160,8 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--nr-library PATH` | `Contents/Frameworks/libplknr.dylib` of the app | the engine |
 | `--nr-models DIR` | `~/Library/Application Support/Pleikkari/models` | where the two models are looked for |
 | `--nr-model PATH` | | one `.dlssmodel` package, whatever the network choice |
+| `--fps-overlay on\|off` | the menu's choice, else on in a window and off with `--headless` | the frame rate over the picture's corner |
+| `--panel-picture beside\|under` | the panel's choice, else beside | where the picture is while the pipeline panel is open |
 | `--no-saved-choices` | | neither use nor remember the Video menu's choices |
 | `--stats-interval S` | 10 | 0 = off |
 | `--no-frame-log` | per-frame lines on | |
@@ -223,6 +240,8 @@ A value of -1 means the stage was not measured. With `--headless` nothing is pre
 `plk-app-tests` covers option parsing and settings precedence, input mapping (buttons, touches, motion on the sensor clock, motion reset), the mapping of other controllers and their rumble levels, the motor-power encoding, the frame-line format against frames.py's parser, the log format against triggers.py's pattern, the analysis' arithmetic (stages add up, the comparison against neural rendering off, the 1 % low), and where the neural rendering engine and its models are looked for. `build.sh` runs it together with `plk-host-tests`, `plk-dualsense-tests` and the video module's tests. None of them needs a console, a window or a controller.
 
 `plk-analysis-render OUT.png [WIDTH]` (next to the app in the build directory) draws the analysis panel into a PNG from made-up numbers: a look at its layout with no window.
+
+`plk-panel-render OUTDIR [--picture FILE] [--hdr] [--size WxH]` does the same for the pipeline panel: its three pages, the frame rate overlay, and the whole window as it is laid out with the panel open, the picture beside the panel and under it. `plk-panel-render --check` (the test `plk-panel-view`) clicks on what the panel drew and checks what every click sends: each setting's own command, a card's head folding it, a tab, a stage of the processing order bringing its card into sight, the reset, and that a switch that cannot be used and a control scrolled out of sight take no click. What the panel is made of for a given state of the run (which stages are struck out, which button is lit, what a reset sends) is `PipelinePanelTests.cpp`; the overlay's picture is `FrameHudTests.cpp`.
 
 `plk-gamepad-probe` (next to the app in the build directory) shows what the gamepad support sees with no window, stream or console: the controllers, whether their rumble engines start, and every mapped change. `--pulse` runs the motors for 2.5 s: heavy, light, then the haptics-stream path. `--seconds N`, `--quiet`.
 

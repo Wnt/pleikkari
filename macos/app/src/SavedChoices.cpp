@@ -24,6 +24,8 @@ const char *const kNrNetworkKey = "nrNetwork";
 const char *const kNrHeightKey = "nrHeight";
 const char *const kNrStrengthKey = "nrStrength";
 const char *const kNrLookKey = "nrLook";
+const char *const kFpsOverlayKey = "fpsOverlay";
+const char *const kPanelPictureKey = "panelPicture";
 
 // A whole number within a range; false for anything else.
 bool parseInt(const std::string &s, long min, long max, int *out)
@@ -118,6 +120,10 @@ SavedChoices loadSavedChoices(const std::string &domain)
 	NrLook look;
 	if(readString(domain, kNrLookKey, &s) && parseNrLook(s, &look))
 		c.nr_look = look;
+	if(readString(domain, kFpsOverlayKey, &s) && (s == "on" || s == "off"))
+		c.fps_overlay = s == "on";
+	if(readString(domain, kPanelPictureKey, &s) && (s == "beside" || s == "under"))
+		c.panel_beside = s == "beside";
 	return c;
 }
 
@@ -181,10 +187,21 @@ void saveNrLook(NrLook look, const std::string &domain)
 	writeString(domain, kNrLookKey, toString(look));
 }
 
+void saveFpsOverlay(bool on, const std::string &domain)
+{
+	writeString(domain, kFpsOverlayKey, on ? "on" : "off");
+}
+
+void savePanelBeside(bool beside, const std::string &domain)
+{
+	writeString(domain, kPanelPictureKey, beside ? "beside" : "under");
+}
+
 void forgetSavedChoices(const std::string &domain)
 {
 	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey, kHdrToneMapKey,
-				kFullscreenSyncKey, kNrKey, kNrNetworkKey, kNrHeightKey, kNrStrengthKey, kNrLookKey })
+				kFullscreenSyncKey, kNrKey, kNrNetworkKey, kNrHeightKey, kNrStrengthKey, kNrLookKey, kFpsOverlayKey,
+				kPanelPictureKey })
 		writeString(domain, key, nullptr);
 }
 
@@ -246,6 +263,16 @@ std::string applySavedChoices(const SavedChoices &saved, Options &o)
 	{
 		o.nr_look = saved.nr_look;
 		note(std::string("neural rendering look ") + toString(*saved.nr_look));
+	}
+	if(!o.fps_overlay && saved.fps_overlay)
+	{
+		o.fps_overlay = saved.fps_overlay;
+		note(*saved.fps_overlay ? "frame rate overlay on" : "frame rate overlay off");
+	}
+	if(!o.panel_beside && saved.panel_beside)
+	{
+		o.panel_beside = saved.panel_beside;
+		note(*saved.panel_beside ? "picture beside the panel" : "picture under the panel");
 	}
 	// --codec is as explicit about HDR as --hdr is.
 	if(!o.hdr && !o.codec && saved.hdr)

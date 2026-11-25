@@ -167,6 +167,42 @@ PLK_TEST(saved_choices_fullscreen_sync)
 	CHECK(!loadSavedChoices(kTestDomain).fullscreen_sync);
 }
 
+PLK_TEST(saved_choices_overlay_and_panel)
+{
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).fps_overlay);
+	CHECK(!loadSavedChoices(kTestDomain).panel_beside);
+	saveFpsOverlay(false, kTestDomain);
+	savePanelBeside(false, kTestDomain);
+	SavedChoices c = loadSavedChoices(kTestDomain);
+	REQUIRE(c.fps_overlay && c.panel_beside);
+	CHECK(!*c.fps_overlay && !*c.panel_beside);
+	Options o;
+	const std::string notes = applySavedChoices(c, o);
+	CHECK(notes.find("frame rate overlay off") != std::string::npos);
+	CHECK(notes.find("picture under the panel") != std::string::npos);
+	REQUIRE(o.fps_overlay && o.panel_beside);
+	CHECK(!*o.fps_overlay && !*o.panel_beside);
+	// What the command line says stands.
+	Options given;
+	given.fps_overlay = true;
+	given.panel_beside = true;
+	CHECK(applySavedChoices(c, given).empty());
+	CHECK(*given.fps_overlay && *given.panel_beside);
+	saveFpsOverlay(true, kTestDomain);
+	savePanelBeside(true, kTestDomain);
+	c = loadSavedChoices(kTestDomain);
+	CHECK(*c.fps_overlay && *c.panel_beside);
+	// Something else under the key is no choice at all.
+	writeRaw("fpsOverlay", "sometimes");
+	writeRaw("panelPicture", "over");
+	c = loadSavedChoices(kTestDomain);
+	CHECK(!c.fps_overlay && !c.panel_beside);
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).fps_overlay);
+	CHECK(!loadSavedChoices(kTestDomain).panel_beside);
+}
+
 PLK_TEST(saved_choices_neural_rendering)
 {
 	forgetSavedChoices(kTestDomain);

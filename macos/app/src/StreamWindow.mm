@@ -2,6 +2,8 @@
 
 #import "StreamWindow.h"
 
+#include "PipelinePanel.h"
+
 #include "Options.h"
 
 #include <plk/VideoPipeline.h>
@@ -78,7 +80,7 @@ NSCursor *blankCursor()
 }
 
 // The controller is the input device. Keys: the Video menu's own (1-9, 0, A, V, H, P, L, T, N,
-// S, X, Z, E, C, I), M opens that menu; everything else goes nowhere (and does not beep).
+// S, X, Z, E, C, I, G, F), M opens that menu; everything else goes nowhere (and does not beep).
 - (void)keyDown:(NSEvent *)event
 {
 	const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask
@@ -134,7 +136,7 @@ NSCursor *blankCursor()
 	{
 		// From the keyboard: in the middle of the picture, top edge a little above it.
 		const NSSize size = menu.size;
-		at = NSMakePoint(NSMidX(self.bounds) - size.width / 2, NSMidY(self.bounds) + size.height / 2);
+		at = NSMakePoint((self.bounds.size.width - _rightInset) / 2 - size.width / 2, NSMidY(self.bounds) + size.height / 2);
 	}
 	// The view's cursor is blank; the menu needs one.
 	[NSCursor.arrowCursor push];
@@ -168,7 +170,7 @@ NSCursor *blankCursor()
 	const CGFloat padX = 18, padY = 10;
 	const NSSize box = NSMakeSize(label.width + 2 * padX, label.height + 2 * padY);
 	_noticeLabel.frame = NSMakeRect(padX, padY, label.width, label.height);
-	_noticeBox.frame = NSMakeRect(round(NSMidX(self.bounds) - box.width / 2),
+	_noticeBox.frame = NSMakeRect(round((self.bounds.size.width - _rightInset) / 2 - box.width / 2),
 			round(MAX(self.bounds.size.height * 0.08, _bottomInset + 12)), box.width, box.height);
 	_noticeBox.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMaxYMargin;
 	if(_noticeBox.superview != self)
@@ -189,7 +191,17 @@ NSCursor *blankCursor()
 
 - (void)resetCursorRects
 {
-	[self addCursorRect:self.bounds cursor:blankCursor()];
+	NSRect picture = self.bounds;
+	picture.size.width = MAX(0, picture.size.width - _rightInset);
+	[self addCursorRect:picture cursor:blankCursor()];
+}
+
+- (void)setRightInset:(CGFloat)inset
+{
+	if(inset == _rightInset)
+		return;
+	_rightInset = inset;
+	[self.window invalidateCursorRectsForView:self];
 }
 
 - (void)setFrameSize:(NSSize)size
@@ -302,24 +314,27 @@ void addChoice(NSMenu *menu, NSString *title, SEL action, NSInteger tag, NSStrin
 	[menu addItem:item];
 }
 
+template <size_t N>
+void addChoices(NSMenu *menu, const plk::app::NamedChoice (&choices)[N], SEL action)
+{
+	for(const plk::app::NamedChoice &c : choices)
+		addChoice(menu, @(c.title), action, c.tag, @(c.key));
+}
+
 } // namespace
 
 NSMenu *PLKMakeVideoMenu(void)
 {
-	using namespace plk::video;
+	// The named choices are PipelinePanel.h's tables: the panel offers the same ones.
+	using namespace plk::app;
 	NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Video"];
 	addHeader(menu, @"Scaling");
-	addChoice(menu, @"Bilinear (fastest)", @selector(plkSelectScaler:), (NSInteger)Scaler::Bilinear, @"1");
-	addChoice(menu, @"Bicubic", @selector(plkSelectScaler:), (NSInteger)Scaler::Bicubic, @"2");
-	addChoice(menu, @"Lanczos (sharpest)", @selector(plkSelectScaler:), (NSInteger)Scaler::Lanczos, @"3");
-	addChoice(menu, @"MetalFX upscaler", @selector(plkSelectScaler:), (NSInteger)Scaler::MetalFX, @"4");
+	addChoices(menu, kScalerChoices, @selector(plkSelectScaler:));
 	addHeader(menu, @"Colour of an SDR picture");
-	addChoice(menu, @"Accurate", @selector(plkSelectSdrColor:), (NSInteger)SdrColor::Accurate, @"a");
-	addChoice(menu, @"Vivid (the display's full gamut)", @selector(plkSelectSdrColor:), (NSInteger)SdrColor::Vivid, @"v");
+	addChoices(menu, kSdrColorChoices, @selector(plkSelectSdrColor:));
 	addHeader(menu, @"HDR");
 	addChoice(menu, @"HDR stream (reconnects)", @selector(plkToggleHdr:), 0, @"h");
-	addChoice(menu, @"Output as PQ", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::PQ, @"p");
-	addChoice(menu, @"Output as linear light", @selector(plkSelectHdrOutput:), (NSInteger)HdrOutput::ExtendedLinear, @"l");
+	addChoices(menu, kHdrOutputChoices, @selector(plkSelectHdrOutput:));
 	// The first one's title carries the current value (the app delegate sets it).
 	addChoice(menu, @"Standard brightness (100 %)", @selector(plkStepHdrBrightness:), 0, @"0");
 	addChoice(menu, @"Brighter", @selector(plkStepHdrBrightness:), 1, @"+");
@@ -329,27 +344,21 @@ NSMenu *PLKMakeVideoMenu(void)
 	addChoice(menu, @"In step with the display: no tearing", @selector(plkToggleFullscreenSync:), 0, @"s");
 	// The effect and its settings, in the order they matter: on or off, which model, how
 	// much picture it is given, how much of its change is shown, which look.
-	using plk::app::NrLook;
-	using plk::app::NrNetwork;
 	addHeader(menu, @"Neural rendering");
 	// Its title carries the state (the app delegate sets it).
 	addChoice(menu, @"Neural rendering", @selector(plkToggleNr:), 0, @"n");
-	addChoice(menu, @"Performance model (small network)", @selector(plkSelectNrNetwork:), (NSInteger)NrNetwork::Small, @"5");
-	addChoice(menu, @"Original model (HT network, slower)", @selector(plkSelectNrNetwork:), (NSInteger)NrNetwork::HT, @"6");
-	addChoice(menu, @"Process at 540p (fastest)", @selector(plkSelectNrHeight:), plk::app::kNrHeights[0], @"7");
-	addChoice(menu, @"Process at 720p", @selector(plkSelectNrHeight:), plk::app::kNrHeights[1], @"8");
-	addChoice(menu, @"Process at the stream's size (slowest)", @selector(plkSelectNrHeight:), plk::app::kNrHeights[2], @"9");
+	addChoices(menu, kNrNetworkChoices, @selector(plkSelectNrNetwork:));
+	addChoices(menu, kNrHeightChoices, @selector(plkSelectNrHeight:));
 	// The first one's title carries the current value.
 	addChoice(menu, @"Strength 100 %", @selector(plkStepNrStrength:), 0, @"");
 	addChoice(menu, @"Stronger", @selector(plkStepNrStrength:), 1, @"x");
 	addChoice(menu, @"Weaker", @selector(plkStepNrStrength:), -1, @"z");
-	addChoice(menu, @"Look: standard", @selector(plkSelectNrLook:), (NSInteger)NrLook::Standard, @"");
-	addChoice(menu, @"Look: natural (gentler)", @selector(plkSelectNrLook:), (NSInteger)NrLook::Natural, @"");
-	addChoice(menu, @"Look: cinematic", @selector(plkSelectNrLook:), (NSInteger)NrLook::Cinematic, @"");
-	addChoice(menu, @"Look: neutral (diagnostic)", @selector(plkSelectNrLook:), (NSInteger)NrLook::Neutral, @"");
+	addChoices(menu, kNrLookChoices, @selector(plkSelectNrLook:));
 	addChoice(menu, @"Next look", @selector(plkSelectNrLook:), -1, @"e");
 	addChoice(menu, @"Compare: left half without", @selector(plkToggleNrCompare:), 0, @"c");
-	addHeader(menu, @"Analysis");
+	addHeader(menu, @"Panels");
+	addChoice(menu, @"Pipeline panel", @selector(plkTogglePanel:), 0, @"g");
+	addChoice(menu, @"Frame rate overlay", @selector(plkToggleFpsOverlay:), 0, @"f");
 	addChoice(menu, @"Frame time analysis", @selector(plkToggleAnalysis:), 0, @"i");
 	return menu;
 }

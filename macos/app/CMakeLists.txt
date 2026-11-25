@@ -10,6 +10,8 @@ add_library(plk-app-core STATIC
 	src/Controller.h
 	src/FrameAnalysis.cpp
 	src/FrameAnalysis.h
+	src/FrameHud.cpp
+	src/FrameHud.h
 	src/FrameTelemetry.cpp
 	src/FrameTelemetry.h
 	src/GamepadMapper.cpp
@@ -26,6 +28,8 @@ add_library(plk-app-core STATIC
 	src/Options.h
 	src/PadMapper.cpp
 	src/PadMapper.h
+	src/PipelinePanel.cpp
+	src/PipelinePanel.h
 	src/Replay.cpp
 	src/Replay.h
 	src/Runner.cpp
@@ -47,7 +51,8 @@ target_include_directories(plk-app-core PUBLIC src PRIVATE "${CMAKE_CURRENT_SOUR
 target_compile_options(plk-app-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_source_files_properties(src/Gamepads.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 set_target_properties(plk-app-core PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON)
-target_link_libraries(plk-app-core PUBLIC plk-host plkvideo plk_dualsense "-framework GameController" "-framework CoreHaptics" "-framework Foundation")
+target_link_libraries(plk-app-core PUBLIC plk-host plkvideo plk_dualsense "-framework GameController" "-framework CoreHaptics"
+	"-framework Foundation" "-framework CoreGraphics" "-framework CoreText")
 
 set(PLK_APP_PLIST "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
 configure_file(bundle/Info.plist.in "${PLK_APP_PLIST}" @ONLY)
@@ -56,6 +61,8 @@ add_executable(Pleikkari MACOSX_BUNDLE
 	src/main.mm
 	src/AnalysisView.h
 	src/AnalysisView.mm
+	src/PipelinePanelView.h
+	src/PipelinePanelView.mm
 	src/StreamWindow.h
 	src/StreamWindow.mm)
 set_target_properties(Pleikkari PROPERTIES
@@ -108,16 +115,28 @@ target_compile_options(plk-analysis-render PRIVATE -fobjc-arc -Wall -Wextra -Wno
 target_include_directories(plk-analysis-render PRIVATE src)
 target_link_libraries(plk-analysis-render PRIVATE plk-app-core "-framework AppKit")
 
+# The pipeline panel, the frame rate overlay and the analysis panel drawn into PNGs, and
+# with --check the panel's mouse handling: what a click on each thing it drew sends.
+add_executable(plk-panel-render tools/PanelRender.mm src/AnalysisView.h src/AnalysisView.mm src/PipelinePanelView.h
+	src/PipelinePanelView.mm)
+set_target_properties(plk-panel-render PROPERTIES CXX_STANDARD 20 OBJCXX_STANDARD 20)
+target_compile_options(plk-panel-render PRIVATE -fobjc-arc -Wall -Wextra -Wno-unused-parameter)
+target_include_directories(plk-panel-render PRIVATE src)
+target_link_libraries(plk-panel-render PRIVATE plk-app-core "-framework AppKit")
+add_test(NAME plk-panel-view COMMAND plk-panel-render --check)
+
 add_executable(plk-app-tests
 	"${CMAKE_CURRENT_SOURCE_DIR}/../host/tests/main.cpp"
 	tests/AnalysisTests.cpp
 	tests/ControllerTests.cpp
+	tests/FrameHudTests.cpp
 	tests/GamepadMapperTests.cpp
 	tests/GamepadRumbleTests.cpp
 	tests/LogTests.cpp
 	tests/NeuralEnhancerTests.cpp
 	tests/OptionsTests.cpp
 	tests/PadMapperTests.cpp
+	tests/PipelinePanelTests.cpp
 	tests/SavedChoicesTests.cpp
 	tests/TelemetryTests.cpp
 	tests/VideoPathTests.cpp)

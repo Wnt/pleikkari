@@ -144,6 +144,10 @@ std::string usageText()
 		"                          These five are in the Video menu too (N, 5-6, 7-9, Z and X, E)\n"
 		"                          and remembered like the ones above. C splits the picture for\n"
 		"                          comparison, I shows what each stage of a frame costs.\n"
+		"  --fps-overlay on|off    the frame rate and the last frame times over the picture's corner\n"
+		"                          (default on in a window; F)\n"
+		"  --panel-picture beside|under   while the pipeline panel is open (G): the picture fitted\n"
+		"                          beside it (default), or left at its size with the panel over it\n"
 		"  --nr-library PATH       libplknr.dylib (default: the one in the app bundle)\n"
 		"  --nr-models DIR         where the .dlssmodel packages are (default:\n"
 		"                          ~/Library/Application Support/Pleikkari/models)\n"
@@ -311,6 +315,18 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&v) || !parseDouble(v, kHdrBrightnessMin, kHdrBrightnessMax, &pct))
 				return fail("--hdr-brightness wants a percentage from 20 to 200");
 			o.hdr_brightness = (int)(pct + 0.5);
+		}
+		else if(a == "--fps-overlay")
+		{
+			if(!value(&v) || (v != "on" && v != "off"))
+				return fail("--fps-overlay wants on or off");
+			o.fps_overlay = v == "on";
+		}
+		else if(a == "--panel-picture")
+		{
+			if(!value(&v) || (v != "beside" && v != "under"))
+				return fail("--panel-picture wants beside or under");
+			o.panel_beside = v == "beside";
 		}
 		else if(a == "--fullscreen-sync")
 		{
@@ -581,6 +597,10 @@ ViewChoices resolveViewChoices(const Options &o)
 		v.nr_strength = *o.nr_strength;
 	if(o.nr_look)
 		v.nr_look = *o.nr_look;
+	// And nothing over the picture it renders.
+	v.fps_overlay = o.fps_overlay ? *o.fps_overlay : !o.headless;
+	if(o.panel_beside)
+		v.panel_beside = *o.panel_beside;
 	return v;
 }
 
