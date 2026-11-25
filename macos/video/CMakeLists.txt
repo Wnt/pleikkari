@@ -78,6 +78,13 @@ target_link_libraries(plk-video-enhancer-test PRIVATE plkvideo)
 add_test(NAME enhancer COMMAND plk-video-enhancer-test)
 set_tests_properties(enhancer PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
 
+# Content insets and the overlay: where the picture lands beside a panel, and what an
+# overlay leaves in the rendered frame. Same needs as the enhancer test.
+add_executable(plk-video-overlay-test tests/test_overlay.mm)
+target_link_libraries(plk-video-overlay-test PRIVATE plkvideo)
+add_test(NAME overlay COMMAND plk-video-overlay-test)
+set_tests_properties(overlay PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+
 # The same for an HDR picture: an HEVC Main 10 stream in PQ, the enhancer's SDR rendition
 # of it, and the change taken back to PQ. Needs the hardware HEVC encoder; exits 77 without.
 add_executable(plk-video-enhancer-hdr-test tests/test_enhancer_hdr.mm)

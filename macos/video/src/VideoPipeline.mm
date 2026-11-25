@@ -212,6 +212,18 @@ struct alignas(16) NrShaderParams {
 };
 static_assert(sizeof(NrShaderParams) == 48, "must match NrParams in Shaders.metal");
 
+struct alignas(16) OverlayShaderParams {
+	simd_float2 mode, unused;
+};
+static_assert(sizeof(OverlayShaderParams) == 16, "must match OverlayParams in Shaders.metal");
+
+// The overlay's white on an HDR target: what the display shows as SDR white, which is 100
+// nits in a PQ layer and 1.0 in an extended linear one (see renderFrame()).
+constexpr float kOverlayWhiteNits = 100.0f;
+
+// setContentInsets(): what the insets must leave of the target, either way, to be used.
+constexpr long kMinInsetContent = 64;
+
 void lumaCoefficients(Matrix m, double &kr, double &kb)
 {
 	switch(m)
@@ -628,12 +640,26 @@ struct VideoPipeline::Impl {
 	id<MTLCommandBuffer> lastKeyCommandBuffer;
 	std::atomic<bool> mixStatesBuilt{false};  // any thread: setEnhancer() builds them once
 
-	enum Frag { FragBilinear = 0, FragBicubic, FragLanczos, FragCopy, FragBilinearNr, FragBicubicNr, FragLanczosNr };
+	enum Frag { FragBilinear = 0, FragBicubic, FragLanczos, FragCopy, FragBilinearNr, FragBicubicNr, FragLanczosNr,
+		FragOverlay };
 	// What a pass needs on top of the plane textures to mix an enhancer's result in.
 	struct NrDraw {
 		id<MTLTexture> key, out;
 		NrShaderParams params;
 	};
+	// A second draw in the pass that fills the target: the overlay, blended over the frame.
+	struct OverlayDraw {
+		id<MTLRenderPipelineState> pso;
+		id<MTLTexture> tex;
+		MTLRegion at;
+		OverlayShaderParams params;
+	};
+
+	// setContentInsets() and setOverlay(): render-thread-only, set through post().
+	int insetLeft = 0, insetTop = 0, insetRight = 0, insetBottom = 0;
+	id<MTLTexture> overlayTex;
+	int overlayX = 0, overlayY = 0;
+	std::atomic<bool> overlayStatesBuilt{false};  // any thread: setOverlay() builds them once
 
 	// ------------------------------------------------------------------------
 	bool offscreenMode() const { return cfg.offscreenWidth > 0 && cfg.offscreenHeight > 0; }
@@ -1297,11 +1323,23 @@ struct VideoPipeline::Impl {
 	id<MTLRenderPipelineState> makePipeline(Frag frag, MTLPixelFormat fmt) const
 	{
 		static const char *names[] = {"fs_bilinear", "fs_bicubic", "fs_lanczos", "fs_copy",
-			"fs_bilinear_nr", "fs_bicubic_nr", "fs_lanczos_nr"};
+			"fs_bilinear_nr", "fs_bicubic_nr", "fs_lanczos_nr", "fs_overlay"};
 		MTLRenderPipelineDescriptor *d = [MTLRenderPipelineDescriptor new];
 		d.vertexFunction = [library newFunctionWithName:@"vs_fullscreen"];
 		d.fragmentFunction = [library newFunctionWithName:@(names[frag])];
 		d.colorAttachments[0].pixelFormat = fmt;
+		if(frag == FragOverlay)
+		{
+			// Premultiplied alpha over what is there; the target's own alpha stays 1.
+			MTLRenderPipelineColorAttachmentDescriptor *a = d.colorAttachments[0];
+			a.blendingEnabled = YES;
+			a.rgbBlendOperation = MTLBlendOperationAdd;
+			a.alphaBlendOperation = MTLBlendOperationAdd;
+			a.sourceRGBBlendFactor = MTLBlendFactorOne;
+			a.sourceAlphaBlendFactor = MTLBlendFactorOne;
+			a.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+			a.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+		}
 		NSError *err = nil;
 		id<MTLRenderPipelineState> p = [device newRenderPipelineStateWithDescriptor:d error:&err];
 		if(!p)
@@ -1429,6 +1467,18 @@ struct VideoPipeline::Impl {
 		return MTLRegionMake2D((tw - w) / 2, (th - h) / 2, w, h);
 	}
 
+	// The picture's place in a target of tw x th: fitted into what the content insets leave.
+	MTLRegion pictureRegion(double srcW, double srcH, NSUInteger tw, NSUInteger th) const
+	{
+		const long freeW = (long)tw - insetLeft - insetRight, freeH = (long)th - insetTop - insetBottom;
+		if(freeW < kMinInsetContent || freeH < kMinInsetContent)
+			return letterbox(srcW, srcH, tw, th);
+		MTLRegion r = letterbox(srcW, srcH, (NSUInteger)freeW, (NSUInteger)freeH);
+		r.origin.x += (NSUInteger)insetLeft;
+		r.origin.y += (NSUInteger)insetTop;
+		return r;
+	}
+
 	id<MTLTexture> makeTexture(MTLPixelFormat fmt, NSUInteger w, NSUInteger h, MTLTextureUsage usage)
 	{
 		MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:fmt width:w height:h mipmapped:NO];
@@ -1438,7 +1488,8 @@ struct VideoPipeline::Impl {
 	}
 
 	void drawPass(id<MTLCommandBuffer> cb, id<MTLTexture> target, MTLRegion vp, id<MTLRenderPipelineState> pso,
-			id<MTLTexture> t0, id<MTLTexture> t1, const ShaderParams *params, const NrDraw *nr = nullptr)
+			id<MTLTexture> t0, id<MTLTexture> t1, const ShaderParams *params, const NrDraw *nr = nullptr,
+			const OverlayDraw *overlay = nullptr)
 	{
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 		rp.colorAttachments[0].texture = target;
@@ -1460,7 +1511,38 @@ struct VideoPipeline::Impl {
 			[enc setFragmentBytes:&nr->params length:sizeof(NrShaderParams) atIndex:1];
 		}
 		[enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		if(overlay)
+		{
+			const MTLRegion &at = overlay->at;
+			[enc setRenderPipelineState:overlay->pso];
+			[enc setViewport:(MTLViewport){(double)at.origin.x, (double)at.origin.y, (double)at.size.width, (double)at.size.height, 0.0, 1.0}];
+			[enc setFragmentTexture:overlay->tex atIndex:0];
+			[enc setFragmentBytes:&overlay->params length:sizeof(OverlayShaderParams) atIndex:0];
+			[enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		}
 		[enc endEncoding];
+	}
+
+	// The overlay as this frame's last pass draws it, or false: none, it does not fit, or
+	// its render state is not there (setOverlay() builds it, off this thread).
+	bool overlayFor(id<MTLTexture> target, MTLRegion dest, const ColorInfo &ci, bool linear, OverlayDraw &out)
+	{
+		if(!overlayTex)
+			return false;
+		const long x = (long)dest.origin.x + overlayX, y = (long)dest.origin.y + overlayY;
+		if(x < 0 || y < 0 || x + (long)overlayTex.width > (long)target.width || y + (long)overlayTex.height > (long)target.height)
+			return false;
+		out.pso = pipelineIfBuilt(FragOverlay, target.pixelFormat);
+		if(!out.pso)
+			return false;
+		out.tex = overlayTex;
+		out.at = MTLRegionMake2D((NSUInteger)x, (NSUInteger)y, overlayTex.width, overlayTex.height);
+		out.params = {};
+		if(linear)
+			out.params.mode = simd_make_float2(ci.primaries == Primaries::BT2020 ? 2.0f : 3.0f, 1.0f);
+		else if(ci.transfer == Transfer::PQ)
+			out.params.mode = simd_make_float2(1.0f, kOverlayWhiteNits / 10000.0f);
+		return true;
 	}
 
 	// ---- enhancer ----------------------------------------------------------
@@ -1835,7 +1917,9 @@ struct VideoPipeline::Impl {
 			target = drawable.texture;
 		}
 
-		MTLRegion dest = letterbox(clean.size.width, clean.size.height, target.width, target.height);
+		MTLRegion dest = pictureRegion(clean.size.width, clean.size.height, target.width, target.height);
+		OverlayDraw overlayDraw;
+		const OverlayDraw *overlay = overlayFor(target, dest, ci, linear, overlayDraw) ? &overlayDraw : nullptr;
 		Scaler eff = scaler;
 		if(eff == Scaler::MetalFX && (dest.size.width < (NSUInteger)clean.size.width || dest.size.height < (NSUInteger)clean.size.height))
 			eff = Scaler::Bilinear;  // MetalFX spatial upscales only
@@ -1856,7 +1940,7 @@ struct VideoPipeline::Impl {
 		{
 			id<MTLRenderPipelineState> mix = nr ? pipelineIfBuilt(FragBilinearNr, MTLPixelFormatRGBA16Float) : nil;
 			encoded = encodeMetalFX(cb, target, dest, texY, texC, params, (NSUInteger)clean.size.width,
-					(NSUInteger)clean.size.height, linear, mix, mix ? &nrDraw : nullptr);
+					(NSUInteger)clean.size.height, linear, mix, mix ? &nrDraw : nullptr, overlay);
 			if(!encoded)
 				eff = Scaler::Bilinear;
 			else
@@ -1867,9 +1951,9 @@ struct VideoPipeline::Impl {
 			Frag frag = eff == Scaler::Bicubic ? FragBicubic : eff == Scaler::Lanczos ? FragLanczos : FragBilinear;
 			id<MTLRenderPipelineState> mix = nr ? pipelineIfBuilt(mixedIn(frag), target.pixelFormat) : nil;
 			if(mix)
-				drawPass(cb, target, dest, mix, texY, texC, &params, &nrDraw);
+				drawPass(cb, target, dest, mix, texY, texC, &params, &nrDraw, overlay);
 			else
-				drawPass(cb, target, dest, pipelineFor(frag, target.pixelFormat), texY, texC, &params);
+				drawPass(cb, target, dest, pipelineFor(frag, target.pixelFormat), texY, texC, &params, nullptr, overlay);
 			mixed = mix != nil;
 		}
 		if(!mixed)
@@ -1917,6 +2001,8 @@ struct VideoPipeline::Impl {
 			shared->c.scaler = toString(eff);
 			shared->c.targetWidth = (int)target.width;
 			shared->c.targetHeight = (int)target.height;
+			shared->c.pictureWidth = (int)dest.size.width;
+			shared->c.pictureHeight = (int)dest.size.height;
 			if(mixed)
 			{
 				shared->c.framesEnhanced++;
@@ -1947,7 +2033,7 @@ struct VideoPipeline::Impl {
 	// so that the scaler works on the enhanced picture.
 	bool encodeMetalFX(id<MTLCommandBuffer> cb, id<MTLTexture> target, MTLRegion dest, id<MTLTexture> texY,
 			id<MTLTexture> texC, const ShaderParams &params, NSUInteger srcW, NSUInteger srcH, bool linear,
-			id<MTLRenderPipelineState> mix, const NrDraw *nr)
+			id<MTLRenderPipelineState> mix, const NrDraw *nr, const OverlayDraw *overlay)
 	{
 		NSUInteger dw = dest.size.width, dh = dest.size.height;
 		MTLFXSpatialScalerColorProcessingMode mode =
@@ -1982,7 +2068,7 @@ struct VideoPipeline::Impl {
 		fx.inputContentWidth = srcW;
 		fx.inputContentHeight = srcH;
 		[fx encodeToCommandBuffer:cb];
-		drawPass(cb, target, dest, pipelineFor(FragCopy, target.pixelFormat), fxOut, nil, nullptr);
+		drawPass(cb, target, dest, pipelineFor(FragCopy, target.pixelFormat), fxOut, nil, nullptr, nullptr, overlay);
 		return true;
 	}
 
@@ -2289,6 +2375,60 @@ void VideoPipeline::setDrawableSize(int w, int h)
 		[CATransaction setDisableActions:YES];
 		d->layer.drawableSize = CGSizeMake(w, h);
 		[CATransaction commit];
+	});
+}
+
+void VideoPipeline::setContentInsets(int left, int top, int right, int bottom)
+{
+	Impl *d = impl_.get();
+	left = std::max(left, 0);
+	top = std::max(top, 0);
+	right = std::max(right, 0);
+	bottom = std::max(bottom, 0);
+	d->post([d, left, top, right, bottom] {
+		d->insetLeft = left;
+		d->insetTop = top;
+		d->insetRight = right;
+		d->insetBottom = bottom;
+	});
+}
+
+void VideoPipeline::setOverlay(const OverlayImage &image)
+{
+	Impl *d = impl_.get();
+	if(!image.bgra || image.width <= 0 || image.height <= 0)
+	{
+		d->post([d] { d->overlayTex = nil; });
+		return;
+	}
+	// A texture of its own for every picture: the one before may still be read by a frame
+	// the GPU has not finished. The device makes textures from any thread.
+	MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+																				  width:(NSUInteger)image.width
+																				 height:(NSUInteger)image.height
+																			  mipmapped:NO];
+	td.usage = MTLTextureUsageShaderRead;
+	td.storageMode = MTLStorageModeShared;
+	id<MTLTexture> tex = [d->device newTextureWithDescriptor:td];
+	if(!tex)
+		return;
+	[tex replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)image.width, (NSUInteger)image.height)
+		   mipmapLevel:0
+			 withBytes:image.bgra
+		   bytesPerRow:image.bytesPerRow ? image.bytesPerRow : (size_t)image.width * 4];
+	// As setEnhancer() does with its states: built here, not on the render thread.
+	std::vector<std::pair<std::pair<int, MTLPixelFormat>, id<MTLRenderPipelineState>>> built;
+	if(!d->overlayStatesBuilt.exchange(true))
+		for(MTLPixelFormat fmt : {MTLPixelFormatBGRA8Unorm, MTLPixelFormatBGR10A2Unorm, MTLPixelFormatRGBA16Float})
+			built.push_back({{(int)Impl::FragOverlay, fmt}, d->makePipeline(Impl::FragOverlay, fmt)});
+	const int x = image.x, y = image.y;
+	d->post([d, tex, built, x, y] {
+		for(const auto &b : built)
+			if(b.second)
+				d->pipelines[b.first] = b.second;
+		d->overlayTex = tex;
+		d->overlayX = x;
+		d->overlayY = y;
 	});
 }
 

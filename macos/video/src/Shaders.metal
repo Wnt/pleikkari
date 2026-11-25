@@ -386,3 +386,32 @@ fragment float4 fs_copy(VSOut in [[stage_in]], texture2d<float> t [[texture(0)]]
 {
 	return float4(t.sample(kNearest, in.uv).rgb, 1.0);
 }
+
+// ---- an overlay over the picture (VideoPipeline::setOverlay) ----------------------
+//
+// texture(0): the overlay, sRGB code values with premultiplied alpha, drawn one to one
+// into a viewport of its own size, blended over what the frame's draw left there. What
+// the target holds is not always sRGB code values, so the colour is first made what the
+// target expects, with the overlay's white at the display's SDR white.
+
+struct OverlayParams {
+	// x = 0: the target holds SDR code values, the overlay's go in as they are.
+	// x = 1: PQ code values in BT.2020; y is the overlay's white in units of 10000 nits.
+	// x = 2: linear light in BT.2020; y is the overlay's white.
+	// x = 3: linear light in the overlay's own primaries; y is the overlay's white.
+	float2 mode;
+	float2 unused;
+};
+
+fragment float4 fs_overlay(VSOut in [[stage_in]], texture2d<float> t [[texture(0)]],
+		constant OverlayParams &p [[buffer(0)]])
+{
+	float4 c = t.sample(kNearest, in.uv);
+	if(p.mode.x < 0.5 || c.a <= 0.0)
+		return c;
+	float3 lin = pow(saturate(c.rgb / c.a), 2.2) * p.mode.y;
+	if(p.mode.x < 2.5)
+		lin = bt709_to_bt2020(lin);
+	float3 v = p.mode.x < 1.5 ? pq_inverse_eotf(lin) : lin;
+	return float4(v * c.a, c.a);
+}

@@ -199,6 +199,21 @@ struct EnhanceConfig {
 
 class FrameEnhancer;
 
+// A small picture drawn over the stream's, in the pass that draws the frame: a frame rate
+// counter, say. It is the pipeline that draws it and not a view over the layer, so a
+// fullscreen picture still goes straight to the display with it, and an offscreen run has
+// it in what it renders. The pixels are copied; they are shown one to one.
+struct OverlayImage {
+	// BGRA, eight bits each, alpha premultiplied, sRGB code values, the top row first.
+	// nullptr: no overlay.
+	const uint8_t *bgra = nullptr;
+	int width = 0, height = 0;
+	size_t bytesPerRow = 0;
+	// Its top left corner, from the picture's top left corner, in pixels. An overlay that
+	// does not fit into the target at that place is not drawn.
+	int x = 0, y = 0;
+};
+
 struct PipelineConfig {
 	Codec codec = Codec::Auto;          // Auto: detected from the parameter sets
 	PacingMode pacing = PacingMode::Immediate;
@@ -298,6 +313,7 @@ struct Stats {
 	std::string layerColorSpace;  // what the layer was last tagged with (a CGColorSpace name)
 	std::string hdrMetadata;  // what CAEDRMetadata was built from (SEI values or defaults)
 	int targetWidth = 0, targetHeight = 0;
+	int pictureWidth = 0, pictureHeight = 0;  // the part of the target the picture is fitted into
 };
 
 class VideoPipeline {
@@ -334,6 +350,14 @@ public:
 	void setDisplayHeadroom(float headroom);
 	void setLatchMarginUs(uint32_t marginUs);
 	void setDrawableSize(int widthPixels, int heightPixels);
+	// Pixels of the target, from each edge, that something else covers (a panel beside the
+	// picture): the picture is fitted into what is left, and the rest stays black. Insets
+	// that leave less than 64 pixels either way are not used.
+	void setContentInsets(int left, int top, int right, int bottom);
+	// Any thread; the first call builds three render states on the calling thread (some
+	// tens of milliseconds). Shown from the next frame on, until the next call. On an HDR
+	// target the overlay's white is as bright as the display's SDR white.
+	void setOverlay(const OverlayImage &image);
 
 	// Attaches an enhancer, or detaches it with nullptr. The first attach builds the render
 	// states of the mixed-in path on the calling thread (a few hundred milliseconds), so

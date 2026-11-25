@@ -532,6 +532,37 @@ int main()
 		CHECK(same(pixel(kRightX), appOther));
 		CHECK(appLow.g > pixel(kLeftX).g + 0.01);
 
+		// An overlay's white on an HDR target is the display's SDR white: 100 nits in a PQ
+		// layer, 1.0 in a linear one.
+		{
+			const uint8_t white[4 * 4 * 4] = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
+			OverlayImage overlay;
+			overlay.bgra = white;
+			overlay.width = 4;
+			overlay.height = 4;
+			overlay.bytesPerRow = 16;
+			overlay.x = 8;
+			overlay.y = 8;
+			pipeline->setOverlay(overlay);
+			CHECK(show(lumaOther));
+			float rgba[4] = {-1, -1, -1, -1};
+			pipeline->debugReadPixel(10, 10, rgba);
+			NEAR(pqEotf(rgba[0]) * 10000.0, 100.0, 4.0);
+			NEAR(pqEotf(rgba[1]) * 10000.0, 100.0, 4.0);
+			NEAR(pqEotf(rgba[2]) * 10000.0, 100.0, 4.0);
+			pipeline->setHdrOutput(HdrOutput::ExtendedLinear);
+			CHECK(show(lumaOther));
+			pipeline->debugReadPixel(10, 10, rgba);
+			NEAR(rgba[0], 1.0, 0.02);
+			NEAR(rgba[1], 1.0, 0.02);
+			NEAR(rgba[2], 1.0, 0.02);
+			pipeline->setOverlay(OverlayImage());
+			pipeline->setHdrOutput(HdrOutput::PQ);
+		}
+
 		Stats stats = pipeline->stats();
 		// (enhanceFailed also counts the frames the fake refused while it had no permission.)
 		CHECK(stats.enhanceOffered == 2 && stats.enhanceCompleted == 2);
