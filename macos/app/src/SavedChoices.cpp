@@ -17,6 +17,7 @@ const char *const kSdrColorKey = "sdrColor";
 const char *const kHdrOutputKey = "hdrOutput";
 const char *const kHdrKey = "hdr";
 const char *const kHdrBrightnessKey = "hdrBrightness";
+const char *const kHdrToneMapKey = "hdrToneMap";
 
 CFStringRef cfString(const std::string &s)
 {
@@ -82,6 +83,9 @@ SavedChoices loadSavedChoices(const std::string &domain)
 		if(end != s.c_str() && !*end && pct >= kHdrBrightnessMin && pct <= kHdrBrightnessMax)
 			c.hdr_brightness = (int)pct;
 	}
+	video::HdrToneMap tone_map;
+	if(readString(domain, kHdrToneMapKey, &s) && video::parseHdrToneMap(s, &tone_map))
+		c.hdr_tone_map = tone_map;
 	return c;
 }
 
@@ -110,9 +114,14 @@ void saveHdrBrightness(int percent, const std::string &domain)
 	writeString(domain, kHdrBrightnessKey, std::to_string(percent).c_str());
 }
 
+void saveHdrToneMap(video::HdrToneMap tone_map, const std::string &domain)
+{
+	writeString(domain, kHdrToneMapKey, video::toString(tone_map));
+}
+
 void forgetSavedChoices(const std::string &domain)
 {
-	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey })
+	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey, kHdrToneMapKey })
 		writeString(domain, key, nullptr);
 }
 
@@ -139,6 +148,11 @@ std::string applySavedChoices(const SavedChoices &saved, Options &o)
 	{
 		o.hdr_brightness = saved.hdr_brightness;
 		note("HDR brightness " + std::to_string(*saved.hdr_brightness) + " %");
+	}
+	if(!o.hdr_tone_map && saved.hdr_tone_map)
+	{
+		o.hdr_tone_map = saved.hdr_tone_map;
+		note(std::string("HDR tone mapping ") + video::toString(*saved.hdr_tone_map));
 	}
 	// --codec is as explicit about HDR as --hdr is.
 	if(!o.hdr && !o.codec && saved.hdr)

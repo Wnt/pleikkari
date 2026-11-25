@@ -312,6 +312,7 @@ NSMenu *PLKMakeVideoMenu(void)
 	addChoice(menu, @"Brightness as the console sends it (100 %)", @selector(plkStepHdrBrightness:), 0, @"0");
 	addChoice(menu, @"Brighter", @selector(plkStepHdrBrightness:), 1, @"+");
 	addChoice(menu, @"Darker", @selector(plkStepHdrBrightness:), -1, @"-");
+	addChoice(menu, @"Tone mapping by macOS (stalls in fullscreen)", @selector(plkToggleHdrToneMap:), 0, @"t");
 	return menu;
 }
 

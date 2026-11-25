@@ -126,6 +126,10 @@ int runHeadless(const Options &o)
 	BOOL _cleanedUp;
 	int _exitCode;
 	NSUInteger _hdrSwitchSerial;
+	float _headroom;
+	float _loggedHeadroom;
+	NSTimer *_headroomTimer;
+	id _screenObserver;
 }
 
 - (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
@@ -173,6 +177,21 @@ int runHeadless(const Options &o)
 		runner->setDrawableSize(w, h);
 	};
 	[_window makeKeyAndOrderFront:nil];
+	[self updateDisplayHeadroom];
+	PLKAppDelegate *__weak headroomSelf = self;
+	_screenObserver = [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidChangeScreenParametersNotification
+																	  object:nil
+																	   queue:NSOperationQueue.mainQueue
+																  usingBlock:^(NSNotification *note) {
+																	  [headroomSelf updateDisplayHeadroom];
+																  }];
+	_headroomTimer = [NSTimer timerWithTimeInterval:0.25
+											repeats:YES
+											  block:^(NSTimer *timer) {
+												  [headroomSelf updateDisplayHeadroom];
+											  }];
+	_headroomTimer.tolerance = 0.05;
+	[NSRunLoop.mainRunLoop addTimer:_headroomTimer forMode:NSRunLoopCommonModes];
 	[_window.videoView reportDrawableSize];
 	if(@available(macOS 14.0, *))
 		[NSApp activate];
@@ -214,7 +233,7 @@ int runHeadless(const Options &o)
 	const SEL action = item.action;
 	const bool ours = action == @selector(plkSelectScaler:) || action == @selector(plkSelectSdrColor:)
 			|| action == @selector(plkSelectHdrOutput:) || action == @selector(plkToggleHdr:)
-			|| action == @selector(plkStepHdrBrightness:);
+			|| action == @selector(plkStepHdrBrightness:) || action == @selector(plkToggleHdrToneMap:);
 	if(!ours)
 		return YES;
 	if(!_runner || _terminating || _cleanedUp)
@@ -227,6 +246,8 @@ int runHeadless(const Options &o)
 		on = (NSInteger)v.sdr_color == item.tag;
 	else if(action == @selector(plkSelectHdrOutput:))
 		on = (NSInteger)v.hdr_output == item.tag;
+	else if(action == @selector(plkToggleHdrToneMap:))
+		on = v.hdr_tone_map == video::HdrToneMap::System;
 	else if(action == @selector(plkStepHdrBrightness:))
 	{
 		if(item.tag == 0)
@@ -294,6 +315,42 @@ int runHeadless(const Options &o)
 	if(!_runner->pictureIsHdr())
 		text = [text stringByAppendingString:@" - for an HDR picture; this one is SDR"];
 	[_window.videoView showNotice:text];
+}
+
+- (void)plkToggleHdrToneMap:(id)sender
+{
+	const bool system = _runner->viewState().hdr_tone_map != video::HdrToneMap::System;
+	const video::HdrToneMap tone_map = system ? video::HdrToneMap::System : video::HdrToneMap::App;
+	_runner->setHdrToneMap(tone_map);
+	if(_options.saved_choices)
+		saveHdrToneMap(tone_map);
+	NSString *text = system ? @"HDR tone mapping by macOS" : @"HDR tone mapping by the app";
+	if(!_runner->pictureIsHdr())
+		text = [text stringByAppendingString:@" - for an HDR picture; this one is SDR"];
+	[_window.videoView showNotice:text];
+}
+
+// What the display can show above SDR white right now. It changes with the display's
+// brightness and while the system makes room for an HDR picture; the notification does not
+// come for every step of that, so a timer asks as well.
+- (void)updateDisplayHeadroom
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	NSScreen *screen = _window.screen ?: NSScreen.mainScreen;
+	const float current = (float)screen.maximumExtendedDynamicRangeColorComponentValue;
+	const float potential = (float)screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+	const float headroom = video::usableDisplayHeadroom(current, potential);
+	if(headroom == _headroom)
+		return;
+	_headroom = headroom;
+	_runner->setDisplayHeadroom(headroom);
+	// The log gets the settled values, not every step of a ramp.
+	if(_loggedHeadroom <= 0 || headroom > _loggedHeadroom * 1.05f || headroom < _loggedHeadroom * 0.95f)
+	{
+		_loggedHeadroom = headroom;
+		PLK_LOGI("Display headroom %.2f (the screen says %.2f now, %.2f at most)", headroom, current, potential);
+	}
 }
 
 - (void)plkToggleHdr:(id)sender
@@ -435,6 +492,11 @@ int runHeadless(const Options &o)
 
 - (void)finishTermination
 {
+	[_headroomTimer invalidate];
+	_headroomTimer = nil;
+	if(_screenObserver)
+		[NSNotificationCenter.defaultCenter removeObserver:_screenObserver];
+	_screenObserver = nil;
 	_runner->shutdownVideo();
 	_exitCode = _runner->exitCode();
 	if(_activity)

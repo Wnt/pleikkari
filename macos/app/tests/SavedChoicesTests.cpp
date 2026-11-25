@@ -122,3 +122,25 @@ PLK_TEST(saved_choices_hdr_brightness)
 	forgetSavedChoices(kTestDomain);
 	CHECK(!loadSavedChoices(kTestDomain).hdr_brightness);
 }
+
+PLK_TEST(saved_choices_hdr_tone_map)
+{
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).hdr_tone_map);
+	saveHdrToneMap(video::HdrToneMap::System, kTestDomain);
+	SavedChoices c = loadSavedChoices(kTestDomain);
+	REQUIRE(c.hdr_tone_map);
+	CHECK(*c.hdr_tone_map == video::HdrToneMap::System);
+	Options o;
+	CHECK(applySavedChoices(c, o) == "HDR tone mapping system");
+	REQUIRE(o.hdr_tone_map);
+	CHECK(*o.hdr_tone_map == video::HdrToneMap::System);
+	Options given;
+	given.hdr_tone_map = video::HdrToneMap::App;
+	CHECK(applySavedChoices(c, given).empty());
+	CHECK(*given.hdr_tone_map == video::HdrToneMap::App);
+	saveHdrToneMap(video::HdrToneMap::App, kTestDomain);
+	CHECK(*loadSavedChoices(kTestDomain).hdr_tone_map == video::HdrToneMap::App);
+	forgetSavedChoices(kTestDomain);
+	CHECK(!loadSavedChoices(kTestDomain).hdr_tone_map);
+}

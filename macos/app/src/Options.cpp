@@ -124,7 +124,10 @@ std::string usageText()
 		"                          display's full gamut (default accurate)\n"
 		"  --hdr on|off            HDR stream (h265-hdr) or not, whatever the codec setting says\n"
 		"  --hdr-output pq|linear  (default pq)\n"
-		"  --hdr-brightness PCT    brightness of an HDR picture, 20 to 200 (default 100: as the console sends it)\n"
+		"  --hdr-brightness PCT    brightness of an HDR picture, 20 to 200 (default 100: its reference white\n"
+		"                          as bright as the display's SDR white)\n"
+		"  --hdr-tone-map app|system  who fits an HDR picture to the display: the app's shader (default;\n"
+		"                          a fullscreen picture goes straight to the display) or macOS\n"
 		"                          These four are also in the Video menu while the stream runs\n"
 		"                          (right click or M; keys 1-4, A, V, H, P, L). A choice made\n"
 		"                          there is remembered for the next run that does not give the\n"
@@ -285,6 +288,13 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&v) || !parseDouble(v, kHdrBrightnessMin, kHdrBrightnessMax, &pct))
 				return fail("--hdr-brightness wants a percentage from 20 to 200");
 			o.hdr_brightness = (int)(pct + 0.5);
+		}
+		else if(a == "--hdr-tone-map")
+		{
+			video::HdrToneMap tone_map;
+			if(!value(&v) || !video::parseHdrToneMap(v, &tone_map))
+				return fail("--hdr-tone-map wants app or system");
+			o.hdr_tone_map = tone_map;
 		}
 		else if(a == "--no-saved-choices")
 			o.saved_choices = false;
@@ -458,6 +468,8 @@ ViewChoices resolveViewChoices(const Options &o)
 		v.hdr_output = *o.hdr_output;
 	if(o.hdr_brightness)
 		v.hdr_brightness = *o.hdr_brightness;
+	if(o.hdr_tone_map)
+		v.hdr_tone_map = *o.hdr_tone_map;
 	return v;
 }
 

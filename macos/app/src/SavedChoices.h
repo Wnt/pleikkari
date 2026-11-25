@@ -2,7 +2,7 @@
 //
 // What was last picked in the Video menu, kept in the app's own preferences
 // (defaults read fi.madekivi.pleikkari.mac): scaler, SDR colour, HDR on or off, HDR output,
-// HDR brightness.
+// HDR brightness, HDR tone mapping.
 // A run uses a saved choice only where its command line gives no option.
 
 #ifndef PLK_APP_SAVEDCHOICES_H
@@ -25,6 +25,7 @@ struct SavedChoices
 	std::optional<video::HdrOutput> hdr_output;
 	std::optional<bool> hdr;
 	std::optional<int> hdr_brightness; // percent
+	std::optional<video::HdrToneMap> hdr_tone_map;
 };
 
 /** A value that is missing or not one of the known names is left unset. */
@@ -35,6 +36,7 @@ void saveSdrColor(video::SdrColor color, const std::string &domain = kChoicesDom
 void saveHdrOutput(video::HdrOutput output, const std::string &domain = kChoicesDomain);
 void saveHdr(bool on, const std::string &domain = kChoicesDomain);
 void saveHdrBrightness(int percent, const std::string &domain = kChoicesDomain);
+void saveHdrToneMap(video::HdrToneMap tone_map, const std::string &domain = kChoicesDomain);
 /** Removes every value. */
 void forgetSavedChoices(const std::string &domain = kChoicesDomain);
 

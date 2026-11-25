@@ -257,3 +257,17 @@ PLK_TEST(options_hdr_brightness)
 	CHECK(stepHdrBrightness(22, -1) == 20);
 	CHECK(stepHdrBrightness(198, 1) == 200);
 }
+
+PLK_TEST(options_hdr_tone_map)
+{
+	Options o;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164" }, o));
+	CHECK(!o.hdr_tone_map);
+	// The app's own tone mapping unless told otherwise.
+	CHECK(resolveViewChoices(o).hdr_tone_map == video::HdrToneMap::App);
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-tone-map", "system" }, o));
+	CHECK(resolveViewChoices(o).hdr_tone_map == video::HdrToneMap::System);
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-tone-map", "app" }, o));
+	CHECK(resolveViewChoices(o).hdr_tone_map == video::HdrToneMap::App);
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--hdr-tone-map", "both" }, o));
+}

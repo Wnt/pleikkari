@@ -42,6 +42,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)plkSelectHdrOutput:(id)sender;
 /** The sender's tag: +1 brighter, -1 darker, 0 back to 100 %. */
 - (void)plkStepHdrBrightness:(id)sender;
+/** Between the app's tone mapping and macOS's. */
+- (void)plkToggleHdrToneMap:(id)sender;
 - (void)plkToggleHdr:(id)sender;
 @end
 

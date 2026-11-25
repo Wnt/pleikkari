@@ -36,6 +36,8 @@ add_library(plkvideo STATIC
 	src/AnnexB.cpp
 	src/AnnexB.h
 	src/RollingStats.h
+	src/ToneMap.cpp
+	src/ToneMap.h
 	src/VideoPipeline.mm)
 target_include_directories(plkvideo
 	PUBLIC include
@@ -63,3 +65,7 @@ add_executable(plk-video-tests tests/test_annexb.cpp tools/replay/Dump.cpp)
 target_include_directories(plk-video-tests PRIVATE src tools/replay)
 target_link_libraries(plk-video-tests PRIVATE plkvideo)
 add_test(NAME annexb COMMAND plk-video-tests)
+add_executable(plk-video-tonemap-tests tests/test_tonemap.cpp)
+target_include_directories(plk-video-tonemap-tests PRIVATE src)
+target_link_libraries(plk-video-tonemap-tests PRIVATE plkvideo)
+add_test(NAME tonemap COMMAND plk-video-tonemap-tests)

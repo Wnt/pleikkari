@@ -163,6 +163,8 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 	pc.scaler = view_.scaler;
 	pc.hdrOutput = view_.hdr_output;
 	pc.hdrBrightness = view_.hdr_brightness / 100.0f;
+	pc.hdrToneMap = view_.hdr_tone_map;
+	pc.displayHeadroom = display_headroom_.load();
 	pc.sdrColor = view_.sdr_color;
 	pc.displayRefreshHz = display_refresh_hz > 0 ? display_refresh_hz : 120.0f;
 	if(options_.headless)
@@ -185,9 +187,9 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 		exit_code_ = 1;
 		return false;
 	}
-	PLK_LOGI("Video: pacing %s, scaler %s, SDR colour %s, HDR output %s, HDR brightness %d %%, display %.0f Hz%s",
+	PLK_LOGI("Video: pacing %s, scaler %s, SDR colour %s, HDR output %s, HDR brightness %d %%, HDR tone mapping %s, display %.0f Hz%s",
 			video::toString(options_.pacing), video::toString(view_.scaler), video::toString(view_.sdr_color),
-			video::toString(view_.hdr_output), view_.hdr_brightness, pc.displayRefreshHz,
+			video::toString(view_.hdr_output), view_.hdr_brightness, video::toString(view_.hdr_tone_map), pc.displayRefreshHz,
 			options_.headless ? ", headless (offscreen)" : "");
 	video_path_ = std::make_unique<VideoPath>(pipeline_.get());
 	if(!options_.dump_path.empty())
@@ -213,6 +215,7 @@ Runner::ViewState Runner::viewState() const
 	v.sdr_color = view_.sdr_color;
 	v.hdr_output = view_.hdr_output;
 	v.hdr_brightness = view_.hdr_brightness;
+	v.hdr_tone_map = view_.hdr_tone_map;
 	v.hdr = stream_config_.session.codec == CHIAKI_CODEC_H265_HDR && options_.command == Command::Stream;
 	v.hdr_switchable = options_.command == Command::Stream && ps5_ && session_ && !stop_requested_.load();
 	return v;
@@ -250,6 +253,21 @@ int Runner::setHdrBrightness(int percent)
 		pipeline_->setHdrBrightness(percent / 100.0f);
 	PLK_LOGI("Video: HDR brightness %d %%", percent);
 	return percent;
+}
+
+void Runner::setHdrToneMap(video::HdrToneMap tone_map)
+{
+	view_.hdr_tone_map = tone_map;
+	if(pipeline_)
+		pipeline_->setHdrToneMap(tone_map);
+	PLK_LOGI("Video: HDR tone mapping %s", video::toString(tone_map));
+}
+
+void Runner::setDisplayHeadroom(float headroom)
+{
+	display_headroom_ = headroom;
+	if(pipeline_)
+		pipeline_->setDisplayHeadroom(headroom);
 }
 
 bool Runner::setHdr(bool on)
@@ -478,12 +496,12 @@ void Runner::logStats(bool final_report)
 		const video::Stats s = pipeline_->stats();
 		char buf[512];
 		snprintf(buf, sizeof(buf),
-				"video%s: %dx%d %s %s%s %s -> %dx%d scaler=%s layer=%s hdr_brightness=%d%% submitted=%llu decoded=%llu rendered=%llu "
+				"video%s: %dx%d %s %s%s %s -> %dx%d scaler=%s layer=%s hdr_brightness=%d%% tone_map=%s headroom=%.2f submitted=%llu decoded=%llu rendered=%llu "
 				"presented=%llu superseded=%llu not_presented=%llu lost=%llu errors=%llu idr=%llu awaiting_idr=%llu",
 				final_report ? " (last window)" : "", s.width, s.height, s.codec.c_str(), s.pixelFormat.c_str(),
 				s.hdr ? " HDR" : "", s.hardwareDecoder ? "hw" : "sw?", s.targetWidth, s.targetHeight,
 				s.scaler.empty() ? "-" : s.scaler.c_str(), s.layerColorSpace.empty() ? "-" : s.layerColorSpace.c_str(),
-				view_.hdr_brightness,
+				view_.hdr_brightness, video::toString(view_.hdr_tone_map), display_headroom_.load(),
 				(unsigned long long)s.framesSubmitted, (unsigned long long)s.framesDecoded,
 				(unsigned long long)s.framesRendered, (unsigned long long)s.framesPresented,
 				(unsigned long long)s.framesSuperseded, (unsigned long long)s.framesNotPresented,

@@ -38,7 +38,9 @@ struct Params {
 	float2 chromaShift;  // chroma siting correction, in chroma texels
 	float2 linearize;    // x = 0: code values as they are. x = 1: PQ to linear light, times y
 	                     // (HdrOutput::ExtendedLinear). x = 2: PQ to linear light, times y, back
-	                     // to PQ (an HDR brightness other than 100 % on a PQ drawable).
+	                     // to PQ (a PQ drawable whose picture is scaled or tone mapped here).
+	float2 toneMap;      // y > 0: linear light above the knee x is rolled off towards y, the
+	                     // display's headroom, both in the units of the scaled linear light
 };
 
 constexpr sampler kLinear(filter::linear, address::clamp_to_edge, coord::normalized);
@@ -62,14 +64,28 @@ static inline float3 pq_inverse_eotf(float3 l)
 	return pow((c1 + c2 * p) / (1.0 + c3 * p), m2);
 }
 
+// Highlights the display cannot show: the brightest channel follows a curve that leaves
+// the knee with slope 1 and approaches the headroom, and the other two keep their ratio
+// to it, so a highlight loses brightness and not its colour.
+static inline float3 roll_off(float3 lin, float2 tm)
+{
+	float m = max(lin.r, max(lin.g, lin.b));
+	if(tm.y > 0.0 && m > tm.x)
+	{
+		float d = tm.y - tm.x;
+		lin *= (tm.x + d * (1.0 - exp(-(m - tm.x) / d))) / m;
+	}
+	return lin;
+}
+
 static inline float4 to_rgb(float y, float2 c, constant Params &p)
 {
 	float4 v = float4(y, c, 1.0);
 	float3 rgb = saturate(float3(dot(p.r0, v), dot(p.r1, v), dot(p.r2, v)));
 	if(p.linearize.x > 1.5)
-		rgb = pq_inverse_eotf(pq_eotf(rgb) * p.linearize.y);
+		rgb = pq_inverse_eotf(roll_off(pq_eotf(rgb) * p.linearize.y, p.toneMap));
 	else if(p.linearize.x > 0.5)
-		rgb = pq_eotf(rgb) * p.linearize.y;
+		rgb = roll_off(pq_eotf(rgb) * p.linearize.y, p.toneMap);
 	return float4(rgb, 1.0);
 }
 

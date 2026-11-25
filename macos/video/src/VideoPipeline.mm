@@ -26,6 +26,7 @@
 
 #import "AnnexB.h"
 #import "RollingStats.h"
+#import "ToneMap.h"
 
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
@@ -193,9 +194,9 @@ ColorInfo colorInfoFor(CVPixelBufferRef buf)
 
 struct alignas(16) ShaderParams {
 	simd_float4 r0, r1, r2;
-	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize;
+	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize, toneMap;
 };
-static_assert(sizeof(ShaderParams) == 96, "must match Params in Shaders.metal");
+static_assert(sizeof(ShaderParams) == 112, "must match Params in Shaders.metal");
 
 // Folds bit-depth container, range and YCbCr->R'G'B' matrix into three rows
 // applied to raw normalized texture values.
@@ -274,6 +275,19 @@ MTLPixelFormat outputFormatFor(const ColorInfo &c, HdrOutput mode)
 struct HdrMeta {
 	annexb::HdrSei sei;
 };
+
+// MDCV max_display_mastering_luminance, in 0.0001 cd/m2 units (D.2.28); a PS5 sends none.
+float masteringPeakNits(const std::shared_ptr<const HdrMeta> &hdr)
+{
+	if(hdr && hdr->sei.hasMasteringDisplay)
+	{
+		const auto &md = hdr->sei.masteringDisplay;
+		const uint32_t raw = (uint32_t)md[16] << 24 | (uint32_t)md[17] << 16 | (uint32_t)md[18] << 8 | (uint32_t)md[19];
+		if(raw)
+			return raw / 10000.0f;
+	}
+	return kDefaultMasteringPeakNits;
+}
 
 // ---- per-frame record -----------------------------------------------------
 
@@ -413,6 +427,7 @@ const char *toString(Scaler s)
 const char *toString(Codec c) { return c == Codec::H264 ? "h264" : c == Codec::HEVC ? "hevc" : "auto"; }
 const char *toString(SdrColor c) { return c == SdrColor::Vivid ? "vivid" : "accurate"; }
 const char *toString(HdrOutput o) { return o == HdrOutput::ExtendedLinear ? "linear" : "pq"; }
+const char *toString(HdrToneMap t) { return t == HdrToneMap::System ? "system" : "app"; }
 bool parsePacingMode(const std::string &s, PacingMode *out)
 {
 	if(s == "immediate" || s == "arrival") { *out = PacingMode::Immediate; return true; }
@@ -425,6 +440,19 @@ bool parseSdrColor(const std::string &s, SdrColor *out)
 	if(s == "accurate" || s == "srgb") { *out = SdrColor::Accurate; return true; }
 	if(s == "vivid" || s == "p3") { *out = SdrColor::Vivid; return true; }
 	return false;
+}
+bool parseHdrToneMap(const std::string &s, HdrToneMap *out)
+{
+	if(s == "app") { *out = HdrToneMap::App; return true; }
+	if(s == "system" || s == "macos") { *out = HdrToneMap::System; return true; }
+	return false;
+}
+float usableDisplayHeadroom(float current, float potential)
+{
+	if(!(potential > 1.0f))
+		return 1.0f;
+	const float floor = potential < 2.0f ? potential : 2.0f;
+	return current > floor ? current : floor;
 }
 bool parseHdrOutput(const std::string &s, HdrOutput *out)
 {
@@ -481,6 +509,7 @@ struct VideoPipeline::Impl {
 	std::vector<std::function<void()>> cmds;
 	std::atomic<int> pacing{0};  // PacingMode, read by the decoder thread
 	std::atomic<uint32_t> latchMarginUs{0};
+	std::atomic<float> displayHeadroom{0.0f};
 
 	// Render-thread-only state.
 	id<MTLDevice> device;
@@ -1209,6 +1238,14 @@ struct VideoPipeline::Impl {
 			return nil;
 		if(c.transfer == Transfer::HLG)
 			return [CAEDRMetadata HLGMetadata];
+		// No metadata: macOS leaves the picture alone (the shader has fitted it to the
+		// display) and a fullscreen one can go straight to the display.
+		if(cfg.hdrToneMap == HdrToneMap::App && c.transfer == Transfer::PQ)
+		{
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.hdrMetadata = "none on the layer: tone mapped by the app";
+			return nil;
+		}
 		// The picture is scaled in linear light (hdrBrightness), so the range it is said
 		// to cover is scaled with it.
 		const float gain = cfg.hdrBrightness;
@@ -1370,16 +1407,33 @@ struct VideoPipeline::Impl {
 		// Left-sited chroma sits 1/4 chroma texel left of where a centred
 		// sampler assumes it; shift the lookup right by that much.
 		params.chromaShift = simd_make_float2(ci.chromaLeft ? 0.25f : 0.0f, ci.chromaTop ? 0.25f : 0.0f);
-		// ExtendedLinear: 1.0 = 100 nits, matching opticalOutputScale 100. The brightness
-		// is a factor on linear light either way; at 100 % a PQ drawable gets the decoder's
-		// code values untouched.
+		// The brightness is a factor on linear light.
 		const float gain = cfg.hdrBrightness;
-		if(linear)
+		params.linearize = simd_make_float2(0.0f, 0.0f);
+		params.toneMap = simd_make_float2(0.0f, 0.0f);
+		if(ci.transfer == Transfer::PQ && cfg.hdrToneMap == HdrToneMap::App)
+		{
+			const AppToneMap tm = appToneMap(gain, masteringPeakNits(rec->hdr), displayHeadroom.load());
+			if(linear)
+			{
+				// Extended linear without metadata: 1.0 is SDR white.
+				params.linearize = simd_make_float2(1.0f, 10000.0f * tm.nitsToEdr);
+				params.toneMap = simd_make_float2(tm.knee, tm.headroom);
+			}
+			else
+			{
+				// A PQ layer without metadata: macOS shows 100 nits as SDR white (measured).
+				// In the shader's linear light 1.0 is 10000 nits, which is 100 of those.
+				params.linearize = simd_make_float2(2.0f, 100.0f * tm.nitsToEdr);
+				params.toneMap = simd_make_float2(tm.knee / 100.0f, tm.headroom / 100.0f);
+			}
+		}
+		else if(linear)
+			// ExtendedLinear with metadata: 1.0 = 100 nits, matching opticalOutputScale 100.
 			params.linearize = simd_make_float2(1.0f, 100.0f * gain);
 		else if(ci.transfer == Transfer::PQ && brightnessScaled(gain))
+			// At 100 % a PQ drawable gets the decoder's code values untouched.
 			params.linearize = simd_make_float2(2.0f, gain);
-		else
-			params.linearize = simd_make_float2(0.0f, 0.0f);
 
 		// Target.
 		id<MTLTexture> target;
@@ -1589,6 +1643,7 @@ std::unique_ptr<VideoPipeline> VideoPipeline::create(void *metalLayer, const Pip
 	impl->scaler = config.scaler;
 	impl->useCompressedOutput = config.compressedDecoderOutput;
 	impl->latchMarginUs.store(config.latchMarginUs);
+	impl->displayHeadroom.store(config.displayHeadroom);
 	impl->layer = layer;
 	impl->device = layer.device ?: layer.preferredDevice ?: MTLCreateSystemDefaultDevice();
 	if(!impl->device)
@@ -1721,6 +1776,20 @@ void VideoPipeline::setHdrBrightness(float gain)
 	gain = std::min(std::max(gain, 0.05f), 4.0f);
 	d->post([d, gain] { d->cfg.hdrBrightness = gain; });
 }
+
+// The layer's HDR metadata comes or goes with this: the next frame sets the layer up again.
+void VideoPipeline::setHdrToneMap(HdrToneMap toneMap)
+{
+	Impl *d = impl_.get();
+	d->post([d, toneMap] {
+		if(d->cfg.hdrToneMap == toneMap)
+			return;
+		d->cfg.hdrToneMap = toneMap;
+		d->layerConfigured = false;
+	});
+}
+
+void VideoPipeline::setDisplayHeadroom(float headroom) { impl_->displayHeadroom.store(headroom > 0 ? headroom : 0.0f); }
 
 void VideoPipeline::setLatchMarginUs(uint32_t marginUs) { impl_->latchMarginUs.store(marginUs); }
 

@@ -130,16 +130,34 @@ enum class SdrColor {
 	Vivid,
 };
 
+// Who fits an HDR (PQ) picture to what the display can show right now.
+enum class HdrToneMap {
+	// The app, in its shader: HDR reference white (203 nits, BT.2408) is shown as bright as
+	// the display's SDR white, and highlights above the display's headroom are rolled off.
+	// The layer carries no HDR metadata, so macOS does nothing to the picture and can hand
+	// a fullscreen one straight to the display, as it does with an SDR picture.
+	App,
+	// macOS, from HDR10 metadata on the layer (CAEDRMetadata). Its mapping follows the
+	// headroom on its own, but every frame goes through the compositor, and in fullscreen
+	// the picture stops for about 55 ms every 64 refreshes of the display (measured).
+	System,
+};
+
 struct PipelineConfig {
 	Codec codec = Codec::Auto;          // Auto: detected from the parameter sets
 	PacingMode pacing = PacingMode::Immediate;
 	Scaler scaler = Scaler::Bilinear;
 	HdrOutput hdrOutput = HdrOutput::PQ;
 	SdrColor sdrColor = SdrColor::Accurate;
-	// Brightness of an HDR (PQ) picture: its linear light times this, 1 = as the console
-	// sends it. macOS shows 203 nits of an HDR picture as bright as SDR white, and a game's
-	// own white is often twice that, so next to the desktop the picture can look too bright.
+	HdrToneMap hdrToneMap = HdrToneMap::App;
+	// Brightness of an HDR (PQ) picture, a factor on its linear light. 1 is HdrToneMap::App's
+	// reference (203 nits as bright as SDR white), or with HdrToneMap::System whatever macOS
+	// makes of the picture as the console sends it (about 1.7 times brighter in the midtones).
 	float hdrBrightness = 1.0f;
+	// HdrToneMap::App: the largest value the display shows now, in units of SDR white
+	// (NSScreen.maximumExtendedDynamicRangeColorComponentValue). 0: not known, nothing is
+	// rolled off.
+	float displayHeadroom = 0.0f;
 	float displayRefreshHz = 120.0f;    // DisplayLink frame rate range (min=max=preferred)
 	// DisplayLink only: if no new frame is waiting when the display link fires,
 	// wait for one until (targetTimestamp - latchMarginUs) before giving up on
@@ -231,6 +249,9 @@ public:
 	void setSdrColor(SdrColor color);
 	void setHdrOutput(HdrOutput output);
 	void setHdrBrightness(float gain); // see PipelineConfig::hdrBrightness; 0.05 to 4
+	void setHdrToneMap(HdrToneMap toneMap);
+	/** Any thread. See PipelineConfig::displayHeadroom. */
+	void setDisplayHeadroom(float headroom);
 	void setLatchMarginUs(uint32_t marginUs);
 	void setDrawableSize(int widthPixels, int heightPixels);
 
@@ -254,9 +275,21 @@ const char *toString(Scaler scaler);
 const char *toString(Codec codec);
 const char *toString(SdrColor color);
 const char *toString(HdrOutput output);
+const char *toString(HdrToneMap toneMap);
 bool parsePacingMode(const std::string &s, PacingMode *out);
 bool parseScaler(const std::string &s, Scaler *out);
 bool parseSdrColor(const std::string &s, SdrColor *out);
 bool parseHdrOutput(const std::string &s, HdrOutput *out);
+bool parseHdrToneMap(const std::string &s, HdrToneMap *out);
+
+/**
+ * The headroom to give setDisplayHeadroom(), from NSScreen's current
+ * (maximumExtendedDynamicRangeColorComponentValue) and potential
+ * (maximumPotentialExtendedDynamicRangeColorComponentValue) values. The current value is 1
+ * until the system has made room for an HDR picture, so on a display that can do more the
+ * picture is never fitted to less than twice SDR white (or the potential, if that is
+ * less): were it fitted to 1, nothing on screen would ask for the room.
+ */
+float usableDisplayHeadroom(float current, float potential);
 
 }  // namespace plk::video
