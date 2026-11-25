@@ -24,6 +24,8 @@
 
 #import "plk/VideoPipeline.h"
 
+#import "plk/FrameEnhancer.h"
+
 #import "AnnexB.h"
 #import "RollingStats.h"
 #import "ToneMap.h"
@@ -198,17 +200,30 @@ struct alignas(16) ShaderParams {
 };
 static_assert(sizeof(ShaderParams) == 112, "must match Params in Shaders.metal");
 
-// Folds bit-depth container, range and YCbCr->R'G'B' matrix into three rows
-// applied to raw normalized texture values.
-void colorRows(const ColorInfo &c, ShaderParams &p)
+struct alignas(16) NrShaderParams {
+	simd_float4 lumaWeights;
+	simd_float2 keySize, motion;
+	float strength;
+	float split;
+};
+static_assert(sizeof(NrShaderParams) == 48, "must match NrParams in Shaders.metal");
+
+void lumaCoefficients(Matrix m, double &kr, double &kb)
 {
-	double kr, kb;
-	switch(c.matrix)
+	switch(m)
 	{
 		case Matrix::BT601: kr = 0.299; kb = 0.114; break;
 		case Matrix::BT2020: kr = 0.2627; kb = 0.0593; break;
 		default: kr = 0.2126; kb = 0.0722; break;
 	}
+}
+
+// Folds bit-depth container, range and YCbCr->R'G'B' matrix into three rows
+// applied to raw normalized texture values.
+void colorRows(const ColorInfo &c, ShaderParams &p)
+{
+	double kr, kb;
+	lumaCoefficients(c.matrix, kr, kb);
 	double kg = 1.0 - kr - kb;
 	// A * (Y', Cb', Cr')
 	double A[3][3] = {
@@ -297,6 +312,7 @@ struct FrameRecord {
 	bool keyframe = false;
 	double readyUs = 0, submitUs = 0, decodedUs = 0, renderStartUs = 0, committedUs = 0;
 	double gpuStartUs = 0, gpuEndUs = 0, presentedUs = 0, targetPresentUs = 0;
+	double enhanceAgeMs = -1;
 	bool presentExpected = false;
 	std::atomic<int> pending{0};
 	std::shared_ptr<const HdrMeta> hdr;
@@ -307,12 +323,50 @@ struct DecodedFrame {
 	std::shared_ptr<FrameRecord> rec;
 };
 
+// ---- enhancer -------------------------------------------------------------
+
+// A frame the enhancer was given: the R'G'B' copy of one decoded frame.
+struct KeyFrame {
+	CVPixelBufferRef buf = nullptr;   // retained
+	CVMetalTextureRef tex = nullptr;  // retained: `buf` as the render target it was drawn into
+	uint64_t seq = 0;
+	double decodedUs = 0;             // when the frame it was drawn from was decoded
+	~KeyFrame()
+	{
+		if(tex) CFRelease(tex);
+		if(buf) CVPixelBufferRelease(buf);
+	}
+};
+
+// A result: a key frame and what the enhancer made of it.
+struct EnhancedFrame {
+	std::shared_ptr<KeyFrame> key;
+	CVPixelBufferRef out = nullptr;      // retained
+	CVMetalTextureRef outTex = nullptr;  // retained; made by the render thread on first use
+	~EnhancedFrame()
+	{
+		if(outTex) CFRelease(outTex);
+		if(out) CVPixelBufferRelease(out);
+	}
+};
+
+// What the enhancer's callback writes. Its callbacks hold it, so it can outlive the Impl.
+struct EnhanceState {
+	std::mutex m;
+	std::shared_ptr<EnhancedFrame> latest;  // m
+	uint64_t generation = 0;                // m: a result of an older generation is dropped
+	std::atomic<bool> busy{false};          // a frame is being drawn for, or is with, the enhancer
+	std::atomic<bool> needReset{true};      // the next frame offered does not continue the last one
+	std::atomic<double> holdUntilUs{0.0};   // nothing is offered before this (after a refusal)
+};
+
 // Statistics shared with Metal/VT handlers that may outlive the Impl.
 struct Shared {
 	explicit Shared(size_t window)
 		: submitCall(window), decode(window), queue(window), renderCpu(window), renderGpu(window), submitToPresented(window),
 		  readyToPresented(window), decodedToPresented(window), submitInterval(window), presentInterval(window),
-		  linkLead(window), linkDeadline(window), presentVsTarget(window)
+		  linkLead(window), linkDeadline(window), presentVsTarget(window), enhance(window), enhanceInputGpu(window),
+		  enhanceAge(window)
 	{
 	}
 	mutable std::mutex m;
@@ -321,8 +375,10 @@ struct Shared {
 	// called after the destructor returns (presented handlers can outlive the Impl).
 	std::mutex cbMutex;
 	FrameCallback onFrame;
+	EnhanceCallback onEnhance;
 	detail::RollingWindow submitCall, decode, queue, renderCpu, renderGpu, submitToPresented, readyToPresented,
-		decodedToPresented, submitInterval, presentInterval, linkLead, linkDeadline, presentVsTarget;
+		decodedToPresented, submitInterval, presentInterval, linkLead, linkDeadline, presentVsTarget, enhance,
+		enhanceInputGpu, enhanceAge;
 	double lastSubmitUs = 0, lastPresentedUs = 0;
 
 	void report(const FrameRecord &r)
@@ -343,7 +399,15 @@ struct Shared {
 		t.gpuStartUs = r.gpuStartUs;
 		t.gpuEndUs = r.gpuEndUs;
 		t.presentedUs = t.presented ? r.presentedUs : 0;
+		t.enhanceAgeMs = r.enhanceAgeMs;
 		onFrame(t);
+	}
+
+	void report(const EnhanceTiming &t)
+	{
+		std::lock_guard<std::mutex> cl(cbMutex);
+		if(onEnhance)
+			onEnhance(t);
 	}
 
 	void finish(const FrameRecord &r)
@@ -381,9 +445,11 @@ struct Shared {
 		fresh.colorDescription = c.colorDescription; fresh.hdrMetadata = c.hdrMetadata; fresh.scaler = c.scaler; fresh.pacing = c.pacing;
 		fresh.layerColorSpace = c.layerColorSpace;
 		fresh.targetWidth = c.targetWidth; fresh.targetHeight = c.targetHeight;
+		fresh.enhancer = c.enhancer; fresh.enhanceWidth = c.enhanceWidth; fresh.enhanceHeight = c.enhanceHeight;
 		c = fresh;
 		for(auto *w : {&submitCall, &decode, &queue, &renderCpu, &renderGpu, &submitToPresented, &readyToPresented,
-				&decodedToPresented, &submitInterval, &presentInterval, &linkLead, &linkDeadline, &presentVsTarget})
+				&decodedToPresented, &submitInterval, &presentInterval, &linkLead, &linkDeadline, &presentVsTarget,
+				&enhance, &enhanceInputGpu, &enhanceAge})
 			w->clear();
 		lastSubmitUs = 0;
 		lastPresentedUs = 0;
@@ -533,7 +599,23 @@ struct VideoPipeline::Impl {
 	id<MTLCommandBuffer> lastCommandBuffer;
 	uint64_t framesSinceFlush = 0;
 
-	enum Frag { FragBilinear = 0, FragBicubic, FragLanczos, FragCopy };
+	// The enhancer: render-thread-only too, except `enhance`, which its callbacks share.
+	std::shared_ptr<EnhanceState> enhance = std::make_shared<EnhanceState>();
+	std::shared_ptr<FrameEnhancer> enhancer;
+	EnhanceConfig enhanceCfg;
+	CVPixelBufferPoolRef keyPool = nullptr;
+	size_t keyPoolW = 0, keyPoolH = 0;
+	uint64_t keySeq = 0;
+	double lastOfferUs = 0;
+	id<MTLCommandBuffer> lastKeyCommandBuffer;
+	std::atomic<bool> mixStatesBuilt{false};  // any thread: setEnhancer() builds them once
+
+	enum Frag { FragBilinear = 0, FragBicubic, FragLanczos, FragCopy, FragBilinearNr, FragBicubicNr, FragLanczosNr };
+	// What a pass needs on top of the plane textures to mix an enhancer's result in.
+	struct NrDraw {
+		id<MTLTexture> key, out;
+		NrShaderParams params;
+	};
 
 	// ------------------------------------------------------------------------
 	bool offscreenMode() const { return cfg.offscreenWidth > 0 && cfg.offscreenHeight > 0; }
@@ -1193,13 +1275,11 @@ struct VideoPipeline::Impl {
 		renderFrame(f, update.drawable, target);
 	}
 
-	id<MTLRenderPipelineState> pipelineFor(Frag frag, MTLPixelFormat fmt)
+	// Any thread: uses only the device and the library, which never change after create().
+	id<MTLRenderPipelineState> makePipeline(Frag frag, MTLPixelFormat fmt) const
 	{
-		auto key = std::make_pair((int)frag, fmt);
-		auto it = pipelines.find(key);
-		if(it != pipelines.end())
-			return it->second;
-		static const char *names[] = {"fs_bilinear", "fs_bicubic", "fs_lanczos", "fs_copy"};
+		static const char *names[] = {"fs_bilinear", "fs_bicubic", "fs_lanczos", "fs_copy",
+			"fs_bilinear_nr", "fs_bicubic_nr", "fs_lanczos_nr"};
 		MTLRenderPipelineDescriptor *d = [MTLRenderPipelineDescriptor new];
 		d.vertexFunction = [library newFunctionWithName:@"vs_fullscreen"];
 		d.fragmentFunction = [library newFunctionWithName:@(names[frag])];
@@ -1208,8 +1288,32 @@ struct VideoPipeline::Impl {
 		id<MTLRenderPipelineState> p = [device newRenderPipelineStateWithDescriptor:d error:&err];
 		if(!p)
 			NSLog(@"plk-video: pipeline %s failed: %@", names[frag], err);
+		return p;
+	}
+
+	id<MTLRenderPipelineState> pipelineFor(Frag frag, MTLPixelFormat fmt)
+	{
+		auto key = std::make_pair((int)frag, fmt);
+		auto it = pipelines.find(key);
+		if(it != pipelines.end())
+			return it->second;
+		id<MTLRenderPipelineState> p = makePipeline(frag, fmt);
 		pipelines[key] = p;
 		return p;
+	}
+
+	// A state that is used only if it is already there: building one takes a frame's
+	// worth of time many times over, so the mixed-in path never builds its own (setEnhancer
+	// does, off the render thread).
+	id<MTLRenderPipelineState> pipelineIfBuilt(Frag frag, MTLPixelFormat fmt)
+	{
+		auto it = pipelines.find(std::make_pair((int)frag, fmt));
+		return it == pipelines.end() ? nil : it->second;
+	}
+
+	static Frag mixedIn(Frag frag)
+	{
+		return frag == FragBicubic ? FragBicubicNr : frag == FragLanczos ? FragLanczosNr : FragBilinearNr;
 	}
 
 	void configureLayer(const ColorInfo &c, const std::shared_ptr<const HdrMeta> &hdr)
@@ -1316,7 +1420,7 @@ struct VideoPipeline::Impl {
 	}
 
 	void drawPass(id<MTLCommandBuffer> cb, id<MTLTexture> target, MTLRegion vp, id<MTLRenderPipelineState> pso,
-			id<MTLTexture> t0, id<MTLTexture> t1, const ShaderParams *params)
+			id<MTLTexture> t0, id<MTLTexture> t1, const ShaderParams *params, const NrDraw *nr = nullptr)
 	{
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 		rp.colorAttachments[0].texture = target;
@@ -1331,8 +1435,230 @@ struct VideoPipeline::Impl {
 			[enc setFragmentTexture:t1 atIndex:1];
 		if(params)
 			[enc setFragmentBytes:params length:sizeof(ShaderParams) atIndex:0];
+		if(nr)
+		{
+			[enc setFragmentTexture:nr->key atIndex:2];
+			[enc setFragmentTexture:nr->out atIndex:3];
+			[enc setFragmentBytes:&nr->params length:sizeof(NrShaderParams) atIndex:1];
+		}
 		[enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[enc endEncoding];
+	}
+
+	// ---- enhancer ----------------------------------------------------------
+
+	// Forgets the result in hand and whatever is still on its way: after this, nothing
+	// made from an earlier picture, size or enhancer is mixed in.
+	void dropEnhanced()
+	{
+		{
+			std::lock_guard<std::mutex> lk(enhance->m);
+			enhance->generation++;
+			enhance->latest.reset();
+		}
+		enhance->needReset.store(true);
+	}
+
+	// An SDR picture only: the enhancer and the mix both work on SDR code values.
+	bool enhancing(const ColorInfo &ci) const
+	{
+		return enhancer && enhanceCfg.enabled && !ci.hdr() && ci.bits == 8;
+	}
+
+	CVMetalTextureRef wrapBGRA(CVPixelBufferRef buf, bool renderTarget)
+	{
+		if(CVPixelBufferGetPixelFormatType(buf) != kCVPixelFormatType_32BGRA || !CVPixelBufferGetIOSurface(buf))
+			return nullptr;
+		NSDictionary *attrs = @{(__bridge NSString *)kCVMetalTextureUsage :
+			@(MTLTextureUsageShaderRead | (renderTarget ? MTLTextureUsageRenderTarget : 0))};
+		CVMetalTextureRef tex = nullptr;
+		CVReturn r = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, texCache, buf,
+				(__bridge CFDictionaryRef)attrs, MTLPixelFormatBGRA8Unorm, CVPixelBufferGetWidth(buf),
+				CVPixelBufferGetHeight(buf), 0, &tex);
+		if(r != kCVReturnSuccess || !tex || !CVMetalTextureGetTexture(tex))
+		{
+			if(tex) CFRelease(tex);
+			return nullptr;
+		}
+		return tex;
+	}
+
+	// The enhancer's newest result if it can be mixed into a frame decoded at `decodedUs`:
+	// fills `draw` and returns what must stay alive until the GPU is done with the frame.
+	std::shared_ptr<EnhancedFrame> enhancedFor(double decodedUs, const ColorInfo &ci, NrDraw &draw, double *ageMs)
+	{
+		if(enhanceCfg.strength <= 0)
+			return nullptr;
+		std::shared_ptr<EnhancedFrame> e;
+		{
+			std::lock_guard<std::mutex> lk(enhance->m);
+			e = enhance->latest;
+		}
+		if(!e)
+			return nullptr;
+		double age = (decodedUs - e->key->decodedUs) / 1000.0;
+		double maxAge = (double)enhanceCfg.maxAgeMs;
+		if(age < 0 || age >= maxAge)
+			return nullptr;
+		if(!e->outTex)
+			e->outTex = wrapBGRA(e->out, false);
+		if(!e->outTex)
+			return nullptr;
+		double t = std::min(1.0, std::max(0.0, (age - maxAge / 2) / (maxAge / 2)));
+		double fade = 1.0 - t * t * (3.0 - 2.0 * t);
+		double kr, kb;
+		lumaCoefficients(ci.matrix, kr, kb);
+		draw.key = CVMetalTextureGetTexture(e->key->tex);
+		draw.out = CVMetalTextureGetTexture(e->outTex);
+		draw.params.lumaWeights = simd_make_float4((float)kr, (float)(1.0 - kr - kb), (float)kb, 0.0f);
+		draw.params.keySize = simd_make_float2((float)draw.key.width, (float)draw.key.height);
+		float low = std::max(0.0f, enhanceCfg.motionLow);
+		draw.params.motion = simd_make_float2(low, std::max(low + 1e-4f, enhanceCfg.motionHigh));
+		draw.params.strength = (float)(std::min(2.0f, enhanceCfg.strength) * fade);
+		draw.params.split = std::min(1.0f, std::max(0.0f, enhanceCfg.compareSplit));
+		*ageMs = age;
+		return e;
+	}
+
+	// Draws this frame for the enhancer and hands it over, if the enhancer is idle. Runs
+	// after the frame's own command buffer has been committed: on the GPU the copy comes
+	// after the presented picture, and nothing here is waited for.
+	void offerToEnhancer(const std::shared_ptr<FrameRecord> &rec, CVPixelBufferRef buf, CVMetalTextureRef ty,
+			CVMetalTextureRef tc, const ShaderParams &params, CGRect clean)
+	{
+		if(enhance->busy.load() || nowUs() < enhance->holdUntilUs.load())
+			return;
+		size_t sw = (size_t)clean.size.width, sh = (size_t)clean.size.height;
+		size_t ph = enhanceCfg.processHeight <= 0 || (size_t)enhanceCfg.processHeight >= sh
+			? sh : (size_t)std::max(enhanceCfg.processHeight, 320);
+		size_t pw = ph == sh ? sw : (size_t)std::llround((double)sw * (double)ph / (double)sh);
+		pw += pw & 1;
+		if(pw < 64 || ph < 64)
+			return;
+		if(!keyPool || pw != keyPoolW || ph != keyPoolH)
+		{
+			if(keyPool)
+				CVPixelBufferPoolRelease(keyPool);
+			keyPool = nullptr;
+			NSDictionary *attrs = @{
+				(__bridge NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
+				(__bridge NSString *)kCVPixelBufferWidthKey : @(pw),
+				(__bridge NSString *)kCVPixelBufferHeightKey : @(ph),
+				(__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey : @{},
+				(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey : @YES,
+			};
+			if(CVPixelBufferPoolCreate(kCFAllocatorDefault, nullptr, (__bridge CFDictionaryRef)attrs, &keyPool) != kCVReturnSuccess)
+			{
+				keyPool = nullptr;
+				return;
+			}
+			keyPoolW = pw;
+			keyPoolH = ph;
+			dropEnhanced();
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.enhanceWidth = (int)pw;
+			shared->c.enhanceHeight = (int)ph;
+		}
+		auto key = std::make_shared<KeyFrame>();
+		if(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, keyPool, &key->buf) != kCVReturnSuccess || !key->buf)
+			return;
+		key->tex = wrapBGRA(key->buf, true);
+		id<MTLRenderPipelineState> pso = pipelineFor(FragBilinear, MTLPixelFormatBGRA8Unorm);
+		if(!key->tex || !pso)
+			return;
+		key->seq = ++keySeq;
+		key->decodedUs = rec->decodedUs;
+		// A pause in the offers (a stalled stream, the enhancer switched off for a while)
+		// breaks the continuity the enhancer's own history relies on.
+		if(lastOfferUs > 0 && rec->decodedUs - lastOfferUs > 500000.0)
+			enhance->needReset.store(true);
+		lastOfferUs = rec->decodedUs;
+		uint64_t generation;
+		{
+			std::lock_guard<std::mutex> lk(enhance->m);
+			generation = enhance->generation;
+		}
+
+		id<MTLCommandBuffer> cb = [queue commandBuffer];
+		drawPass(cb, CVMetalTextureGetTexture(key->tex), MTLRegionMake2D(0, 0, pw, ph), pso,
+				CVMetalTextureGetTexture(ty), CVMetalTextureGetTexture(tc), &params);
+		CFRetain(ty);
+		CFRetain(tc);
+		CVPixelBufferRetain(buf);
+		enhance->busy.store(true);
+		std::shared_ptr<EnhanceState> st = enhance;
+		std::shared_ptr<Shared> sh2 = shared;
+		std::shared_ptr<FrameEnhancer> target = enhancer;
+		[cb addCompletedHandler:^(id<MTLCommandBuffer> c) {
+			CFRelease(ty);
+			CFRelease(tc);
+			CVPixelBufferRelease(buf);
+			bool drawn = c.status == MTLCommandBufferStatusCompleted;
+			double inputGpuMs = drawn && c.GPUEndTime > c.GPUStartTime ? (c.GPUEndTime - c.GPUStartTime) * 1000.0 : 0.0;
+			double handedUs = nowUs();
+			bool reset = st->needReset.exchange(false);
+			bool taken = drawn && target->submit(key->buf, key->seq, reset,
+					[st, sh2, key, generation, handedUs, inputGpuMs](CVPixelBufferRef output, double enhancerMs) {
+						std::shared_ptr<EnhancedFrame> e;
+						if(output && CVPixelBufferGetPixelFormatType(output) == kCVPixelFormatType_32BGRA
+							&& CVPixelBufferGetIOSurface(output)
+							&& CVPixelBufferGetWidth(output) == CVPixelBufferGetWidth(key->buf)
+							&& CVPixelBufferGetHeight(output) == CVPixelBufferGetHeight(key->buf))
+						{
+							e = std::make_shared<EnhancedFrame>();
+							e->key = key;
+							e->out = CVPixelBufferRetain(output);
+						}
+						std::shared_ptr<EnhancedFrame> old;
+						{
+							std::lock_guard<std::mutex> lk(st->m);
+							if(e && st->generation == generation)
+							{
+								old = st->latest;
+								st->latest = e;
+							}
+						}
+						old.reset();
+						if(!e)
+							st->needReset.store(true);
+						st->busy.store(false);
+						EnhanceTiming timing;
+						timing.seq = key->seq;
+						timing.ok = e != nullptr;
+						timing.width = (int)CVPixelBufferGetWidth(key->buf);
+						timing.height = (int)CVPixelBufferGetHeight(key->buf);
+						timing.inputGpuMs = inputGpuMs;
+						timing.enhancerMs = enhancerMs;
+						timing.totalMs = (nowUs() - handedUs) / 1000.0;
+						{
+							std::lock_guard<std::mutex> sl(sh2->m);
+							if(e)
+							{
+								sh2->c.enhanceCompleted++;
+								sh2->enhance.add(timing.totalMs);
+							}
+							else
+								sh2->c.enhanceFailed++;
+						}
+						sh2->report(timing);
+					});
+			if(!taken)
+			{
+				// Refused: do not ask again with every frame.
+				st->needReset.store(true);
+				st->holdUntilUs.store(nowUs() + 250000.0);
+				st->busy.store(false);
+			}
+			std::lock_guard<std::mutex> sl(sh2->m);
+			if(taken)
+				sh2->c.enhanceOffered++;
+			else
+				sh2->c.enhanceFailed++;
+			if(inputGpuMs > 0)
+				sh2->enhanceInputGpu.add(inputGpuMs);
+		}];
+		[cb commit];
+		lastKeyCommandBuffer = cb;
 	}
 
 	void renderFrame(DecodedFrame &f, id<CAMetalDrawable> drawable, double targetPresentUs)
@@ -1467,32 +1793,62 @@ struct VideoPipeline::Impl {
 		if(eff == Scaler::MetalFX && (dest.size.width < (NSUInteger)clean.size.width || dest.size.height < (NSUInteger)clean.size.height))
 			eff = Scaler::Bilinear;  // MetalFX spatial upscales only
 
+		// The enhancer's newest result, if this frame can carry it (see offerToEnhancer()
+		// for where the results come from).
+		bool enhanceOn = enhancing(ci);
+		NrDraw nrDraw;
+		double nrAgeMs = 0;
+		std::shared_ptr<EnhancedFrame> nr;
+		if(enhanceOn)
+			nr = enhancedFor(rec->decodedUs, ci, nrDraw, &nrAgeMs);
+		bool mixed = false;
+
 		id<MTLCommandBuffer> cb = [queue commandBuffer];
 		bool encoded = false;
 		if(eff == Scaler::MetalFX)
 		{
+			id<MTLRenderPipelineState> mix = nr ? pipelineIfBuilt(FragBilinearNr, MTLPixelFormatRGBA16Float) : nil;
 			encoded = encodeMetalFX(cb, target, dest, texY, texC, params, (NSUInteger)clean.size.width,
-					(NSUInteger)clean.size.height, linear);
+					(NSUInteger)clean.size.height, linear, mix, mix ? &nrDraw : nullptr);
 			if(!encoded)
 				eff = Scaler::Bilinear;
+			else
+				mixed = mix != nil;
 		}
 		if(!encoded)
 		{
 			Frag frag = eff == Scaler::Bicubic ? FragBicubic : eff == Scaler::Lanczos ? FragLanczos : FragBilinear;
-			drawPass(cb, target, dest, pipelineFor(frag, target.pixelFormat), texY, texC, &params);
+			id<MTLRenderPipelineState> mix = nr ? pipelineIfBuilt(mixedIn(frag), target.pixelFormat) : nil;
+			if(mix)
+				drawPass(cb, target, dest, mix, texY, texC, &params, &nrDraw);
+			else
+				drawPass(cb, target, dest, pipelineFor(frag, target.pixelFormat), texY, texC, &params);
+			mixed = mix != nil;
 		}
+		if(!mixed)
+			nr.reset();
+		else
+			rec->enhanceAgeMs = nrAgeMs;
 
 		std::shared_ptr<Shared> sh = shared;
 		CVPixelBufferRef keepBuf = buf;  // ownership moves to the completion handler
 		f.buf = nullptr;
 		rec->presentExpected = !off;
 		rec->pending.store(off ? 1 : 2);
+		if(enhanceOn)
+		{
+			// For offerToEnhancer() below: the handler may release these first.
+			CFRetain(ty);
+			CFRetain(tc);
+			CVPixelBufferRetain(buf);
+		}
 		[cb addCompletedHandler:^(id<MTLCommandBuffer> c) {
 			rec->gpuStartUs = c.GPUStartTime * 1e6;
 			rec->gpuEndUs = c.GPUEndTime * 1e6;
 			CFRelease(ty);
 			CFRelease(tc);
 			CVPixelBufferRelease(keepBuf);
+			(void)nr;  // the result's textures live until the GPU is done with them
 			if(rec->pending.fetch_sub(1) == 1)
 				sh->finish(*rec);
 		}];
@@ -1514,11 +1870,23 @@ struct VideoPipeline::Impl {
 			shared->c.scaler = toString(eff);
 			shared->c.targetWidth = (int)target.width;
 			shared->c.targetHeight = (int)target.height;
+			if(mixed)
+			{
+				shared->c.framesEnhanced++;
+				shared->enhanceAge.add(nrAgeMs);
+			}
 		}
 		[cb commit];
 		lastCommandBuffer = cb;
 		lastTarget = target;
 		(void)targetPresentUs;
+		if(enhanceOn)
+		{
+			offerToEnhancer(rec, buf, ty, tc, params, clean);
+			CFRelease(ty);
+			CFRelease(tc);
+			CVPixelBufferRelease(buf);
+		}
 		if(++framesSinceFlush >= 120)
 		{
 			framesSinceFlush = 0;
@@ -1526,8 +1894,11 @@ struct VideoPipeline::Impl {
 		}
 	}
 
+	// `mix` and `nr`: the enhancer's result goes into the first pass, at the stream's size,
+	// so that the scaler works on the enhanced picture.
 	bool encodeMetalFX(id<MTLCommandBuffer> cb, id<MTLTexture> target, MTLRegion dest, id<MTLTexture> texY,
-			id<MTLTexture> texC, const ShaderParams &params, NSUInteger srcW, NSUInteger srcH, bool linear)
+			id<MTLTexture> texC, const ShaderParams &params, NSUInteger srcW, NSUInteger srcH, bool linear,
+			id<MTLRenderPipelineState> mix, const NrDraw *nr)
 	{
 		NSUInteger dw = dest.size.width, dh = dest.size.height;
 		MTLFXSpatialScalerColorProcessingMode mode =
@@ -1555,8 +1926,8 @@ struct VideoPipeline::Impl {
 			fxIn = makeTexture(MTLPixelFormatRGBA16Float, srcW, srcH, fx.colorTextureUsage | MTLTextureUsageRenderTarget);
 			fxOut = makeTexture(MTLPixelFormatRGBA16Float, dw, dh, fx.outputTextureUsage | MTLTextureUsageShaderRead);
 		}
-		drawPass(cb, fxIn, MTLRegionMake2D(0, 0, srcW, srcH), pipelineFor(FragBilinear, MTLPixelFormatRGBA16Float),
-				texY, texC, &params);
+		drawPass(cb, fxIn, MTLRegionMake2D(0, 0, srcW, srcH),
+				mix ? mix : pipelineFor(FragBilinear, MTLPixelFormatRGBA16Float), texY, texC, &params, mix ? nr : nullptr);
 		fx.colorTexture = fxIn;
 		fx.outputTexture = fxOut;
 		fx.inputContentWidth = srcW;
@@ -1640,6 +2011,7 @@ std::unique_ptr<VideoPipeline> VideoPipeline::create(void *metalLayer, const Pip
 	impl->onError = std::move(onError);
 	impl->shared = std::make_shared<Shared>(config.statsWindow);
 	impl->shared->onFrame = config.onFrame;
+	impl->shared->onEnhance = config.onEnhance;
 	impl->scaler = config.scaler;
 	impl->useCompressedOutput = config.compressedDecoderOutput;
 	impl->latchMarginUs.store(config.latchMarginUs);
@@ -1698,6 +2070,7 @@ VideoPipeline::~VideoPipeline()
 	{
 		std::lock_guard<std::mutex> cl(d->shared->cbMutex);
 		d->shared->onFrame = nullptr;
+		d->shared->onEnhance = nullptr;
 	}
 	d->renderStop.store(true);
 	d->slotCv.notify_all();
@@ -1707,6 +2080,11 @@ VideoPipeline::~VideoPipeline()
 	@autoreleasepool
 	{
 		[d->lastCommandBuffer waitUntilCompleted];
+		[d->lastKeyCommandBuffer waitUntilCompleted];
+		// A result still on its way lands in the state its callback holds and is dropped there.
+		d->dropEnhanced();
+		if(d->keyPool)
+			CVPixelBufferPoolRelease(d->keyPool);
 		DecodedFrame f = d->takeSlot();
 		if(f.buf)
 			CVPixelBufferRelease(f.buf);
@@ -1804,11 +2182,72 @@ void VideoPipeline::setDrawableSize(int w, int h)
 	});
 }
 
+void VideoPipeline::setEnhancer(std::shared_ptr<FrameEnhancer> enhancer)
+{
+	Impl *d = impl_.get();
+	// The states of the mixed-in path are built here, on the caller's thread: each takes a
+	// frame's time many times over, and the render thread has frames to show meanwhile.
+	std::vector<std::pair<std::pair<int, MTLPixelFormat>, id<MTLRenderPipelineState>>> built;
+	std::string description;
+	if(enhancer)
+	{
+		description = enhancer->describe();
+		if(!d->mixStatesBuilt.exchange(true))
+		{
+			const std::pair<Impl::Frag, MTLPixelFormat> wanted[] = {
+				{Impl::FragBilinearNr, MTLPixelFormatBGRA8Unorm},
+				{Impl::FragBicubicNr, MTLPixelFormatBGRA8Unorm},
+				{Impl::FragLanczosNr, MTLPixelFormatBGRA8Unorm},
+				{Impl::FragBilinearNr, MTLPixelFormatRGBA16Float},  // MetalFX: its first pass
+			};
+			double t0 = nowUs();
+			for(const auto &w : wanted)
+				built.push_back({{(int)w.first, w.second}, d->makePipeline(w.first, w.second)});
+			NSLog(@"plk-video: enhancer pipeline states built in %.1f ms", (nowUs() - t0) / 1000.0);
+		}
+	}
+	d->post([d, enhancer, built, description] {
+		for(const auto &b : built)
+			if(b.second)
+				d->pipelines[b.first] = b.second;
+		d->enhancer = enhancer;
+		d->dropEnhanced();
+		std::lock_guard<std::mutex> sl(d->shared->m);
+		d->shared->c.enhancer = description;
+		if(!enhancer)
+		{
+			d->shared->c.enhanceWidth = 0;
+			d->shared->c.enhanceHeight = 0;
+		}
+	});
+}
+
+void VideoPipeline::setEnhanceConfig(const EnhanceConfig &config)
+{
+	Impl *d = impl_.get();
+	d->post([d, config] {
+		bool was = d->enhanceCfg.enabled;
+		d->enhanceCfg = config;
+		if(was != config.enabled)
+			d->dropEnhanced();
+	});
+}
+
+Stats VideoPipeline::counters() const
+{
+	Shared &s = *impl_->shared;
+	std::lock_guard<std::mutex> lk(s.m);
+	return s.c;
+}
+
 Stats VideoPipeline::stats() const
 {
 	Shared &s = *impl_->shared;
 	std::lock_guard<std::mutex> lk(s.m);
 	Stats out = s.c;
+	out.enhanceMs = s.enhance.summarize();
+	out.enhanceInputGpuMs = s.enhanceInputGpu.summarize();
+	out.enhanceAgeMs = s.enhanceAge.summarize();
 	out.submitCallMs = s.submitCall.summarize();
 	out.decodeMs = s.decode.summarize();
 	out.queueMs = s.queue.summarize();

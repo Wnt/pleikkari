@@ -29,12 +29,27 @@ p->setPacingMode(PacingMode::Immediate);            // runtime switch
 p->setScaler(Scaler::MetalFX);                      // runtime switch
 p->setDrawableSize(w, h);                           // on every view resize
 plk::video::Stats s = p->stats();                   // counters + p50/p95/p99/max
+plk::video::Stats c = p->counters();                // the same without the percentiles: cheap, for a caller that asks often
 cfg.onFrame = [](const plk::video::FrameTiming &t) { /* one call per rendered frame */ };
 ```
 
 `PipelineConfig::onFrame` reports every rendered frame's timeline (submit, decoded,
 render start, commit, GPU start/end, presented) on a Metal callback thread once its
 presentation time is known; it is never called after the destructor returns.
+
+**Enhancer** (`include/plk/FrameEnhancer.h`). `setEnhancer()` gives the pipeline something
+that turns one R'G'B' picture into another, slowly: the neural rendering engine of
+`macos/nr`, or a test's stand-in. `setEnhanceConfig()` says how (`EnhanceConfig`: on or
+off, the height of the copy it is given, the strength, the comparison split). While the
+enhancer is idle the pipeline renders a BGRA8 copy of the newest decoded SDR frame at
+that height in a pass of its own and offers it; the stream's frames never wait for the
+answer. A result is kept together with the frame it was made from, and the fragment
+shader adds their difference to every following frame, faded per pixel where the frame
+has moved away from that one, until the next result or `maxAgeMs`. An HDR picture is
+never offered. `PipelineConfig::onEnhance` reports every result (size, GPU time of the
+input pass, the enhancer's own time, the round trip), `FrameTiming::enhanceAgeMs` the age
+of the result a frame carried, and `Stats` the counters. `plk-video-enhancer-test` runs
+the whole path offscreen with a stand-in enhancer and checks the pixels.
 
 `submitFrame` maps directly onto chiaki's `ChiakiVideoSampleCallback` and
 returns false when the frame was not queued (no session, waiting for an IDR,

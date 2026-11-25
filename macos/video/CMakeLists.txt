@@ -32,6 +32,7 @@ file(READ "${PLK_SHADER_FILE}" PLK_SHADER_SOURCE)
 configure_file(src/ShaderSource.inc.in "${CMAKE_CURRENT_BINARY_DIR}/generated/ShaderSource.inc" @ONLY)
 
 add_library(plkvideo STATIC
+	include/plk/FrameEnhancer.h
 	include/plk/VideoPipeline.h
 	src/AnnexB.cpp
 	src/AnnexB.h
@@ -69,3 +70,10 @@ add_executable(plk-video-tonemap-tests tests/test_tonemap.cpp)
 target_include_directories(plk-video-tonemap-tests PRIVATE src)
 target_link_libraries(plk-video-tonemap-tests PRIVATE plkvideo)
 add_test(NAME tonemap COMMAND plk-video-tonemap-tests)
+
+# The enhancer path, end to end: encodes its own stream, renders offscreen. Needs a GPU
+# and the hardware H.264 encoder and reports itself skipped (77) without them.
+add_executable(plk-video-enhancer-test tests/test_enhancer.mm)
+target_link_libraries(plk-video-enhancer-test PRIVATE plkvideo)
+add_test(NAME enhancer COMMAND plk-video-enhancer-test)
+set_tests_properties(enhancer PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)

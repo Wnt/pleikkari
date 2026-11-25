@@ -199,6 +199,97 @@ fragment float4 fs_lanczos(VSOut in [[stage_in]],
 	return to_rgb(y, c, p);
 }
 
+// ---- enhancer mix -----------------------------------------------------------
+//
+// A FrameEnhancer (neural rendering) is slower than the stream: what it returns is a
+// changed copy of an earlier frame, the key frame. Added to the frame on screen is its
+// *change*, enhanced - key, and only where the frame on screen still shows what the key
+// frame showed; where the picture has moved on, the change belongs to something that is
+// no longer there and is left out.
+//   texture(2): the key frame as the enhancer was given it (R'G'B', the stream's SDR code values)
+//   texture(3): the enhancer's result for it, same size
+// SDR only: the pipeline never binds these for an HDR picture.
+
+struct NrParams {
+	float4 lumaWeights;  // xyz: weights of R', G', B' in the stream's luma
+	float2 keySize;      // size of the key and enhanced textures in texels
+	float2 motion;       // difference where the change starts (x) and ends (y) fading out
+	float strength;      // how much of the change is added; the fade by age is folded in
+	float split;         // > 0: left of this u the picture stays as it is (comparison)
+};
+
+static inline float4 nr_mix(float4 base, float2 uv, texture2d<float> ty, texture2d<float> tc,
+		texture2d<float> tkey, texture2d<float> tenh, constant Params &p, constant NrParams &n)
+{
+	// How far this frame is from the key frame, at the key frame's own resolution: this
+	// frame is sampled at the centres of the four key texels around the pixel exactly as
+	// the key frame was drawn (fs_bilinear), so an unchanged picture measures zero whatever
+	// the scaler and the sizes are. Per channel, weighted like luma: a change of colour
+	// alone counts too.
+	float2 pos = uv * n.keySize - 0.5;
+	float2 first = floor(pos);
+	float2 f = pos - first;
+	float diff = 0.0;
+	for(int j = 0; j < 2; j++)
+	{
+		for(int i = 0; i < 2; i++)
+		{
+			float2 texel = clamp(first + float2(i, j), float2(0.0), n.keySize - 1.0);
+			float2 kuv = (texel + 0.5) / n.keySize;
+			float2 suv = kuv * p.uvScale + p.uvOffset;
+			float3 now = to_rgb(ty.sample(kLinear, suv).r, tc.sample(kLinear, chroma_uv(suv, p)).rg, p).rgb;
+			float3 then = tkey.sample(kNearest, kuv).rgb;
+			float w = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
+			diff += dot(abs(now - then), n.lumaWeights.xyz) * w;
+		}
+	}
+	float keep = 1.0 - smoothstep(n.motion.x, n.motion.y, diff);
+	float3 change = tenh.sample(kLinear, uv).rgb - tkey.sample(kLinear, uv).rgb;
+	if(n.split > 0.0)
+	{
+		// The comparison: nothing left of the line, and the line itself.
+		float edge = uv.x - n.split;
+		if(abs(edge) < fwidth(uv.x))
+			return float4(1.0, 1.0, 1.0, 1.0);
+		if(edge < 0.0)
+			return float4(saturate(base.rgb), 1.0);
+	}
+	return float4(saturate(base.rgb + change * (n.strength * keep)), 1.0);
+}
+
+fragment float4 fs_bilinear_nr(VSOut in [[stage_in]],
+		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
+		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]],
+		constant Params &p [[buffer(0)]], constant NrParams &n [[buffer(1)]])
+{
+	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float y = ty.sample(kLinear, uv).r;
+	float2 c = tc.sample(kLinear, chroma_uv(uv, p)).rg;
+	return nr_mix(to_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+}
+
+fragment float4 fs_bicubic_nr(VSOut in [[stage_in]],
+		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
+		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]],
+		constant Params &p [[buffer(0)]], constant NrParams &n [[buffer(1)]])
+{
+	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float y = catmull_rom(ty, uv, p.lumaSize).r;
+	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
+	return nr_mix(to_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+}
+
+fragment float4 fs_lanczos_nr(VSOut in [[stage_in]],
+		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
+		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]],
+		constant Params &p [[buffer(0)]], constant NrParams &n [[buffer(1)]])
+{
+	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float y = lanczos3(ty, uv, p.lumaSize);
+	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
+	return nr_mix(to_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+}
+
 // 1:1 copy of an RGB texture into the letterbox rect (MetalFX output -> drawable).
 fragment float4 fs_copy(VSOut in [[stage_in]], texture2d<float> t [[texture(0)]])
 {

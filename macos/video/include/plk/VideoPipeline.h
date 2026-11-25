@@ -87,11 +87,28 @@ struct FrameTiming {
 	double gpuStartUs = 0;     // command buffer GPUStartTime
 	double gpuEndUs = 0;       // command buffer GPUEndTime
 	double presentedUs = 0;    // MTLDrawable.presentedTime (on glass), 0 if not presented
+	// The age of the enhancer's result mixed into this frame: decode time of this frame
+	// minus that of the frame the result was made from. Negative: nothing was mixed in.
+	double enhanceAgeMs = -1;
 };
 // Called once per rendered frame when both its GPU completion and its presentation
 // (or the lack of one) are known, on a Metal callback thread. Must return quickly and
 // must not call into the pipeline. Never called after ~VideoPipeline() has returned.
 using FrameCallback = std::function<void(const FrameTiming &)>;
+
+// One frame's trip through the enhancer (FrameEnhancer.h), reported when its result is back.
+struct EnhanceTiming {
+	uint64_t seq = 0;
+	bool ok = false;          // a usable picture came back
+	int width = 0, height = 0;  // size of the frame the enhancer was given
+	double inputGpuMs = 0;    // GPU time of drawing that frame
+	double enhancerMs = 0;    // what the enhancer itself reported for the frame
+	double totalMs = 0;       // frame handed over -> result back
+};
+// Called once per frame the enhancer took, on a thread of the enhancer's. Must return
+// quickly and must not call into the pipeline. Never called after ~VideoPipeline() has
+// returned.
+using EnhanceCallback = std::function<void(const EnhanceTiming &)>;
 
 // mach_absolute_time() in microseconds: the clock of FrameTiming and Stats.
 double hostTimeUs();
@@ -145,6 +162,33 @@ enum class HdrToneMap {
 	System,
 };
 
+// How a FrameEnhancer's results are used (see FrameEnhancer.h). An enhancer is attached
+// with setEnhancer(); an HDR picture is never given to it and never changed by it.
+struct EnhanceConfig {
+	// false: nothing is offered and nothing is mixed in; the enhancer stays attached.
+	bool enabled = true;
+	// Height of the picture the enhancer is given; the width follows the stream's aspect
+	// ratio. 0 or at least the stream's height: the stream's own size. Smaller is faster
+	// (the cost is per pixel) and coarser; never less than 320.
+	int processHeight = 720;
+	// How much of the enhancer's change is added to a frame: 0 none, 1 all of it, up to 2
+	// (the change exaggerated).
+	float strength = 1.0f;
+	// The change was made from an older frame, so it is kept only where the frame on
+	// screen still looks like that one: it fades out between these two luma differences
+	// (0...1 of the full range), measured at the enhancer's resolution.
+	float motionLow = 0.03f;
+	float motionHigh = 0.10f;
+	// A change made from a frame older than this is not used; it fades out over the
+	// second half of the time. Covers an enhancer that stalls or is slow.
+	uint32_t maxAgeMs = 400;
+	// For comparing by eye: above 0, the picture left of this share of its width (0...1)
+	// is shown as decoded, with a thin line where the two halves meet.
+	float compareSplit = 0.0f;
+};
+
+class FrameEnhancer;
+
 struct PipelineConfig {
 	Codec codec = Codec::Auto;          // Auto: detected from the parameter sets
 	PacingMode pacing = PacingMode::Immediate;
@@ -182,6 +226,7 @@ struct PipelineConfig {
 	int offscreenHeight = 0;
 	uint32_t statsWindow = 36000;       // samples kept per distribution (rolling)
 	FrameCallback onFrame;              // optional per-frame timeline (see FrameTiming)
+	EnhanceCallback onEnhance;          // optional, one call per enhancer result (see EnhanceTiming)
 };
 
 struct Distribution {
@@ -212,6 +257,17 @@ struct Stats {
 	Distribution linkLeadMs;           // DisplayLink: callback -> targetPresentationTimestamp
 	Distribution linkDeadlineMs;       // DisplayLink: callback -> targetTimestamp
 	Distribution presentVsTargetMs;    // DisplayLink: presentedTime - targetPresentationTimestamp
+
+	// The enhancer (FrameEnhancer.h); all zero and empty without one.
+	uint64_t enhanceOffered = 0;       // frames handed to the enhancer
+	uint64_t enhanceCompleted = 0;     // results that came back with a picture
+	uint64_t enhanceFailed = 0;        // refused by the enhancer, or returned without a usable picture
+	uint64_t framesEnhanced = 0;       // rendered frames that had a result mixed in
+	Distribution enhanceMs;            // frame handed over -> result back
+	Distribution enhanceInputGpuMs;    // GPU time of drawing the frame the enhancer is given
+	Distribution enhanceAgeMs;         // at render: decode time of this frame - of the result's key frame
+	std::string enhancer;              // describe() of the attached enhancer
+	int enhanceWidth = 0, enhanceHeight = 0;  // size of the frames the enhancer is given
 
 	// Current stream / pipeline state.
 	int width = 0, height = 0, bitDepth = 0;
@@ -257,7 +313,19 @@ public:
 	void setLatchMarginUs(uint32_t marginUs);
 	void setDrawableSize(int widthPixels, int heightPixels);
 
+	// Attaches an enhancer, or detaches it with nullptr. The first attach builds the render
+	// states of the mixed-in path on the calling thread (a few hundred milliseconds), so
+	// call it off the main and network threads; presentation is not held up. A result that
+	// comes back after its enhancer was detached, or after the pipeline is gone, is dropped.
+	void setEnhancer(std::shared_ptr<FrameEnhancer> enhancer);
+	// Takes effect with the next frame.
+	void setEnhanceConfig(const EnhanceConfig &config);
+
 	Stats stats() const;
+	// stats() without the distributions (left empty): a copy and nothing sorted, for a
+	// caller that asks many times a second. stats() sorts every window of samples while it
+	// holds the lock the render thread takes with each frame.
+	Stats counters() const;
 	void resetStats();
 
 	// Debug/test hooks.
