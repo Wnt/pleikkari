@@ -125,6 +125,7 @@ int runHeadless(const Options &o)
 	BOOL _terminating;
 	BOOL _cleanedUp;
 	int _exitCode;
+	NSUInteger _hdrSwitchSerial;
 }
 
 - (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
@@ -305,7 +306,31 @@ int runHeadless(const Options &o)
 	}
 	if(_options.saved_choices)
 		saveHdr(on);
-	[_window.videoView showNotice:on ? @"HDR on: reconnecting" : @"HDR off: reconnecting"];
+	// The console takes about ten seconds to accept the new session: the notice stays
+	// until it has.
+	[_window.videoView showNotice:on ? @"HDR on: reconnecting..." : @"HDR off: reconnecting..." seconds:0];
+	[self pollHdrSwitch:++_hdrSwitchSerial on:on since:CFAbsoluteTimeGetCurrent()];
+}
+
+- (void)pollHdrSwitch:(NSUInteger)serial on:(BOOL)on since:(CFAbsoluteTime)since
+{
+	if(serial != _hdrSwitchSerial || !_runner || _terminating || _cleanedUp)
+		return;
+	if(_runner->hdrSwitchSettled())
+	{
+		PLK_LOGI("HDR %s: connected again after %.1f s", on ? "on" : "off", CFAbsoluteTimeGetCurrent() - since);
+		[_window.videoView showNotice:on ? @"HDR on" : @"HDR off"];
+		return;
+	}
+	if(CFAbsoluteTimeGetCurrent() - since > 60)
+	{
+		[_window.videoView showNotice:@"Still reconnecting"];
+		return;
+	}
+	PLKAppDelegate *__weak weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		[weakSelf pollHdrSwitch:serial on:on since:since];
+	});
 }
 
 #pragma mark - --keys (test tool)
@@ -468,6 +493,23 @@ int main(int argc, const char *argv[])
 		app.mainMenu = PLKMakeMainMenu(@"Pleikkari");
 		PLKAppDelegate *delegate = [[PLKAppDelegate alloc] initWithOptions:o savedNote:saved_note];
 		app.delegate = delegate;
+		// SIGINT / SIGTERM quit the app the way Cmd-Q does: the session is closed, the
+		// controllers' effects are switched off and AWDL comes back. Left to the default
+		// action, a kill ended the process on the spot and none of that happened.
+		signal(SIGINT, SIG_IGN);
+		signal(SIGTERM, SIG_IGN);
+		dispatch_source_t signals[2];
+		const int numbers[2] = { SIGINT, SIGTERM };
+		for(int i = 0; i < 2; i++)
+		{
+			const int number = numbers[i];
+			signals[i] = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, (uintptr_t)number, 0, dispatch_get_main_queue());
+			dispatch_source_set_event_handler(signals[i], ^{
+				PLK_LOGI("%s: quitting", number == SIGINT ? "SIGINT" : "SIGTERM");
+				[NSApp terminate:nil];
+			});
+			dispatch_resume(signals[i]);
+		}
 		[app run];
 		return delegate.exitCode;
 	}

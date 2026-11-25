@@ -134,6 +134,11 @@ NSCursor *blankCursor()
 
 - (void)showNotice:(NSString *)text
 {
+	[self showNotice:text seconds:2.0];
+}
+
+- (void)showNotice:(NSString *)text seconds:(double)seconds
+{
 	if(!_noticeBox)
 	{
 		_noticeBox = [[NSView alloc] initWithFrame:NSZeroRect];
@@ -158,7 +163,9 @@ NSCursor *blankCursor()
 		[self addSubview:_noticeBox];
 	// Off the picture again afterwards: nothing but the video layer is composited then.
 	const NSUInteger serial = ++_noticeSerial;
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+	if(seconds <= 0)
+		return;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 		if(serial == self->_noticeSerial)
 			[self->_noticeBox removeFromSuperview];
 	});

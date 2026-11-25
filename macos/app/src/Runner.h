@@ -81,6 +81,8 @@ public:
 	 * @return false when this is not a PS5 stream or the stream has ended
 	 */
 	bool setHdr(bool on);
+	/** The session the last setHdr() asked for is connected: the picture is about to return. */
+	bool hdrSwitchSettled() const;
 	/** The picture being shown is HDR (false until the first frame). */
 	bool pictureIsHdr() const;
 
@@ -98,6 +100,7 @@ private:
 	ViewChoices view_;
 	bool ps5_ = false;
 	ChiakiCodec sdr_codec_ = CHIAKI_CODEC_H265; // what HDR off goes back to
+	uint64_t hdr_switch_restart_ = 0;           // the session restart count the last setHdr() waits for
 	std::unique_ptr<struct RunnerSecrets> secrets_;
 
 	std::unique_ptr<FrameLogger> frame_logger_;

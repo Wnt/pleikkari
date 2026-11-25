@@ -261,10 +261,17 @@ bool Runner::setHdr(bool on)
 	if(settings.codec == stream_config_.session.codec)
 		return true;
 	PLK_LOGI("HDR %s: restarting the session with codec %s", on ? "on" : "off", codecName(settings.codec));
+	const uint64_t restarts = session_->restarts();
 	if(!session_->restart(settings))
 		return false;
+	hdr_switch_restart_ = restarts + 1;
 	stream_config_.session = settings;
 	return true;
+}
+
+bool Runner::hdrSwitchSettled() const
+{
+	return session_ && session_->restarts() >= hdr_switch_restart_ && session_->connected();
 }
 
 bool Runner::pictureIsHdr() const

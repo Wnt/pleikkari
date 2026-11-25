@@ -26,6 +26,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)popUpVideoMenuWithEvent:(nullable NSEvent *)event;
 /** A line of text over the picture for two seconds: what a key press just changed. */
 - (void)showNotice:(NSString *)text;
+/** seconds 0: stays until the next notice. */
+- (void)showNotice:(NSString *)text seconds:(double)seconds;
 @end
 
 /**
