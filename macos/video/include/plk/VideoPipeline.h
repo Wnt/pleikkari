@@ -163,7 +163,10 @@ enum class HdrToneMap {
 };
 
 // How a FrameEnhancer's results are used (see FrameEnhancer.h). An enhancer is attached
-// with setEnhancer(); an HDR picture is never given to it and never changed by it.
+// with setEnhancer(). It is given an 8-bit SDR picture as it is, and of an HDR10 (PQ)
+// picture an SDR rendition: SDR white at 203 nits, the highlights on a shoulder above it.
+// The change it makes to the rendition is made to the HDR picture in proportion, so a
+// highlight stays as far above SDR white as it was.
 struct EnhanceConfig {
 	// false: nothing is offered and nothing is mixed in; the enhancer stays attached.
 	bool enabled = true;

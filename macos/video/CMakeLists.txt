@@ -77,3 +77,10 @@ add_executable(plk-video-enhancer-test tests/test_enhancer.mm)
 target_link_libraries(plk-video-enhancer-test PRIVATE plkvideo)
 add_test(NAME enhancer COMMAND plk-video-enhancer-test)
 set_tests_properties(enhancer PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+
+# The same for an HDR picture: an HEVC Main 10 stream in PQ, the enhancer's SDR rendition
+# of it, and the change taken back to PQ. Needs the hardware HEVC encoder; exits 77 without.
+add_executable(plk-video-enhancer-hdr-test tests/test_enhancer_hdr.mm)
+target_link_libraries(plk-video-enhancer-hdr-test PRIVATE plkvideo)
+add_test(NAME enhancer-hdr COMMAND plk-video-enhancer-hdr-test)
+set_tests_properties(enhancer-hdr PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)

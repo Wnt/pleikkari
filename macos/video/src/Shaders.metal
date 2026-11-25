@@ -39,8 +39,11 @@ struct Params {
 	float2 linearize;    // x = 0: code values as they are. x = 1: PQ to linear light, times y
 	                     // (HdrOutput::ExtendedLinear). x = 2: PQ to linear light, times y, back
 	                     // to PQ (a PQ drawable whose picture is scaled or tone mapped here).
+	                     // x = 3: the SDR rendition of a PQ picture that an enhancer is given
 	float2 toneMap;      // y > 0: linear light above the knee x is rolled off towards y, the
 	                     // display's headroom, both in the units of the scaled linear light
+	float2 sdrMap;       // x > 0: a PQ picture, and its linear light (1.0 = 10000 nits) times x
+	                     // has SDR white at 1.0; see sdr_rendition(). y is not used
 };
 
 constexpr sampler kLinear(filter::linear, address::clamp_to_edge, coord::normalized);
@@ -78,15 +81,77 @@ static inline float3 roll_off(float3 lin, float2 tm)
 	return lin;
 }
 
-static inline float4 to_rgb(float y, float2 c, constant Params &p)
+// ---- the SDR rendition of an HDR picture ----------------------------------------
+//
+// An enhancer's network knows SDR pictures. Of a PQ picture it is given this rendition:
+// linear light with SDR white at 1.0 in BT.709 primaries, as it is up to the knee and on a
+// logarithmic shoulder above it that reaches 1.0 at kSdrPeak times SDR white, then the
+// 2.2 gamma. So everything up to about 120 nits looks to the network as it would in an
+// SDR stream, and the highlights are packed into the top fifth of the code values.
+// Nothing is clamped here: a colour outside BT.709 has a negative component and a
+// highlight above the peak a value over 1.0, and both stay what they are in the mix; only
+// the copy the enhancer is given is saturated.
+
+constant float kSdrKnee = 0.6;
+// k + log(1 + a (x - k)) / a has slope 1 at the knee k, and is 1.0 at x = 1000 / 203
+// (1000 nits with SDR white at 203) for a = 9.3.
+constant float kSdrShoulder = 9.3;
+
+static inline float3 bt2020_to_bt709(float3 v)
+{
+	return float3(dot(float3(1.660491, -0.587641, -0.072850), v),
+			dot(float3(-0.124550, 1.132900, -0.008349), v),
+			dot(float3(-0.018151, -0.100579, 1.118730), v));
+}
+
+static inline float3 bt709_to_bt2020(float3 v)
+{
+	return float3(dot(float3(0.627404, 0.329283, 0.043313), v),
+			dot(float3(0.069097, 0.919540, 0.011362), v),
+			dot(float3(0.016391, 0.088013, 0.895595), v));
+}
+
+// PQ code values to linear light in BT.709 primaries, SDR white at 1.0.
+static inline float3 sdr_linear(float3 pq, constant Params &p)
+{
+	return bt2020_to_bt709(pq_eotf(pq) * p.sdrMap.x);
+}
+
+static inline float3 sdr_shoulder(float3 x)
+{
+	return min(x, kSdrKnee) + log(1.0 + kSdrShoulder * max(x - kSdrKnee, 0.0)) / kSdrShoulder;
+}
+
+static inline float3 sdr_encode(float3 t) { return sign(t) * pow(abs(t), 1.0 / 2.2); }
+static inline float3 sdr_decode(float3 c) { return sign(c) * pow(abs(c), 2.2); }
+
+static inline float3 sdr_rendition(float3 pq, constant Params &p)
+{
+	return sdr_encode(sdr_shoulder(sdr_linear(pq, p)));
+}
+
+// The stream's own R'G'B' code values: BT.709 gamma for SDR, BT.2020 and PQ for HDR10.
+static inline float3 code_rgb(float y, float2 c, constant Params &p)
 {
 	float4 v = float4(y, c, 1.0);
-	float3 rgb = saturate(float3(dot(p.r0, v), dot(p.r1, v), dot(p.r2, v)));
-	if(p.linearize.x > 1.5)
+	return saturate(float3(dot(p.r0, v), dot(p.r1, v), dot(p.r2, v)));
+}
+
+// Code values to what the target holds.
+static inline float4 finish(float3 rgb, constant Params &p)
+{
+	if(p.linearize.x > 2.5)
+		rgb = saturate(sdr_rendition(rgb, p));
+	else if(p.linearize.x > 1.5)
 		rgb = pq_inverse_eotf(roll_off(pq_eotf(rgb) * p.linearize.y, p.toneMap));
 	else if(p.linearize.x > 0.5)
 		rgb = roll_off(pq_eotf(rgb) * p.linearize.y, p.toneMap);
 	return float4(rgb, 1.0);
+}
+
+static inline float4 to_rgb(float y, float2 c, constant Params &p)
+{
+	return finish(code_rgb(y, c, p), p);
 }
 
 static inline float2 chroma_uv(float2 uv, constant Params &p)
@@ -206,9 +271,11 @@ fragment float4 fs_lanczos(VSOut in [[stage_in]],
 // *change*, enhanced - key, and only where the frame on screen still shows what the key
 // frame showed; where the picture has moved on, the change belongs to something that is
 // no longer there and is left out.
-//   texture(2): the key frame as the enhancer was given it (R'G'B', the stream's SDR code values)
+//   texture(2): the key frame as the enhancer was given it: R'G'B', the stream's own code
+//               values of an SDR picture, the SDR rendition of a PQ picture
 //   texture(3): the enhancer's result for it, same size
-// SDR only: the pipeline never binds these for an HDR picture.
+// The change is made to the stream's code values, before they become what the target
+// holds: the brightness, the tone mapping and the scaler see the enhanced picture.
 
 struct NrParams {
 	float4 lumaWeights;  // xyz: weights of R', G', B' in the stream's luma
@@ -218,9 +285,31 @@ struct NrParams {
 	float split;         // > 0: left of this u the picture stays as it is (comparison)
 };
 
-static inline float4 nr_mix(float4 base, float2 uv, texture2d<float> ty, texture2d<float> tc,
+// Adds `d`, a change in the code values the enhancer works in, to a pixel's code values.
+static inline float3 nr_apply(float3 code, float3 d, constant Params &p)
+{
+	if(p.sdrMap.x <= 0.0)
+		return saturate(code + d);
+	// A PQ picture: the change belongs to the SDR rendition. It is made there, and the
+	// pixel keeps the ratio it had to its rendition: 1 up to the knee, where this is the
+	// SDR mix exactly, and more in a highlight, which so changes by the same proportion
+	// as its rendition did and keeps its place above SDR white. Nothing here inverts the
+	// shoulder, so a small change stays a small change however bright the pixel is.
+	if(all(abs(d) < 1e-5))
+		return code;
+	float3 lin = sdr_linear(code, p);
+	float3 t = sdr_shoulder(lin);
+	float3 gain = select(float3(1.0), lin / t, lin > kSdrKnee);
+	float3 c = sdr_encode(t);
+	// A component does not change sign: one that is in BT.709 stays in it.
+	float3 changed = max(c + d, min(c, 0.0));
+	return pq_inverse_eotf(bt709_to_bt2020(sdr_decode(changed) * gain) / p.sdrMap.x);
+}
+
+static inline float4 nr_mix(float3 code, float2 uv, texture2d<float> ty, texture2d<float> tc,
 		texture2d<float> tkey, texture2d<float> tenh, constant Params &p, constant NrParams &n)
 {
+	bool hdr = p.sdrMap.x > 0.0;
 	// How far this frame is from the key frame, at the key frame's own resolution: this
 	// frame is sampled at the centres of the four key texels around the pixel exactly as
 	// the key frame was drawn (fs_bilinear), so an unchanged picture measures zero whatever
@@ -237,7 +326,9 @@ static inline float4 nr_mix(float4 base, float2 uv, texture2d<float> ty, texture
 			float2 texel = clamp(first + float2(i, j), float2(0.0), n.keySize - 1.0);
 			float2 kuv = (texel + 0.5) / n.keySize;
 			float2 suv = kuv * p.uvScale + p.uvOffset;
-			float3 now = to_rgb(ty.sample(kLinear, suv).r, tc.sample(kLinear, chroma_uv(suv, p)).rg, p).rgb;
+			float3 now = code_rgb(ty.sample(kLinear, suv).r, tc.sample(kLinear, chroma_uv(suv, p)).rg, p);
+			if(hdr)
+				now = saturate(sdr_rendition(now, p));
 			float3 then = tkey.sample(kNearest, kuv).rgb;
 			float w = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
 			diff += dot(abs(now - then), n.lumaWeights.xyz) * w;
@@ -247,14 +338,14 @@ static inline float4 nr_mix(float4 base, float2 uv, texture2d<float> ty, texture
 	float3 change = tenh.sample(kLinear, uv).rgb - tkey.sample(kLinear, uv).rgb;
 	if(n.split > 0.0)
 	{
-		// The comparison: nothing left of the line, and the line itself.
+		// The comparison: nothing left of the line, and the line itself, in SDR white.
 		float edge = uv.x - n.split;
 		if(abs(edge) < fwidth(uv.x))
-			return float4(1.0, 1.0, 1.0, 1.0);
+			return finish(hdr ? pq_inverse_eotf(float3(1.0 / p.sdrMap.x)) : float3(1.0), p);
 		if(edge < 0.0)
-			return float4(saturate(base.rgb), 1.0);
+			return finish(code, p);
 	}
-	return float4(saturate(base.rgb + change * (n.strength * keep)), 1.0);
+	return finish(nr_apply(code, change * (n.strength * keep), p), p);
 }
 
 fragment float4 fs_bilinear_nr(VSOut in [[stage_in]],
@@ -265,7 +356,7 @@ fragment float4 fs_bilinear_nr(VSOut in [[stage_in]],
 	float2 uv = in.uv * p.uvScale + p.uvOffset;
 	float y = ty.sample(kLinear, uv).r;
 	float2 c = tc.sample(kLinear, chroma_uv(uv, p)).rg;
-	return nr_mix(to_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+	return nr_mix(code_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
 }
 
 fragment float4 fs_bicubic_nr(VSOut in [[stage_in]],
@@ -276,7 +367,7 @@ fragment float4 fs_bicubic_nr(VSOut in [[stage_in]],
 	float2 uv = in.uv * p.uvScale + p.uvOffset;
 	float y = catmull_rom(ty, uv, p.lumaSize).r;
 	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
-	return nr_mix(to_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+	return nr_mix(code_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
 }
 
 fragment float4 fs_lanczos_nr(VSOut in [[stage_in]],
@@ -287,7 +378,7 @@ fragment float4 fs_lanczos_nr(VSOut in [[stage_in]],
 	float2 uv = in.uv * p.uvScale + p.uvOffset;
 	float y = lanczos3(ty, uv, p.lumaSize);
 	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
-	return nr_mix(to_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+	return nr_mix(code_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
 }
 
 // 1:1 copy of an RGB texture into the letterbox rect (MetalFX output -> drawable).

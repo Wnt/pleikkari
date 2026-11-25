@@ -196,9 +196,13 @@ ColorInfo colorInfoFor(CVPixelBufferRef buf)
 
 struct alignas(16) ShaderParams {
 	simd_float4 r0, r1, r2;
-	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize, toneMap;
+	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize, toneMap, sdrMap;
 };
 static_assert(sizeof(ShaderParams) == 112, "must match Params in Shaders.metal");
+
+// Where SDR white is in the SDR rendition of a PQ picture that an enhancer is given
+// (sdr_rendition() in Shaders.metal): HDR reference white, ITU-R BT.2408.
+const float kEnhancerSdrWhiteNits = 203.0f;
 
 struct alignas(16) NrShaderParams {
 	simd_float4 lumaWeights;
@@ -325,7 +329,8 @@ struct DecodedFrame {
 
 // ---- enhancer -------------------------------------------------------------
 
-// A frame the enhancer was given: the R'G'B' copy of one decoded frame.
+// A frame the enhancer was given: the R'G'B' copy of one decoded frame, BGRA8 of an SDR
+// picture, RGBA half float (the SDR rendition) of a PQ picture.
 struct KeyFrame {
 	CVPixelBufferRef buf = nullptr;   // retained
 	CVMetalTextureRef tex = nullptr;  // retained: `buf` as the render target it was drawn into
@@ -605,6 +610,7 @@ struct VideoPipeline::Impl {
 	EnhanceConfig enhanceCfg;
 	CVPixelBufferPoolRef keyPool = nullptr;
 	size_t keyPoolW = 0, keyPoolH = 0;
+	OSType keyPoolFormat = 0;
 	uint64_t keySeq = 0;
 	double lastOfferUs = 0;
 	id<MTLCommandBuffer> lastKeyCommandBuffer;
@@ -1459,21 +1465,37 @@ struct VideoPipeline::Impl {
 		enhance->needReset.store(true);
 	}
 
-	// An SDR picture only: the enhancer and the mix both work on SDR code values.
+	// An 8-bit SDR picture, whose code values the enhancer and the mix work on, or a PQ
+	// picture, of which they work on an SDR rendition. Not HLG: no stream here sends it.
 	bool enhancing(const ColorInfo &ci) const
 	{
-		return enhancer && enhanceCfg.enabled && !ci.hdr() && ci.bits == 8;
+		return enhancer && enhanceCfg.enabled && (ci.transfer == Transfer::PQ || (!ci.hdr() && ci.bits == 8));
 	}
 
-	CVMetalTextureRef wrapBGRA(CVPixelBufferRef buf, bool renderTarget)
+	// The enhancer's pictures: 8 bits for an SDR picture, as the stream has them. Half
+	// float for a PQ picture: its rendition packs the highlights into few code values,
+	// and a step of 8 bits there would be a visible step of brightness.
+	static OSType enhancerFormat(const ColorInfo &ci)
 	{
-		if(CVPixelBufferGetPixelFormatType(buf) != kCVPixelFormatType_32BGRA || !CVPixelBufferGetIOSurface(buf))
+		return ci.transfer == Transfer::PQ ? kCVPixelFormatType_64RGBAHalf : kCVPixelFormatType_32BGRA;
+	}
+
+	static MTLPixelFormat enhancerTextureFormat(OSType format)
+	{
+		return format == kCVPixelFormatType_64RGBAHalf ? MTLPixelFormatRGBA16Float
+			: format == kCVPixelFormatType_32BGRA ? MTLPixelFormatBGRA8Unorm : MTLPixelFormatInvalid;
+	}
+
+	CVMetalTextureRef wrapEnhancerBuffer(CVPixelBufferRef buf, bool renderTarget)
+	{
+		MTLPixelFormat format = enhancerTextureFormat(CVPixelBufferGetPixelFormatType(buf));
+		if(format == MTLPixelFormatInvalid || !CVPixelBufferGetIOSurface(buf))
 			return nullptr;
 		NSDictionary *attrs = @{(__bridge NSString *)kCVMetalTextureUsage :
 			@(MTLTextureUsageShaderRead | (renderTarget ? MTLTextureUsageRenderTarget : 0))};
 		CVMetalTextureRef tex = nullptr;
 		CVReturn r = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, texCache, buf,
-				(__bridge CFDictionaryRef)attrs, MTLPixelFormatBGRA8Unorm, CVPixelBufferGetWidth(buf),
+				(__bridge CFDictionaryRef)attrs, format, CVPixelBufferGetWidth(buf),
 				CVPixelBufferGetHeight(buf), 0, &tex);
 		if(r != kCVReturnSuccess || !tex || !CVMetalTextureGetTexture(tex))
 		{
@@ -1494,20 +1516,25 @@ struct VideoPipeline::Impl {
 			std::lock_guard<std::mutex> lk(enhance->m);
 			e = enhance->latest;
 		}
-		if(!e)
+		// A result made of the picture's other kind (the stream changed between SDR and
+		// HDR) is not a change to this one.
+		if(!e || CVPixelBufferGetPixelFormatType(e->key->buf) != enhancerFormat(ci))
 			return nullptr;
 		double age = (decodedUs - e->key->decodedUs) / 1000.0;
 		double maxAge = (double)enhanceCfg.maxAgeMs;
 		if(age < 0 || age >= maxAge)
 			return nullptr;
 		if(!e->outTex)
-			e->outTex = wrapBGRA(e->out, false);
+			e->outTex = wrapEnhancerBuffer(e->out, false);
 		if(!e->outTex)
 			return nullptr;
 		double t = std::min(1.0, std::max(0.0, (age - maxAge / 2) / (maxAge / 2)));
 		double fade = 1.0 - t * t * (3.0 - 2.0 * t);
-		double kr, kb;
-		lumaCoefficients(ci.matrix, kr, kb);
+		// The key frame's primaries: the stream's for an SDR picture, BT.709 for the
+		// rendition of a PQ picture.
+		double kr = 0.2126, kb = 0.0722;
+		if(ci.transfer != Transfer::PQ)
+			lumaCoefficients(ci.matrix, kr, kb);
 		draw.key = CVMetalTextureGetTexture(e->key->tex);
 		draw.out = CVMetalTextureGetTexture(e->outTex);
 		draw.params.lumaWeights = simd_make_float4((float)kr, (float)(1.0 - kr - kb), (float)kb, 0.0f);
@@ -1524,7 +1551,7 @@ struct VideoPipeline::Impl {
 	// after the frame's own command buffer has been committed: on the GPU the copy comes
 	// after the presented picture, and nothing here is waited for.
 	void offerToEnhancer(const std::shared_ptr<FrameRecord> &rec, CVPixelBufferRef buf, CVMetalTextureRef ty,
-			CVMetalTextureRef tc, const ShaderParams &params, CGRect clean)
+			CVMetalTextureRef tc, const ShaderParams &shown, CGRect clean, const ColorInfo &ci)
 	{
 		if(enhance->busy.load() || nowUs() < enhance->holdUntilUs.load())
 			return;
@@ -1535,13 +1562,14 @@ struct VideoPipeline::Impl {
 		pw += pw & 1;
 		if(pw < 64 || ph < 64)
 			return;
-		if(!keyPool || pw != keyPoolW || ph != keyPoolH)
+		const OSType format = enhancerFormat(ci);
+		if(!keyPool || pw != keyPoolW || ph != keyPoolH || format != keyPoolFormat)
 		{
 			if(keyPool)
 				CVPixelBufferPoolRelease(keyPool);
 			keyPool = nullptr;
 			NSDictionary *attrs = @{
-				(__bridge NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
+				(__bridge NSString *)kCVPixelBufferPixelFormatTypeKey : @(format),
 				(__bridge NSString *)kCVPixelBufferWidthKey : @(pw),
 				(__bridge NSString *)kCVPixelBufferHeightKey : @(ph),
 				(__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey : @{},
@@ -1554,6 +1582,7 @@ struct VideoPipeline::Impl {
 			}
 			keyPoolW = pw;
 			keyPoolH = ph;
+			keyPoolFormat = format;
 			dropEnhanced();
 			std::lock_guard<std::mutex> sl(shared->m);
 			shared->c.enhanceWidth = (int)pw;
@@ -1562,10 +1591,15 @@ struct VideoPipeline::Impl {
 		auto key = std::make_shared<KeyFrame>();
 		if(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, keyPool, &key->buf) != kCVReturnSuccess || !key->buf)
 			return;
-		key->tex = wrapBGRA(key->buf, true);
-		id<MTLRenderPipelineState> pso = pipelineFor(FragBilinear, MTLPixelFormatBGRA8Unorm);
+		key->tex = wrapEnhancerBuffer(key->buf, true);
+		id<MTLRenderPipelineState> pso = pipelineFor(FragBilinear, enhancerTextureFormat(format));
 		if(!key->tex || !pso)
 			return;
+		// The picture as the enhancer works on it, whatever the frame on screen was made
+		// into: the code values of an SDR picture, the SDR rendition of a PQ picture.
+		ShaderParams params = shown;
+		params.linearize = simd_make_float2(ci.transfer == Transfer::PQ ? 3.0f : 0.0f, 0.0f);
+		params.toneMap = simd_make_float2(0.0f, 0.0f);
 		key->seq = ++keySeq;
 		key->decodedUs = rec->decodedUs;
 		// A pause in the offers (a stalled stream, the enhancer switched off for a while)
@@ -1600,7 +1634,7 @@ struct VideoPipeline::Impl {
 			bool taken = drawn && target->submit(key->buf, key->seq, reset,
 					[st, sh2, key, generation, handedUs, inputGpuMs](CVPixelBufferRef output, double enhancerMs) {
 						std::shared_ptr<EnhancedFrame> e;
-						if(output && CVPixelBufferGetPixelFormatType(output) == kCVPixelFormatType_32BGRA
+						if(output && CVPixelBufferGetPixelFormatType(output) == CVPixelBufferGetPixelFormatType(key->buf)
 							&& CVPixelBufferGetIOSurface(output)
 							&& CVPixelBufferGetWidth(output) == CVPixelBufferGetWidth(key->buf)
 							&& CVPixelBufferGetHeight(output) == CVPixelBufferGetHeight(key->buf))
@@ -1760,6 +1794,7 @@ struct VideoPipeline::Impl {
 		else if(ci.transfer == Transfer::PQ && brightnessScaled(gain))
 			// At 100 % a PQ drawable gets the decoder's code values untouched.
 			params.linearize = simd_make_float2(2.0f, gain);
+		params.sdrMap = simd_make_float2(ci.transfer == Transfer::PQ ? 10000.0f / kEnhancerSdrWhiteNits : 0.0f, 0.0f);
 
 		// Target.
 		id<MTLTexture> target;
@@ -1882,7 +1917,7 @@ struct VideoPipeline::Impl {
 		(void)targetPresentUs;
 		if(enhanceOn)
 		{
-			offerToEnhancer(rec, buf, ty, tc, params, clean);
+			offerToEnhancer(rec, buf, ty, tc, params, clean, ci);
 			CFRelease(ty);
 			CFRelease(tc);
 			CVPixelBufferRelease(buf);
@@ -2198,7 +2233,14 @@ void VideoPipeline::setEnhancer(std::shared_ptr<FrameEnhancer> enhancer)
 				{Impl::FragBilinearNr, MTLPixelFormatBGRA8Unorm},
 				{Impl::FragBicubicNr, MTLPixelFormatBGRA8Unorm},
 				{Impl::FragLanczosNr, MTLPixelFormatBGRA8Unorm},
-				{Impl::FragBilinearNr, MTLPixelFormatRGBA16Float},  // MetalFX: its first pass
+				// MetalFX's first pass, and an HDR picture on a linear drawable.
+				{Impl::FragBilinearNr, MTLPixelFormatRGBA16Float},
+				{Impl::FragBicubicNr, MTLPixelFormatRGBA16Float},
+				{Impl::FragLanczosNr, MTLPixelFormatRGBA16Float},
+				// An HDR picture on a PQ drawable.
+				{Impl::FragBilinearNr, MTLPixelFormatBGR10A2Unorm},
+				{Impl::FragBicubicNr, MTLPixelFormatBGR10A2Unorm},
+				{Impl::FragLanczosNr, MTLPixelFormatBGR10A2Unorm},
 			};
 			double t0 = nowUs();
 			for(const auto &w : wanted)

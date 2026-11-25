@@ -41,15 +41,29 @@ presentation time is known; it is never called after the destructor returns.
 that turns one R'G'B' picture into another, slowly: the neural rendering engine of
 `macos/nr`, or a test's stand-in. `setEnhanceConfig()` says how (`EnhanceConfig`: on or
 off, the height of the copy it is given, the strength, the comparison split). While the
-enhancer is idle the pipeline renders a BGRA8 copy of the newest decoded SDR frame at
-that height in a pass of its own and offers it; the stream's frames never wait for the
-answer. A result is kept together with the frame it was made from, and the fragment
-shader adds their difference to every following frame, faded per pixel where the frame
-has moved away from that one, until the next result or `maxAgeMs`. An HDR picture is
-never offered. `PipelineConfig::onEnhance` reports every result (size, GPU time of the
+enhancer is idle the pipeline renders a copy of the newest decoded frame at that height
+in a pass of its own and offers it; the stream's frames never wait for the answer. A
+result is kept together with the frame it was made from, and the fragment shader adds
+their difference to every following frame, faded per pixel where the frame has moved
+away from that one, until the next result or `maxAgeMs`.
+
+The copy of an SDR picture is BGRA8, the stream's own code values. Of an HDR10 picture
+the enhancer is given an SDR rendition in half float (`sdr_rendition()` in
+`Shaders.metal`): BT.709 primaries, SDR white at 203 nits, linear light as it is up to
+0.6 of that and on a logarithmic shoulder above it that reaches 1.0 at 1000 nits, 2.2
+gamma. The difference is then made to the frame's rendition, and the pixel keeps the
+ratio it had to its rendition: below the knee that is the SDR mix exactly, and a
+highlight changes by the proportion its rendition changed by. The shoulder is never
+inverted, so a small change by the enhancer stays a small change at any brightness, and
+a pixel the enhancer left alone keeps its code values to the bit. All of it happens on
+the stream's code values, before the brightness, the tone mapping and the scaler.
+
+`PipelineConfig::onEnhance` reports every result (size, GPU time of the
 input pass, the enhancer's own time, the round trip), `FrameTiming::enhanceAgeMs` the age
 of the result a frame carried, and `Stats` the counters. `plk-video-enhancer-test` runs
-the whole path offscreen with a stand-in enhancer and checks the pixels.
+the whole path offscreen with a stand-in enhancer and checks the pixels;
+`plk-video-enhancer-hdr-test` does the same with an HEVC Main 10 stream in PQ, against
+the rendition and the mix worked out a second time in the test.
 
 `submitFrame` maps directly onto chiaki's `ChiakiVideoSampleCallback` and
 returns false when the frame was not queued (no session, waiting for an IDR,

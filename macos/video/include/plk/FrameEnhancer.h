@@ -20,15 +20,17 @@ namespace plk::video {
 
 class FrameEnhancer {
 public:
-	// `output` is nullptr when the enhancer failed, otherwise an IOSurface-backed
-	// kCVPixelFormatType_32BGRA buffer of the input's size, valid during the call
-	// (retain it to keep it). `totalMs` is the enhancer's own time for the frame.
+	// `output` is nullptr when the enhancer failed, otherwise an IOSurface-backed buffer
+	// of the input's size and pixel format, valid during the call (retain it to keep it).
+	// `totalMs` is the enhancer's own time for the frame.
 	using Done = std::function<void(CVPixelBufferRef output, double totalMs)>;
 
 	virtual ~FrameEnhancer() = default;
 
-	// Offers one frame: IOSurface-backed kCVPixelFormatType_32BGRA, non-linear R'G'B'
-	// code values of an SDR picture. Must not block. Returns true when the frame was
+	// Offers one frame, IOSurface-backed, non-linear R'G'B' of an SDR picture in 0...1:
+	// kCVPixelFormatType_32BGRA with the code values of an SDR stream, or
+	// kCVPixelFormatType_64RGBAHalf with the SDR rendition of an HDR stream's picture
+	// (BT.709 primaries, 2.2 gamma). Must not block. Returns true when the frame was
 	// taken; `done` is then called exactly once, from any thread. Returns false when the
 	// enhancer is busy or cannot use the buffer; `done` is then dropped uncalled.
 	// `reset`: this frame does not continue the previous one given (a new stream, a new
