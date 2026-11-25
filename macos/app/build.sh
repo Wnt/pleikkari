@@ -10,6 +10,9 @@
 #   PYTHON     python for the lib's protobuf generator
 #              (default <workspace>/build/mac/venv/bin/python)
 #   CONFIG     CMake build type (default Release)
+#   NR_DIST    the neural rendering engine to put into the app: the dist directory of
+#              macos/nr/build.sh (default <workspace>/build/native-app/nr/dist; when it is
+#              not there the app is built without the engine and runs as before)
 #
 # Needs Xcode (the full SDK: the video pipeline uses CAMetalDisplayLink, macOS 14) and
 # Homebrew's openssl@3, opus, json-c, miniupnpc, protobuf-compatible python.
@@ -33,6 +36,8 @@ JOBS=${JOBS:-4}
 NICE=${NICE:-15}
 CONFIG=${CONFIG:-Release}
 PYTHON=${PYTHON:-$WORKSPACE/build/mac/venv/bin/python}
+NR_DIST=${NR_DIST:-$WORKSPACE/build/native-app/nr/dist}
+[ -f "$NR_DIST/libplknr.dylib" ] || NR_DIST=
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 OPENSSL=$(brew --prefix openssl@3 2> /dev/null || echo /opt/homebrew/opt/openssl@3)
 OPUS=$(brew --prefix opus 2> /dev/null || echo /opt/homebrew/opt/opus)
@@ -68,6 +73,15 @@ fi
 # still has it off: the cache keeps the old answer.
 if ! grep -q '^CHIAKI_LIB_ENABLE_TAKION_SOCKET_TUNING:BOOL=ON' "$BUILD/CMakeCache.txt"; then
 	nice -n "$NICE" cmake -S "$SRC" -B "$BUILD" -DCHIAKI_LIB_ENABLE_TAKION_SOCKET_TUNING=ON > /dev/null
+fi
+# The engine comes and goes with its dist directory, also in a build directory that exists.
+if ! grep -q "^PLK_NR_DIST:PATH=$NR_DIST\$" "$BUILD/CMakeCache.txt"; then
+	nice -n "$NICE" cmake -S "$SRC" -B "$BUILD" -DPLK_NR_DIST="$NR_DIST" > /dev/null
+fi
+if [ -n "$NR_DIST" ]; then
+	echo "neural rendering engine: $NR_DIST"
+else
+	echo "neural rendering engine: none (macos/nr/build.sh builds it)"
 fi
 nice -n "$NICE" cmake --build "$BUILD" -j "$JOBS"
 

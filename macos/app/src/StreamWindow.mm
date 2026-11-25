@@ -2,6 +2,8 @@
 
 #import "StreamWindow.h"
 
+#include "Options.h"
+
 #include <plk/VideoPipeline.h>
 
 namespace {
@@ -75,8 +77,8 @@ NSCursor *blankCursor()
 	return YES;
 }
 
-// The controller is the input device. Keys: the Video menu's own (1-4, A, V, H, P, L), M opens
-// that menu; everything else goes nowhere (and does not beep).
+// The controller is the input device. Keys: the Video menu's own (1-9, 0, A, V, H, P, L, T, N,
+// S, X, Z, E, C, I), M opens that menu; everything else goes nowhere (and does not beep).
 - (void)keyDown:(NSEvent *)event
 {
 	const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask
@@ -97,6 +99,16 @@ NSCursor *blankCursor()
 		NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"" action:@selector(plkStepHdrBrightness:) keyEquivalent:@""];
 		item.tag = step;
 		[NSApp sendAction:@selector(plkStepHdrBrightness:) to:nil from:item];
+		return;
+	}
+	// Neural rendering strength: X and Z, and a held key keeps stepping as well.
+	NSString *lower = chars.lowercaseString;
+	const NSInteger strengthStep = [lower isEqualToString:@"x"] ? 1 : [lower isEqualToString:@"z"] ? -1 : 0;
+	if(strengthStep)
+	{
+		NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"" action:@selector(plkStepNrStrength:) keyEquivalent:@""];
+		item.tag = strengthStep;
+		[NSApp sendAction:@selector(plkStepNrStrength:) to:nil from:item];
 		return;
 	}
 	if(event.isARepeat)
@@ -156,8 +168,8 @@ NSCursor *blankCursor()
 	const CGFloat padX = 18, padY = 10;
 	const NSSize box = NSMakeSize(label.width + 2 * padX, label.height + 2 * padY);
 	_noticeLabel.frame = NSMakeRect(padX, padY, label.width, label.height);
-	_noticeBox.frame = NSMakeRect(round(NSMidX(self.bounds) - box.width / 2), round(self.bounds.size.height * 0.08),
-			box.width, box.height);
+	_noticeBox.frame = NSMakeRect(round(NSMidX(self.bounds) - box.width / 2),
+			round(MAX(self.bounds.size.height * 0.08, _bottomInset + 12)), box.width, box.height);
 	_noticeBox.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMaxYMargin;
 	if(_noticeBox.superview != self)
 		[self addSubview:_noticeBox];
@@ -315,6 +327,30 @@ NSMenu *PLKMakeVideoMenu(void)
 	addChoice(menu, @"Tone mapping by macOS (stalls in fullscreen)", @selector(plkToggleHdrToneMap:), 0, @"t");
 	addHeader(menu, @"Fullscreen");
 	addChoice(menu, @"In step with the display: no tearing", @selector(plkToggleFullscreenSync:), 0, @"s");
+	// The effect and its settings, in the order they matter: on or off, which model, how
+	// much picture it is given, how much of its change is shown, which look.
+	using plk::app::NrLook;
+	using plk::app::NrNetwork;
+	addHeader(menu, @"Neural rendering of an SDR picture");
+	// Its title carries the state (the app delegate sets it).
+	addChoice(menu, @"Neural rendering", @selector(plkToggleNr:), 0, @"n");
+	addChoice(menu, @"Performance model (small network)", @selector(plkSelectNrNetwork:), (NSInteger)NrNetwork::Small, @"5");
+	addChoice(menu, @"Original model (HT network, slower)", @selector(plkSelectNrNetwork:), (NSInteger)NrNetwork::HT, @"6");
+	addChoice(menu, @"Process at 540p (fastest)", @selector(plkSelectNrHeight:), plk::app::kNrHeights[0], @"7");
+	addChoice(menu, @"Process at 720p", @selector(plkSelectNrHeight:), plk::app::kNrHeights[1], @"8");
+	addChoice(menu, @"Process at the stream's size (slowest)", @selector(plkSelectNrHeight:), plk::app::kNrHeights[2], @"9");
+	// The first one's title carries the current value.
+	addChoice(menu, @"Strength 100 %", @selector(plkStepNrStrength:), 0, @"");
+	addChoice(menu, @"Stronger", @selector(plkStepNrStrength:), 1, @"x");
+	addChoice(menu, @"Weaker", @selector(plkStepNrStrength:), -1, @"z");
+	addChoice(menu, @"Look: standard", @selector(plkSelectNrLook:), (NSInteger)NrLook::Standard, @"");
+	addChoice(menu, @"Look: natural (gentler)", @selector(plkSelectNrLook:), (NSInteger)NrLook::Natural, @"");
+	addChoice(menu, @"Look: cinematic", @selector(plkSelectNrLook:), (NSInteger)NrLook::Cinematic, @"");
+	addChoice(menu, @"Look: neutral (diagnostic)", @selector(plkSelectNrLook:), (NSInteger)NrLook::Neutral, @"");
+	addChoice(menu, @"Next look", @selector(plkSelectNrLook:), -1, @"e");
+	addChoice(menu, @"Compare: left half without", @selector(plkToggleNrCompare:), 0, @"c");
+	addHeader(menu, @"Analysis");
+	addChoice(menu, @"Frame time analysis", @selector(plkToggleAnalysis:), 0, @"i");
 	return menu;
 }
 

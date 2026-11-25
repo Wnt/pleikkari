@@ -1,13 +1,14 @@
 # Pleikkari.app
 
 A native macOS PS5 Remote Play client for the lowest latency this Mac can give. It is an
-AppKit app with no Qt, SDL or libplacebo, built from three modules:
+AppKit app with no Qt, SDL or libplacebo, built from three modules and one that is optional:
 
 | module | what it does |
 |---|---|
 | `macos/host` | `SessionHost` (chiaki session), `AudioOutput` (CoreAudio), registration loader |
 | `macos/video` | `VideoPipeline`: VideoToolbox decode, then Metal (zero copy), then `CAMetalLayer`, presented on arrival; HDR10 goes to EDR |
 | `macos/dualsense` | `DualSenseHID`: IOKit HID input reports, effects, Bluetooth haptics |
+| `macos/nr` (optional) | `libplknr.dylib`: NVIDIA's DLSS 5 Neural Rendering network on Apple Silicon, running beside the stream; a build of its own, see [`macos/nr/README.md`](../nr/README.md) |
 
 The data paths have no queues or timers between the stages:
 
@@ -37,6 +38,8 @@ cmake --build build/native-app/app -j 4
 
 `CHIAKI_ENABLE_MACOS_NATIVE` builds `macos/{host,video,dualsense,app}`. Everything under `macos/` targets macOS 14, because the video pipeline uses `CAMetalDisplayLink`. The bundle is signed ad hoc after every build.
 
+**Neural rendering** is not part of this build. `macos/nr/build.sh` builds the engine (Swift, MLX), and `build.sh` here copies it into the bundle when its `dist` directory exists (`NR_DIST`, default `<workspace>/build/native-app/nr/dist`): `Contents/Frameworks/libplknr.dylib` and `Contents/Resources/mlx-swift_Cmlx.bundle`. The models are made once with `macos/nr/tools/prepare-model.sh` and live in `~/Library/Application Support/Pleikkari/models`. An app without the engine or without a model runs as before and logs one line saying which is missing.
+
 ## Run
 
 ```sh
@@ -52,6 +55,12 @@ The launcher script creates a run directory with the log in it, and prints the c
 ```sh
 FULLSCREEN=1 wt/native-app/macos/app/run-pleikkari.sh mylabel
 FULLSCREEN=1 wt/native-app/macos/app/run-pleikkari.sh hdr -- --codec h265-hdr
+```
+
+A recorded stream plays in a window the same way, looping, with no console; this is how the Video menu, neural rendering and the analysis panel are tried on the same pictures again and again:
+
+```sh
+wt/native-app/macos/app/replay-pleikkari.sh <dump.plkv> -- --keys 2:i      # the analysis panel after 2 s
 ```
 
 **The console.** The registration comes from the Qt app's settings: `~/Library/Preferences/com.chiaki.Chiaki.plist`, or the `--profile` one. The app reads them through `macos/host/Registration`, never writes them, and never logs a value from them except the nickname and the console type. Register the console in the Qt app first.
@@ -90,6 +99,23 @@ A login PIN request is logged and ends the session. Set the PIN up in the Qt app
 | +, -, 0 | HDR brightness: 5 % brighter, 5 % darker (20 to 200 %; a held key keeps stepping), back to 100 % | with the next frame; an SDR picture is not affected. A factor on the picture's linear light, so colours keep their hue. At 100 % HDR reference white (203 nits) is as bright as the display's SDR white |
 | T | HDR tone mapping by macOS instead of the app | with the next frame. The app's own (the default) fits the picture to the display in the shader and puts no HDR metadata on the layer, so macOS hands a fullscreen picture straight to the display: frame ready to on screen 4.9 ms at the median, as for SDR. With macOS's, the picture goes through the compositor (about 10 ms), comes out about 1.7 times brighter in the midtones with its peak stretched to the display's full headroom, and in fullscreen stops for about 55 ms every 64 refreshes of the display |
 | S | Fullscreen in step with the display, or not | with the next frame. A fullscreen picture goes straight to the display, past the compositor. In step (the default) each frame is switched in at a refresh, so the picture cannot tear; otherwise it is switched in at once, wherever the refresh is, and tears. A window is composited either way and does not tear |
+| N | neural rendering on or off | on: with the first result, a fraction of a second after the model has loaded (0.3 to 0.5 s; several seconds the very first time). Off: with the next frame. On by default when the engine and a model are installed. **An SDR picture only**: an HDR stream is left as it is, and the model is not even loaded for one (it would cost a load at the start of the stream and about 1.3 GB for nothing), so press H first: the model loads while the stream reconnects in SDR |
+| 5, 6 | the network: performance model (small, the default), original model (HT, about half as fast) | loads the other model beside the stream; the old one keeps working until the new one is ready. A network whose model is not installed is not switched to, and a line says what is missing |
+| 7, 8, 9 | how much picture the network is given: 540p, 720p (the default), the stream's size | with the next result. Smaller is faster, so a result is fresher when it reaches a frame |
+| X, Z | strength: 10 % stronger, 10 % weaker (10 to 200 %; a held key keeps stepping). The menu's "Strength" item goes back to 100 % | with the next frame. A factor on the change the network made, applied in the shader |
+| E | next look: standard, natural, cinematic, neutral (the network's own rendering profiles); the menu also has one item for each | with the next result |
+| C | compare: the left half of the picture is shown without the network's change, with a line between | with the next frame |
+| I | frame time analysis: a panel over the bottom of the picture, see below | at once. Not remembered |
+
+Neural rendering runs **beside** the stream: every frame is decoded, scaled and presented as before, and the network's change to an earlier frame is mixed in where the picture still looks like that frame. Nothing waits for the network. What it costs is GPU time that the frames share with it; [`macos/nr/README.md`](../nr/README.md) has the numbers and the limits.
+
+**The analysis panel** (I) shows where a frame's time goes, as averages of the last second:
+
+- **Signal**: the stream, the output size and scaler, the colour space, the neural rendering in use, and the order of the stages.
+- **Stages**: one bar for each consecutive stage of a frame (to decoder, decode, queue, render, GPU wait, GPU, scan-out), as a share of the frame interval (the budget), with a mark at the 95th percentile. Beside them the network's own times (input pass, network, round trip, age of the result on a frame; these are not in a frame's path) and the two sums, processing and to glass. With neural rendering on, each value carries its change against the last full second measured with it off: toggle N to refresh that comparison.
+- **Frame rate and pacing**: frames a second on glass, the 1 % low (from the 99th percentile of the frame intervals of the last 10 s), the last 120 intervals against the budget, and three gauges: processing time against the budget, the share of frames that carried a result, and the result's age. The line at the bottom turns orange when frames are not shown or processing exceeds the budget.
+
+The panel is an ordinary view over the picture, so while it is up macOS composites a fullscreen picture instead of handing it straight to the display. Measure latency with the log, and use the panel to see what a choice does.
 
 What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) and used by the next run that does not give the matching option; `--no-saved-choices` neither uses nor remembers it. Headless runs never use it.
 
@@ -111,6 +137,14 @@ What is picked there is remembered (`defaults read fi.madekivi.pleikkari.mac`) a
 | `--hdr-output pq\|linear` | the menu's choice, else pq | |
 | `--hdr-brightness PCT` | the menu's choice, else 100 | 20 to 200; at 100 HDR reference white is as bright as SDR white |
 | `--hdr-tone-map app\|system` | the menu's choice, else app | who fits an HDR picture to the display |
+| `--nr on\|off` | the menu's choice, else on in a window and off with `--headless` | neural rendering of an SDR picture; needs the engine and a model |
+| `--nr-network small\|ht` | the menu's choice, else small | |
+| `--nr-height N` | the menu's choice, else 720 | height the network is given, 360 to 2160; 0 = the stream's |
+| `--nr-strength PCT` | the menu's choice, else 100 | 10 to 200 |
+| `--nr-look standard\|natural\|cinematic\|neutral` | the menu's choice, else standard | |
+| `--nr-library PATH` | `Contents/Frameworks/libplknr.dylib` of the app | the engine |
+| `--nr-models DIR` | `~/Library/Application Support/Pleikkari/models` | where the two models are looked for |
+| `--nr-model PATH` | | one `.dlssmodel` package, whatever the network choice |
 | `--no-saved-choices` | | neither use nor remember the Video menu's choices |
 | `--stats-interval S` | 10 | 0 = off |
 | `--no-frame-log` | per-frame lines on | |
@@ -177,13 +211,17 @@ A value of -1 means the stage was not measured. With `--headless` nothing is pre
 - `audio:` frames in, underruns, silence, hard drops, ring fill, playout margin, drift, and device latency;
 - `controller:` input reports and their rate, the largest motion step on the sensor clock, and console rumble and trigger events (applied, dropped or suppressed). Per device it adds reports in, CRC errors, effect reports written, reports merged by the 2 ms window, write times, and Bluetooth haptics reports and underruns;
 - `gamepads:` controllers other than the DualSense, the input changes they reported, their rumble motors, how often a motor level was changed (and refused), and haptics-stream packets seen;
-- `frames:` the number of lines logged and of frames not presented.
+- `frames:` the number of lines logged and of frames not presented;
+- `nr:` (when neural rendering is on or did something in the window) the choices in use, frames offered to the network, results completed and failed, how many rendered frames carried a result, and p50/p95/p99/max in ms of the round trip, of the input pass on the GPU, and of the result's age on a frame;
+- `analysis:` what the analysis panel shows, as text: the budget, fps and 1 % low, the mean of each stage over the last second, then the network's times after `| nr:`, then, while neural rendering is on, the stage means of the last second measured with it off after `| with nr off:`.
 
 `--diagnostics` adds the lib's per-second `stream:` line: frames, loss, jitter, FEC, and feedback gaps.
 
 ## Tests
 
-`plk-app-tests` covers option parsing and settings precedence, input mapping (buttons, touches, motion on the sensor clock, motion reset), the mapping of other controllers and their rumble levels, the motor-power encoding, the frame-line format against frames.py's parser, and the log format against triggers.py's pattern. `build.sh` runs it together with `plk-host-tests`, `plk-dualsense-tests` and the video module's tests. None of them needs a console, a window or a controller.
+`plk-app-tests` covers option parsing and settings precedence, input mapping (buttons, touches, motion on the sensor clock, motion reset), the mapping of other controllers and their rumble levels, the motor-power encoding, the frame-line format against frames.py's parser, the log format against triggers.py's pattern, the analysis' arithmetic (stages add up, the comparison against neural rendering off, the 1 % low), and where the neural rendering engine and its models are looked for. `build.sh` runs it together with `plk-host-tests`, `plk-dualsense-tests` and the video module's tests. None of them needs a console, a window or a controller.
+
+`plk-analysis-render OUT.png [WIDTH]` (next to the app in the build directory) draws the analysis panel into a PNG from made-up numbers: a look at its layout with no window.
 
 `plk-gamepad-probe` (next to the app in the build directory) shows what the gamepad support sees with no window, stream or console: the controllers, whether their rumble engines start, and every mapped change. `--pulse` runs the motors for 2.5 s: heavy, light, then the haptics-stream path. `--seconds N`, `--quiet`.
 
@@ -195,6 +233,13 @@ $APP replay <dump.plkv> --loop --seconds 12 --no-saved-choices --stats-interval 
 ```
 
 The `video:` statistics line names the scaler in use and the colour space the layer is tagged with.
+
+`--keys` also works with `--headless`, for the keys that need no window (everything in the table above except H, S and I, and not the menu itself). One replay then measures a choice against another on the same pictures. This one runs 10 s without neural rendering, 20 s with it and 10 s without, and prints what the frames paid for it:
+
+```sh
+$APP replay <dump.plkv> --headless --loop --seconds 41 --stats-interval 10 --no-frame-log --log /tmp/nr.log \
+    --keys "10.2:n,30.2:n" && grep -E '\] \[I\] (video|nr|analysis):|keys' /tmp/nr.log
+```
 
 To exercise the whole video path and telemetry with no console, replay a dump headless:
 

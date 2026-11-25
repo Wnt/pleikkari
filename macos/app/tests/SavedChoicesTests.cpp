@@ -166,3 +166,52 @@ PLK_TEST(saved_choices_fullscreen_sync)
 	forgetSavedChoices(kTestDomain);
 	CHECK(!loadSavedChoices(kTestDomain).fullscreen_sync);
 }
+
+PLK_TEST(saved_choices_neural_rendering)
+{
+	forgetSavedChoices(kTestDomain);
+	SavedChoices c = loadSavedChoices(kTestDomain);
+	CHECK(!c.nr && !c.nr_network && !c.nr_height && !c.nr_strength && !c.nr_look);
+
+	saveNr(false, kTestDomain);
+	saveNrNetwork(NrNetwork::HT, kTestDomain);
+	saveNrHeight(0, kTestDomain);
+	saveNrStrength(130, kTestDomain);
+	saveNrLook(NrLook::Natural, kTestDomain);
+	c = loadSavedChoices(kTestDomain);
+	REQUIRE(c.nr && c.nr_network && c.nr_height && c.nr_strength && c.nr_look);
+	CHECK(!*c.nr);
+	CHECK(*c.nr_network == NrNetwork::HT);
+	CHECK(*c.nr_height == 0);
+	CHECK(*c.nr_strength == 130);
+	CHECK(*c.nr_look == NrLook::Natural);
+
+	// Filled in where the command line says nothing, and said so.
+	Options o;
+	const std::string note = applySavedChoices(c, o);
+	REQUIRE(o.nr && o.nr_network && o.nr_height && o.nr_strength && o.nr_look);
+	CHECK(note == "neural rendering off, neural rendering network ht, neural rendering height 0, "
+				  "neural rendering strength 130 %, neural rendering look natural");
+	ViewChoices v = resolveViewChoices(o);
+	CHECK(!v.nr && v.nr_network == NrNetwork::HT && v.nr_height == 0 && v.nr_strength == 130 && v.nr_look == NrLook::Natural);
+	Options given;
+	given.nr = true;
+	given.nr_strength = 50;
+	applySavedChoices(c, given);
+	CHECK(*given.nr && *given.nr_strength == 50 && *given.nr_network == NrNetwork::HT);
+
+	// Values this version does not know are left unset.
+	writeRaw("nr", "auto");
+	writeRaw("nrNetwork", "huge");
+	writeRaw("nrHeight", "100");
+	writeRaw("nrStrength", "900");
+	writeRaw("nrLook", "sepia");
+	c = loadSavedChoices(kTestDomain);
+	CHECK(!c.nr && !c.nr_network && !c.nr_height && !c.nr_strength && !c.nr_look);
+	saveNrHeight(540, kTestDomain);
+	CHECK(*loadSavedChoices(kTestDomain).nr_height == 540);
+
+	forgetSavedChoices(kTestDomain);
+	c = loadSavedChoices(kTestDomain);
+	CHECK(!c.nr && !c.nr_network && !c.nr_height && !c.nr_strength && !c.nr_look);
+}

@@ -27,6 +27,18 @@ namespace plk::app {
 
 enum class Command { Help, Stream, Replay, List };
 
+// Neural rendering (macos/nr): the two networks of an NVIDIA DLSS neural rendering model.
+// The small one is NVIDIA's own default and about twice as fast; HT is the original one.
+enum class NrNetwork { Small, HT };
+const char *toString(NrNetwork network);
+bool parseNrNetwork(const std::string &s, NrNetwork *out);
+// The look the network is asked for (its rendering profiles). Neutral switches its tone
+// and structure changes off: a diagnostic.
+enum class NrLook { Standard, Natural, Cinematic, Neutral };
+const char *toString(NrLook look);
+bool parseNrLook(const std::string &s, NrLook *out);
+NrLook nextNrLook(NrLook look);
+
 struct Options
 {
 	Command command = Command::Help;
@@ -59,6 +71,15 @@ struct Options
 	std::optional<video::HdrToneMap> hdr_tone_map; // default app
 	std::optional<bool> fullscreen_sync;        // default on, see effectivePacing()
 	std::optional<bool> hdr;         // HDR on or off, whatever --codec, Qt settings or default say
+	// Neural rendering of an SDR picture; these five are in the Video menu and remembered too.
+	std::optional<bool> nr;                 // default on in a window when engine and model are there
+	std::optional<NrNetwork> nr_network;    // default small
+	std::optional<int> nr_height;           // height of the picture the network gets; 0 = the stream's
+	std::optional<int> nr_strength;         // percent of the network's change that is shown
+	std::optional<NrLook> nr_look;          // default standard
+	std::string nr_library;          // libplknr.dylib (default: the one in the app bundle)
+	std::string nr_models;           // directory of the .dlssmodel packages (default: defaultNrModelsDirectory())
+	std::string nr_model;            // one package, whatever the network choice says
 	bool saved_choices = true;       // read and remember the menu's choices
 	std::string keys;                // test tool: "seconds:key,..." pressed by the app itself
 	bool headless = false;           // no window, no NSApplication: video renders offscreen
@@ -111,6 +132,20 @@ constexpr int kHdrBrightnessStep = 5;
 /** The next value a step up (+1) or down (-1) from percent, within the range. */
 int stepHdrBrightness(int percent, int direction);
 
+// How much of the network's change is shown, in percent, and the step of the menu's stronger
+// and weaker. Above 100 the change is exaggerated.
+constexpr int kNrStrengthMin = 10;
+constexpr int kNrStrengthMax = 200;
+constexpr int kNrStrengthDefault = 100;
+constexpr int kNrStrengthStep = 10;
+int stepNrStrength(int percent, int direction);
+// The heights the menu offers for the picture the network is given (0: the stream's own).
+// The cost of a frame grows with its pixels: 720 is half of 1080's.
+constexpr int kNrHeights[] = { 540, 720, 0 };
+constexpr int kNrHeightDefault = 720;
+constexpr int kNrHeightMin = 360;
+constexpr int kNrHeightMax = 2160;
+
 /** What the Video menu changes, as the run starts with it. */
 struct ViewChoices
 {
@@ -120,6 +155,11 @@ struct ViewChoices
 	int hdr_brightness = kHdrBrightnessDefault;
 	video::HdrToneMap hdr_tone_map = video::HdrToneMap::App;
 	bool fullscreen_sync = true;
+	bool nr = true;
+	NrNetwork nr_network = NrNetwork::Small;
+	int nr_height = kNrHeightDefault;
+	int nr_strength = kNrStrengthDefault;
+	NrLook nr_look = NrLook::Standard;
 };
 ViewChoices resolveViewChoices(const Options &options);
 

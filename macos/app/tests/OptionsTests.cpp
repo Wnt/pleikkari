@@ -298,3 +298,68 @@ PLK_TEST(options_fullscreen_sync)
 	CHECK(effectivePacing(PacingMode::DisplayLink, true, true) == PacingMode::DisplayLink);
 	CHECK(effectivePacing(PacingMode::ImmediateVsync, false, false) == PacingMode::ImmediateVsync);
 }
+
+PLK_TEST(options_neural_rendering)
+{
+	Options o;
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164" }, o));
+	CHECK(!o.nr && !o.nr_network && !o.nr_height && !o.nr_strength && !o.nr_look);
+	// On in a window, with the performance model at 720p and all of its change.
+	ViewChoices v = resolveViewChoices(o);
+	CHECK(v.nr);
+	CHECK(v.nr_network == NrNetwork::Small);
+	CHECK(v.nr_height == 720);
+	CHECK(v.nr_strength == 100);
+	CHECK(v.nr_look == NrLook::Standard);
+	// A headless run is a measurement: only when it asks.
+	REQUIRE(parse({ "replay", "x.plkv", "--headless" }, o));
+	CHECK(!resolveViewChoices(o).nr);
+	REQUIRE(parse({ "replay", "x.plkv", "--headless", "--nr", "on" }, o));
+	CHECK(resolveViewChoices(o).nr);
+
+	REQUIRE(parse({ "stream", "PS5-466", "192.168.1.164", "--nr", "off", "--nr-network", "ht", "--nr-height", "0",
+						  "--nr-strength", "150", "--nr-look", "cinematic", "--nr-library", "/x/libplknr.dylib", "--nr-models",
+						  "/m", "--nr-model", "/m/one.dlssmodel" },
+			o));
+	v = resolveViewChoices(o);
+	CHECK(!v.nr);
+	CHECK(v.nr_network == NrNetwork::HT);
+	CHECK(v.nr_height == 0);
+	CHECK(v.nr_strength == 150);
+	CHECK(v.nr_look == NrLook::Cinematic);
+	CHECK(o.nr_library == "/x/libplknr.dylib" && o.nr_models == "/m" && o.nr_model == "/m/one.dlssmodel");
+
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr", "maybe" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-network", "large" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-height", "200" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-height", "4320" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-strength", "5" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-strength", "300" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-look", "vivid" }, o));
+	CHECK(!parse({ "stream", "PS5-466", "192.168.1.164", "--nr-model" }, o));
+
+	// Steps of 10 on a grid of 10, within 10 to 200.
+	CHECK(stepNrStrength(100, 1) == 110);
+	CHECK(stepNrStrength(100, -1) == 90);
+	CHECK(stepNrStrength(100, 0) == 100);
+	CHECK(stepNrStrength(95, 1) == 100);
+	CHECK(stepNrStrength(95, -1) == 90);
+	CHECK(stepNrStrength(200, 1) == 200);
+	CHECK(stepNrStrength(10, -1) == 10);
+
+	// The looks go round; every name parses back.
+	NrLook look = NrLook::Standard;
+	for(const char *name : { "natural", "cinematic", "neutral", "standard" })
+	{
+		look = nextNrLook(look);
+		CHECK(std::string(toString(look)) == name);
+		NrLook parsed;
+		REQUIRE(parseNrLook(name, &parsed));
+		CHECK(parsed == look);
+	}
+	NrNetwork network;
+	REQUIRE(parseNrNetwork("ht", &network));
+	CHECK(network == NrNetwork::HT && std::string(toString(network)) == "ht");
+	REQUIRE(parseNrNetwork("small", &network));
+	CHECK(network == NrNetwork::Small);
+}

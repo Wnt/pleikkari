@@ -134,6 +134,20 @@ std::string usageText()
 		"                          (right click or M; keys 1-4, A, V, H, P, L). A choice made\n"
 		"                          there is remembered for the next run that does not give the\n"
 		"                          option.\n"
+		"  --nr on|off             neural rendering of an SDR picture (default on in a window, when the\n"
+		"                          engine and a model are installed: see macos/nr/README.md)\n"
+		"  --nr-network small|ht   which network of the model (default small: about twice as fast)\n"
+		"  --nr-height N           height of the picture the network is given, 360 to 2160, or 0 for\n"
+		"                          the stream's own (default 720; the cost grows with the pixels)\n"
+		"  --nr-strength PCT       how much of the network's change is shown, 10 to 200 (default 100)\n"
+		"  --nr-look standard|natural|cinematic|neutral   the look the network is asked for\n"
+		"                          These five are in the Video menu too (N, 5-6, 7-9, Z and X, E)\n"
+		"                          and remembered like the ones above. C splits the picture for\n"
+		"                          comparison, I shows what each stage of a frame costs.\n"
+		"  --nr-library PATH       libplknr.dylib (default: the one in the app bundle)\n"
+		"  --nr-models DIR         where the .dlssmodel packages are (default:\n"
+		"                          ~/Library/Application Support/Pleikkari/models)\n"
+		"  --nr-model PATH         one .dlssmodel package, whatever --nr-network says\n"
 		"  --no-saved-choices      neither use nor remember the menu's choices\n"
 		"  --headless              no window: render offscreen, controller read-only\n"
 		"  --offscreen WxH         headless render size (default 3456x2234)\n"
@@ -157,7 +171,8 @@ std::string usageText()
 		"                          (default 20, as the Qt app; 0 = no retry)\n"
 		"  --loop                  replay: start over at the end of the dump\n"
 		"  --keys LIST             test tool: the app presses keys itself, \"2:3,4.5:v,6:m\" is\n"
-		"                          key 3 at 2 s, V at 4.5 s, M at 6 s\n";
+		"                          key 3 at 2 s, V at 4.5 s, M at 6 s. With --headless the Video\n"
+		"                          menu's keys make their choices directly (not H and M)\n";
 }
 
 bool parseOptions(int argc, const char *const *argv, Options &o, std::string *error)
@@ -303,6 +318,55 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&v) || !video::parseHdrToneMap(v, &tone_map))
 				return fail("--hdr-tone-map wants app or system");
 			o.hdr_tone_map = tone_map;
+		}
+		else if(a == "--nr")
+		{
+			if(!value(&v) || (v != "on" && v != "off"))
+				return fail("--nr wants on or off");
+			o.nr = v == "on";
+		}
+		else if(a == "--nr-network")
+		{
+			NrNetwork network;
+			if(!value(&v) || !parseNrNetwork(v, &network))
+				return fail("--nr-network wants small or ht");
+			o.nr_network = network;
+		}
+		else if(a == "--nr-height")
+		{
+			unsigned long long n;
+			if(!value(&v) || !parseUnsigned(v, kNrHeightMax, &n) || (n != 0 && n < kNrHeightMin))
+				return fail("--nr-height wants 0 or a height from 360 to 2160");
+			o.nr_height = (int)n;
+		}
+		else if(a == "--nr-strength")
+		{
+			double pct = 0;
+			if(!value(&v) || !parseDouble(v, kNrStrengthMin, kNrStrengthMax, &pct))
+				return fail("--nr-strength wants a percentage from 10 to 200");
+			o.nr_strength = (int)(pct + 0.5);
+		}
+		else if(a == "--nr-look")
+		{
+			NrLook look;
+			if(!value(&v) || !parseNrLook(v, &look))
+				return fail("--nr-look wants standard, natural, cinematic or neutral");
+			o.nr_look = look;
+		}
+		else if(a == "--nr-library")
+		{
+			if(!value(&o.nr_library) || o.nr_library.empty())
+				return fail("--nr-library wants the path of libplknr.dylib");
+		}
+		else if(a == "--nr-models")
+		{
+			if(!value(&o.nr_models) || o.nr_models.empty())
+				return fail("--nr-models wants a directory");
+		}
+		else if(a == "--nr-model")
+		{
+			if(!value(&o.nr_model) || o.nr_model.empty())
+				return fail("--nr-model wants the path of a .dlssmodel package");
 		}
 		else if(a == "--no-saved-choices")
 			o.saved_choices = false;
@@ -480,6 +544,16 @@ ViewChoices resolveViewChoices(const Options &o)
 		v.hdr_tone_map = *o.hdr_tone_map;
 	if(o.fullscreen_sync)
 		v.fullscreen_sync = *o.fullscreen_sync;
+	// A headless run is a measurement: it gets neural rendering only when it asks for it.
+	v.nr = o.nr ? *o.nr : !o.headless;
+	if(o.nr_network)
+		v.nr_network = *o.nr_network;
+	if(o.nr_height)
+		v.nr_height = *o.nr_height;
+	if(o.nr_strength)
+		v.nr_strength = *o.nr_strength;
+	if(o.nr_look)
+		v.nr_look = *o.nr_look;
 	return v;
 }
 
@@ -488,6 +562,58 @@ video::PacingMode effectivePacing(video::PacingMode given, bool window_fullscree
 	if(given == video::PacingMode::Immediate && window_fullscreen && fullscreen_sync)
 		return video::PacingMode::ImmediateVsync;
 	return given;
+}
+
+const char *toString(NrLook look)
+{
+	switch(look)
+	{
+		case NrLook::Natural: return "natural";
+		case NrLook::Cinematic: return "cinematic";
+		case NrLook::Neutral: return "neutral";
+		case NrLook::Standard: break;
+	}
+	return "standard";
+}
+
+bool parseNrLook(const std::string &s, NrLook *out)
+{
+	for(NrLook look : { NrLook::Standard, NrLook::Natural, NrLook::Cinematic, NrLook::Neutral })
+		if(s == toString(look))
+		{
+			*out = look;
+			return true;
+		}
+	return false;
+}
+
+NrLook nextNrLook(NrLook look)
+{
+	return look == NrLook::Neutral ? NrLook::Standard : (NrLook)((int)look + 1);
+}
+
+const char *toString(NrNetwork network)
+{
+	return network == NrNetwork::HT ? "ht" : "small";
+}
+
+bool parseNrNetwork(const std::string &s, NrNetwork *out)
+{
+	if(s == "small") { *out = NrNetwork::Small; return true; }
+	if(s == "ht" || s == "HT") { *out = NrNetwork::HT; return true; }
+	return false;
+}
+
+int stepNrStrength(int percent, int direction)
+{
+	int next;
+	if(direction > 0)
+		next = (percent / kNrStrengthStep + 1) * kNrStrengthStep;
+	else if(direction < 0)
+		next = ((percent + kNrStrengthStep - 1) / kNrStrengthStep - 1) * kNrStrengthStep;
+	else
+		next = percent;
+	return next < kNrStrengthMin ? kNrStrengthMin : next > kNrStrengthMax ? kNrStrengthMax : next;
 }
 
 int stepHdrBrightness(int percent, int direction)

@@ -28,6 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)showNotice:(NSString *)text;
 /** seconds 0: stays until the next notice. */
 - (void)showNotice:(NSString *)text seconds:(double)seconds;
+/** Points at the bottom of the view that something else covers (the analysis panel): notices go above. */
+@property(nonatomic) CGFloat bottomInset;
 @end
 
 /**
@@ -47,6 +49,20 @@ NS_ASSUME_NONNULL_BEGIN
 /** Frames of a fullscreen picture in step with the display's refresh, or shown at once. */
 - (void)plkToggleFullscreenSync:(id)sender;
 - (void)plkToggleHdr:(id)sender;
+// Neural rendering (NeuralEnhancer.h).
+- (void)plkToggleNr:(id)sender;
+/** The sender's tag: a plk::app::NrNetwork. */
+- (void)plkSelectNrNetwork:(id)sender;
+/** The sender's tag: the height of the picture the network is given, 0 for the stream's own. */
+- (void)plkSelectNrHeight:(id)sender;
+/** The sender's tag: +1 stronger, -1 weaker, 0 back to 100 %. */
+- (void)plkStepNrStrength:(id)sender;
+/** The sender's tag: a plk::app::NrLook, or -1 for the next one. */
+- (void)plkSelectNrLook:(id)sender;
+/** The left half of the picture as decoded, the right half with neural rendering. */
+- (void)plkToggleNrCompare:(id)sender;
+/** The analysis panel (AnalysisView.h). */
+- (void)plkToggleAnalysis:(id)sender;
 @end
 
 /** A new Video menu (an item belongs to one menu: the menu bar and the pop-up each get their own). */

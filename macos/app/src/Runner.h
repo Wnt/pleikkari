@@ -15,6 +15,7 @@
 #ifndef PLK_APP_RUNNER_H
 #define PLK_APP_RUNNER_H
 
+#include "FrameAnalysis.h"
 #include "Options.h"
 
 #include <atomic>
@@ -24,6 +25,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace plk {
 class AudioOutput;
@@ -34,6 +36,7 @@ namespace plk::app {
 class ControllerHub;
 class FrameLogger;
 class GamepadHub;
+class NeuralEnhancer;
 class Replay;
 class StreamSession;
 class VideoPath;
@@ -70,6 +73,16 @@ public:
 		bool fullscreen_sync_applies = true; // false: --pacing fixed something else
 		bool hdr = false;            // the stream is asked for in HDR
 		bool hdr_switchable = false; // a PS5 stream: setHdr() can change that
+		// Neural rendering (NeuralEnhancer.h). An HDR picture is never changed by it.
+		bool nr = false;
+		NrNetwork nr_network = NrNetwork::Small;
+		int nr_height = kNrHeightDefault;      // 0: the stream's own
+		int nr_strength = kNrStrengthDefault;  // percent
+		NrLook nr_look = NrLook::Standard;
+		bool nr_compare = false;     // the left half of the picture stays as decoded
+		bool nr_available = false;   // the engine is loaded, or it and the chosen network's model are on disk
+		bool nr_loading = false;
+		std::string nr_status;       // the loaded model, or why there is none
 	};
 	ViewState viewState() const;
 	void setScaler(video::Scaler scaler);
@@ -95,6 +108,31 @@ public:
 	/** The picture being shown is HDR (false until the first frame). */
 	bool pictureIsHdr() const;
 
+	// Neural rendering. The engine and the model are loaded on a thread of their own the
+	// first time they are wanted (and again for the other network); the picture goes on
+	// unchanged until they are there. What becomes of a load is told through the notice
+	// handler, from that thread.
+	void setNr(bool on);
+	/**
+	 * @return false when that network's model (or the engine) is not installed: nothing
+	 * changes then, the network in use keeps working, and *why says what is missing
+	 */
+	bool setNrNetwork(NrNetwork network, std::string *why = nullptr);
+	void setNrHeight(int height);
+	/** @return what was set, within the range */
+	int setNrStrength(int percent);
+	void setNrLook(NrLook look);
+	void setNrCompare(bool on);
+	void setNoticeHandler(std::function<void(const std::string &)> handler);
+	/** What each stage of a frame costs right now (FrameAnalysis.h), with the words around it. */
+	AnalysisReport analysis() const;
+	/**
+	 * A key of the Video menu, for a run without a window (--headless --keys): the choice is
+	 * made as the menu would make it, nothing is remembered. HDR on/off (H) is not one of them.
+	 * @return false when the key is none of the menu's; *what says what was done
+	 */
+	bool pressKey(const std::string &key, std::string *what);
+
 	int exitCode() const { return exit_code_.load(); }
 	const Options &options() const { return options_; }
 	const StreamConfig &streamConfig() const { return stream_config_; }
@@ -103,6 +141,11 @@ public:
 private:
 	void statsLoop();
 	void logStats(bool final_report);
+	void nrLoop();
+	void requestNrEngine();
+	bool streamAskedHdr() const;
+	void syncAnalysisActiveLocked();
+	void applyEnhanceConfig();
 
 	const Options options_;
 	StreamConfig stream_config_;
@@ -117,6 +160,7 @@ private:
 	std::unique_ptr<struct RunnerSecrets> secrets_;
 
 	std::unique_ptr<FrameLogger> frame_logger_;
+	std::unique_ptr<FrameAnalysis> analysis_;
 	std::unique_ptr<video::VideoPipeline> pipeline_;
 	std::unique_ptr<VideoPath> video_path_;
 	std::unique_ptr<AudioOutput> audio_;
@@ -142,6 +186,23 @@ private:
 	std::condition_variable stats_cond_;
 	bool stats_stop_ = false;
 	std::thread seconds_thread_;
+
+	// Neural rendering. nr_mutex_ guards everything below it, and the writes of view_'s nr
+	// fields: the menu's thread writes them, the loader and the statistics thread read them.
+	std::thread nr_thread_;
+	mutable std::mutex nr_mutex_;
+	bool nr_compare_ = false;
+	std::condition_variable nr_cond_;
+	bool nr_stop_ = false;
+	bool nr_request_ = false;
+	bool nr_loading_ = false;
+	NrNetwork nr_request_network_ = NrNetwork::Small;
+	NrLook nr_request_look_ = NrLook::Standard;
+	std::shared_ptr<NeuralEnhancer> nr_engine_;
+	NrNetwork nr_engine_network_ = NrNetwork::Small;
+	std::string nr_failure_;
+	std::function<void(const std::string &)> notice_;
+
 	bool workers_down_ = false;
 	bool video_down_ = false;
 };

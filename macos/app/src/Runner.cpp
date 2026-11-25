@@ -7,6 +7,7 @@
 #include "FrameTelemetry.h"
 #include "Gamepads.h"
 #include "Log.h"
+#include "NeuralEnhancer.h"
 #include "Registration.h"
 #include "Replay.h"
 #include "StreamSession.h"
@@ -173,8 +174,14 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 		pc.offscreenWidth = options_.offscreen_width;
 		pc.offscreenHeight = options_.offscreen_height;
 	}
+	analysis_ = std::make_unique<FrameAnalysis>();
 	FrameLogger *logger = frame_logger_.get();
-	pc.onFrame = [logger](const video::FrameTiming &t) { logger->onFrame(t); };
+	FrameAnalysis *analysis = analysis_.get();
+	pc.onFrame = [logger, analysis](const video::FrameTiming &t) {
+		logger->onFrame(t);
+		analysis->onFrame(t);
+	};
+	pc.onEnhance = [analysis](const video::EnhanceTiming &t) { analysis->onEnhance(t, video::hostTimeUs()); };
 
 	std::string err;
 	pipeline_ = video::VideoPipeline::create(metalLayer, pc, [this](const video::Error &e) {
@@ -200,6 +207,24 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 		else
 			PLK_LOGI("Recording the video samples to %s", options_.dump_path.c_str());
 	}
+	// Neural rendering: the engine is loaded beside the stream, which starts without it.
+	nr_thread_ = std::thread([this] { nrLoop(); });
+	applyEnhanceConfig();
+	if(view_.nr)
+	{
+		const std::string missing = nrMissing(resolveNrPaths(options_, view_.nr_network));
+		if(missing.empty())
+			requestNrEngine();
+		else
+		{
+			// Not installed is the ordinary case of a plain build: one line, no warning.
+			PLK_LOGI("Neural rendering: %s", missing.c_str());
+			std::lock_guard<std::mutex> lk(nr_mutex_);
+			nr_failure_ = missing;
+		}
+	}
+	else
+		PLK_LOGI("Neural rendering: off");
 	return true;
 }
 
@@ -221,6 +246,30 @@ Runner::ViewState Runner::viewState() const
 	v.fullscreen_sync_applies = options_.pacing == video::PacingMode::Immediate;
 	v.hdr = stream_config_.session.codec == CHIAKI_CODEC_H265_HDR && options_.command == Command::Stream;
 	v.hdr_switchable = options_.command == Command::Stream && ps5_ && session_ && !stop_requested_.load();
+	v.nr = view_.nr;
+	v.nr_network = view_.nr_network;
+	v.nr_height = view_.nr_height;
+	v.nr_strength = view_.nr_strength;
+	v.nr_look = view_.nr_look;
+	v.nr_compare = nr_compare_;
+	std::string failure;
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		v.nr_loading = nr_loading_ || nr_request_;
+		if(nr_engine_ && nr_engine_network_ == view_.nr_network)
+		{
+			v.nr_available = true;
+			v.nr_status = nr_engine_->describe();
+		}
+		failure = nr_failure_;
+	}
+	if(!v.nr_available)
+	{
+		// Not loaded (yet): what a load would find.
+		const std::string missing = nrMissing(resolveNrPaths(options_, view_.nr_network));
+		v.nr_available = missing.empty();
+		v.nr_status = !missing.empty() ? missing : v.nr_loading ? "loading" : !failure.empty() ? failure : "not loaded";
+	}
 	return v;
 }
 
@@ -229,6 +278,8 @@ void Runner::setScaler(video::Scaler scaler)
 	view_.scaler = scaler;
 	if(pipeline_)
 		pipeline_->setScaler(scaler);
+	if(analysis_)
+		analysis_->clearBaseline();
 	PLK_LOGI("Video: scaler %s", video::toString(scaler));
 }
 
@@ -245,6 +296,8 @@ void Runner::setHdrOutput(video::HdrOutput output)
 	view_.hdr_output = output;
 	if(pipeline_)
 		pipeline_->setHdrOutput(output);
+	if(analysis_)
+		analysis_->clearBaseline();
 	PLK_LOGI("Video: HDR output %s", video::toString(output));
 }
 
@@ -263,6 +316,8 @@ void Runner::setHdrToneMap(video::HdrToneMap tone_map)
 	view_.hdr_tone_map = tone_map;
 	if(pipeline_)
 		pipeline_->setHdrToneMap(tone_map);
+	if(analysis_)
+		analysis_->clearBaseline();
 	PLK_LOGI("Video: HDR tone mapping %s", video::toString(tone_map));
 }
 
@@ -286,6 +341,10 @@ void Runner::applyPacing()
 	pacing_ = mode;
 	if(pipeline_)
 		pipeline_->setPacingMode(mode);
+	// In step with the display a frame waits for a refresh: what was measured without says
+	// nothing about it.
+	if(analysis_)
+		analysis_->clearBaseline();
 	PLK_LOGI("Video: pacing %s (%s, fullscreen sync %s)", video::toString(mode),
 			window_fullscreen_ ? "fullscreen" : "window", view_.fullscreen_sync ? "on" : "off");
 }
@@ -311,6 +370,11 @@ bool Runner::setHdr(bool on)
 		return false;
 	hdr_switch_restart_ = restarts + 1;
 	stream_config_.session = settings;
+	if(analysis_)
+		analysis_->clearBaseline();
+	// An SDR stream from here on: the engine that was not loaded for an HDR one is wanted now.
+	if(!on)
+		requestNrEngine();
 	return true;
 }
 
@@ -321,7 +385,356 @@ bool Runner::hdrSwitchSettled() const
 
 bool Runner::pictureIsHdr() const
 {
-	return pipeline_ && pipeline_->stats().hdr;
+	return pipeline_ && pipeline_->counters().hdr;
+}
+
+// ---- neural rendering -------------------------------------------------------
+
+namespace {
+
+std::string heightName(int height)
+{
+	return height > 0 ? std::to_string(height) + "p" : std::string("the stream's size");
+}
+
+} // namespace
+
+void Runner::setNoticeHandler(std::function<void(const std::string &)> handler)
+{
+	std::lock_guard<std::mutex> lk(nr_mutex_);
+	notice_ = std::move(handler);
+}
+
+// What the pipeline does with the engine's results, from the menu's choices; and whether
+// the analysis counts the frames from now on as frames without neural rendering.
+void Runner::applyEnhanceConfig()
+{
+	if(!pipeline_)
+		return;
+	video::EnhanceConfig c;
+	c.enabled = view_.nr;
+	c.processHeight = view_.nr_height;
+	c.strength = (float)view_.nr_strength / 100.0f;
+	c.compareSplit = nr_compare_ ? 0.5f : 0.0f;
+	pipeline_->setEnhanceConfig(c);
+	std::lock_guard<std::mutex> lk(nr_mutex_);
+	syncAnalysisActiveLocked();
+}
+
+// Whether the analysis counts the frames from now on as frames with neural rendering. Told
+// from here only, with nr_mutex_ held, so that the menu's thread and the loader cannot
+// leave it saying what is no longer true.
+void Runner::syncAnalysisActiveLocked()
+{
+	if(analysis_)
+		analysis_->setEnhancerActive(view_.nr && (nr_engine_ || nr_loading_ || nr_request_));
+}
+
+// The stream is asked for in HDR: no frame of it is ever given to the engine.
+bool Runner::streamAskedHdr() const
+{
+	return options_.command == Command::Stream && stream_config_.session.codec == CHIAKI_CODEC_H265_HDR;
+}
+
+// Asks the loader for the engine of the chosen network, unless it is the one in use. Not
+// for an HDR stream: a model costs a load at the start of the stream and memory for as
+// long as it lasts, and would do nothing. It is loaded when the stream turns SDR (H).
+void Runner::requestNrEngine()
+{
+	if(!pipeline_ || !view_.nr)
+		return;
+	if(streamAskedHdr())
+	{
+		PLK_LOGI("Neural rendering: on, and waiting for an SDR picture (this stream is HDR; H in the Video menu switches)");
+		return;
+	}
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		if(nr_stop_ || (nr_engine_ && nr_engine_network_ == view_.nr_network && !nr_loading_ && !nr_request_))
+			return;
+		nr_request_ = true;
+		nr_request_network_ = view_.nr_network;
+		nr_request_look_ = view_.nr_look;
+		syncAnalysisActiveLocked();
+	}
+	nr_cond_.notify_all();
+}
+
+void Runner::nrLoop()
+{
+	pthread_setname_np("plk.nr-load");
+	std::unique_lock<std::mutex> lk(nr_mutex_);
+	for(;;)
+	{
+		nr_cond_.wait(lk, [this] { return nr_stop_ || nr_request_; });
+		if(nr_stop_)
+			return;
+		nr_request_ = false;
+		const NrNetwork network = nr_request_network_;
+		const NrLook look = nr_request_look_;
+		if(nr_engine_ && nr_engine_network_ == network)
+			continue; // asked for again while it was being loaded
+		nr_loading_ = true;
+		lk.unlock();
+
+		NeuralEnhancer::Config config;
+		config.paths = resolveNrPaths(options_, network);
+		config.look = look;
+		std::string failure = nrMissing(config.paths);
+		std::shared_ptr<NeuralEnhancer> engine;
+		const auto began = std::chrono::steady_clock::now();
+		if(failure.empty())
+			engine = NeuralEnhancer::load(config, &failure);
+		const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
+		std::string notice;
+		if(engine)
+		{
+			PLK_LOGI("Neural rendering: %s, loaded in %.0f ms from %s", engine->describe().c_str(), ms,
+					config.paths.model.c_str());
+			// Builds the pipeline's mixing shaders the first time: here, not on the main thread.
+			pipeline_->setEnhancer(engine);
+			notice = std::string("Neural rendering ready: ") + (network == NrNetwork::HT ? "original model (HT)" : "performance model");
+		}
+		else
+		{
+			PLK_LOGW("Neural rendering is not available: %s", failure.c_str());
+			notice = "Neural rendering is not available: " + failure;
+		}
+
+		lk.lock();
+		nr_loading_ = false;
+		std::function<void(const std::string &)> tell = notice_;
+		const bool more = nr_request_;
+		// The engine this load replaces. Dropping it here is safe on any thread: an engine
+		// ends on a queue of its own (NeuralEnhancer's destructor), whoever lets go last.
+		std::shared_ptr<NeuralEnhancer> replaced = std::move(nr_engine_);
+		nr_engine_ = engine;
+		if(engine)
+		{
+			// A look picked while the model was loading.
+			if(nr_request_look_ != look)
+				engine->setLook(nr_request_look_);
+			nr_engine_network_ = network;
+			nr_failure_.clear();
+		}
+		else
+			nr_failure_ = failure;
+		syncAnalysisActiveLocked();
+		lk.unlock();
+		// A model that is there but does not load: the engine of the other network does not
+		// go on working under a menu that names this one.
+		if(!engine && replaced)
+			pipeline_->setEnhancer(nullptr);
+		replaced.reset();
+		if(tell && !more)
+			tell(notice);
+		lk.lock();
+	}
+}
+
+void Runner::setNr(bool on)
+{
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		view_.nr = on;
+	}
+	applyEnhanceConfig();
+	requestNrEngine();
+	PLK_LOGI("Video: neural rendering %s", on ? "on" : "off");
+}
+
+bool Runner::setNrNetwork(NrNetwork network, std::string *why)
+{
+	// A network whose model is not there is not switched to: the one in use keeps working
+	// and the menu keeps naming it.
+	const std::string missing = nrMissing(resolveNrPaths(options_, network));
+	if(!missing.empty())
+	{
+		PLK_LOGI("Video: neural rendering network %s is not installed: %s", toString(network), missing.c_str());
+		if(why)
+			*why = missing;
+		return false;
+	}
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		view_.nr_network = network;
+	}
+	requestNrEngine();
+	PLK_LOGI("Video: neural rendering network %s", toString(network));
+	return true;
+}
+
+void Runner::setNrHeight(int height)
+{
+	height = height <= 0 ? 0 : height < kNrHeightMin ? kNrHeightMin : height > kNrHeightMax ? kNrHeightMax : height;
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		view_.nr_height = height;
+	}
+	applyEnhanceConfig();
+	PLK_LOGI("Video: neural rendering at %s", heightName(view_.nr_height).c_str());
+}
+
+int Runner::setNrStrength(int percent)
+{
+	percent = percent < kNrStrengthMin ? kNrStrengthMin : percent > kNrStrengthMax ? kNrStrengthMax : percent;
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		view_.nr_strength = percent;
+	}
+	applyEnhanceConfig();
+	PLK_LOGI("Video: neural rendering strength %d %%", percent);
+	return percent;
+}
+
+void Runner::setNrLook(NrLook look)
+{
+	{
+		// Under the lock all the way: a load that ends now applies the look it finds here,
+		// and the two must not land on the new engine in the wrong order.
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		view_.nr_look = look;
+		nr_request_look_ = look;
+		if(nr_engine_)
+			nr_engine_->setLook(look);
+	}
+	PLK_LOGI("Video: neural rendering look %s", toString(look));
+}
+
+void Runner::setNrCompare(bool on)
+{
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		nr_compare_ = on;
+	}
+	applyEnhanceConfig();
+	PLK_LOGI("Video: neural rendering comparison %s", on ? "on (left half as decoded)" : "off");
+}
+
+AnalysisReport Runner::analysis() const
+{
+	AnalysisReport r;
+	if(!pipeline_ || !analysis_)
+		return r;
+	r.timing = analysis_->snapshot(video::hostTimeUs());
+	const video::Stats s = pipeline_->counters(); // asked four times a second: nothing sorted
+	const ViewState v = viewState();
+	const AnalysisSnapshot &t = r.timing;
+	char buf[200];
+
+	if(s.width > 0)
+	{
+		snprintf(buf, sizeof(buf), "%dx%d %s %d bit %s", s.width, s.height, s.codec.c_str(), s.bitDepth, s.hdr ? "HDR" : "SDR");
+		std::string stream = buf;
+		if(t.budget_ms > 0)
+		{
+			snprintf(buf, sizeof(buf), " at %.1f fps", 1000.0 / t.budget_ms);
+			stream += buf;
+		}
+		r.signal.emplace_back("Stream", stream);
+		snprintf(buf, sizeof(buf), "%dx%d, %s%s%s%s", s.targetWidth, s.targetHeight, s.scaler.empty() ? "-" : s.scaler.c_str(),
+				s.pacing.empty() ? "" : ", ", s.pacing.c_str(), t.offscreen ? ", offscreen" : "");
+		r.signal.emplace_back("Output", buf);
+		if(!s.layerColorSpace.empty())
+			r.signal.emplace_back("Colour", s.layerColorSpace);
+	}
+	else
+		r.signal.emplace_back("Stream", "waiting for the first frame");
+
+	// The enhancer's own line, in the manner of an effect's row: what, at which size, how strong.
+	if(!v.nr)
+		r.enhancer = "off";
+	else if(v.nr_loading)
+		r.enhancer = "loading the model";
+	else if(!v.nr_available)
+		r.enhancer = "not installed";
+	else if(s.hdr)
+		r.enhancer = "waiting: an HDR picture is left as it is";
+	else
+	{
+		snprintf(buf, sizeof(buf), "%s model, %dx%d, strength %d %%, %s%s",
+				v.nr_network == NrNetwork::HT ? "original (HT)" : "performance", s.enhanceWidth, s.enhanceHeight, v.nr_strength,
+				toString(v.nr_look), v.nr_compare ? ", comparison" : "");
+		r.enhancer = buf;
+	}
+	r.signal.emplace_back("Neural rendering", r.enhancer);
+	r.signal.emplace_back("Order", v.nr && v.nr_available && !s.hdr ? "decode > scale + mix > display; network beside"
+			: "decode > scale > display");
+
+	const bool enhancing = v.nr && v.nr_available && !v.nr_loading && !s.hdr;
+	if(t.not_presented > 0)
+	{
+		snprintf(buf, sizeof(buf), "%llu of the last second's frames were not shown", (unsigned long long)t.not_presented);
+		r.status = buf;
+		r.warning = true;
+	}
+	else if(!t.frames)
+		r.status = "No frame in the last second";
+	else if(t.budget_ms > 0 && t.processing.samples && t.processing.mean_ms > t.budget_ms)
+	{
+		snprintf(buf, sizeof(buf), "Over budget: a frame takes %.1f ms to process, and one arrives every %.1f ms",
+				t.processing.mean_ms, t.budget_ms);
+		r.status = buf;
+		r.warning = true;
+	}
+	else if(enhancing && t.results_per_s <= 0)
+	{
+		r.status = t.nr_failed ? "Neural rendering fails: see the log" : "Neural rendering: no result in the last second (warming up)";
+		r.warning = true;
+	}
+	else if(enhancing)
+	{
+		snprintf(buf, sizeof(buf), "Normal. Neural rendering %.0f results/s, on %.0f %% of the frames", t.results_per_s,
+				t.enhanced_share * 100.0);
+		r.status = buf;
+	}
+	else
+		r.status = std::string("Normal. Neural rendering ") + r.enhancer;
+	return r;
+}
+
+bool Runner::pressKey(const std::string &key, std::string *what)
+{
+	if(key.size() != 1)
+		return false;
+	const ViewState v = viewState();
+	std::string done;
+	switch(key[0])
+	{
+		case '1': setScaler(video::Scaler::Bilinear); done = "scaler bilinear"; break;
+		case '2': setScaler(video::Scaler::Bicubic); done = "scaler bicubic"; break;
+		case '3': setScaler(video::Scaler::Lanczos); done = "scaler lanczos"; break;
+		case '4': setScaler(video::Scaler::MetalFX); done = "scaler metalfx"; break;
+		case 'a': setSdrColor(video::SdrColor::Accurate); done = "colour accurate"; break;
+		case 'v': setSdrColor(video::SdrColor::Vivid); done = "colour vivid"; break;
+		case 'p': setHdrOutput(video::HdrOutput::PQ); done = "HDR output pq"; break;
+		case 'l': setHdrOutput(video::HdrOutput::ExtendedLinear); done = "HDR output linear"; break;
+		case 't':
+			setHdrToneMap(v.hdr_tone_map == video::HdrToneMap::System ? video::HdrToneMap::App : video::HdrToneMap::System);
+			done = "HDR tone mapping toggled";
+			break;
+		case '0': setHdrBrightness(kHdrBrightnessDefault); done = "HDR brightness 100 %"; break;
+		case '+': setHdrBrightness(stepHdrBrightness(v.hdr_brightness, 1)); done = "HDR brighter"; break;
+		case '-': setHdrBrightness(stepHdrBrightness(v.hdr_brightness, -1)); done = "HDR darker"; break;
+		case 'n': setNr(!v.nr); done = v.nr ? "neural rendering off" : "neural rendering on"; break;
+		case '5':
+			done = setNrNetwork(NrNetwork::Small) ? "neural rendering network small" : "neural rendering network small is not installed";
+			break;
+		case '6':
+			done = setNrNetwork(NrNetwork::HT) ? "neural rendering network ht" : "neural rendering network ht is not installed";
+			break;
+		case '7': setNrHeight(kNrHeights[0]); done = "neural rendering at " + heightName(kNrHeights[0]); break;
+		case '8': setNrHeight(kNrHeights[1]); done = "neural rendering at " + heightName(kNrHeights[1]); break;
+		case '9': setNrHeight(kNrHeights[2]); done = "neural rendering at " + heightName(kNrHeights[2]); break;
+		case 'x': setNrStrength(stepNrStrength(v.nr_strength, 1)); done = "neural rendering stronger"; break;
+		case 'z': setNrStrength(stepNrStrength(v.nr_strength, -1)); done = "neural rendering weaker"; break;
+		case 'e': setNrLook(nextNrLook(v.nr_look)); done = std::string("neural rendering look ") + toString(nextNrLook(v.nr_look)); break;
+		case 'c': setNrCompare(!v.nr_compare); done = v.nr_compare ? "comparison off" : "comparison on"; break;
+		default: return false;
+	}
+	if(what)
+		*what = done;
+	return true;
 }
 
 bool Runner::start(std::function<void()> finished)
@@ -474,10 +887,29 @@ void Runner::shutdownVideo()
 	video_down_ = true;
 	if(pipeline_)
 		logStats(true);
+	// The engine loader calls into the pipeline: it ends first.
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		nr_stop_ = true;
+	}
+	nr_cond_.notify_all();
+	if(nr_thread_.joinable())
+		nr_thread_.join();
 	// Nothing submits any more (shutdownWorkers() joined the session or the replay). The
 	// pipeline goes first: its error callback may still reach session_ until it is gone.
 	video_path_.reset();
 	pipeline_.reset();
+	// The engine after the pipeline. Each engine ends on a queue of its own, where it waits
+	// for the frame it may still be working on; the run waits here until they are all gone.
+	{
+		std::shared_ptr<NeuralEnhancer> engine;
+		{
+			std::lock_guard<std::mutex> lk(nr_mutex_);
+			engine = std::move(nr_engine_);
+			nr_engine_ = nullptr;
+		}
+	}
+	NeuralEnhancer::waitForRetired();
 	// The gamepad hub and the session call into each other: the hub is silenced, the
 	// session goes, then the hub.
 	if(gamepads_)
@@ -546,6 +978,41 @@ void Runner::logStats(bool final_report)
 		line += distLine("ready_to_presented", s.readyToPresentedMs);
 		line += distLine("present_interval", s.presentIntervalMs);
 		Log::instance().write('I', line.c_str());
+		// Neural rendering: what the engine was given and what came of it. Only when it is on
+		// or has done something, so that a run without it logs what it always did.
+		bool nr_on, nr_compare;
+		NrNetwork nr_network;
+		NrLook nr_look;
+		int nr_strength;
+		{
+			std::lock_guard<std::mutex> lk(nr_mutex_);
+			nr_on = view_.nr;
+			nr_network = view_.nr_network;
+			nr_look = view_.nr_look;
+			nr_strength = view_.nr_strength;
+			nr_compare = nr_compare_;
+		}
+		if(nr_on || s.enhanceOffered || s.enhanceFailed)
+		{
+			snprintf(buf, sizeof(buf),
+					"nr%s: %s network=%s size=%dx%d strength=%d%% look=%s compare=%s offered=%llu completed=%llu failed=%llu "
+					"frames_enhanced=%llu/%llu",
+					final_report ? " (last window)" : "", nr_on ? "on" : "off", toString(nr_network), s.enhanceWidth,
+					s.enhanceHeight, nr_strength, toString(nr_look), nr_compare ? "on" : "off",
+					(unsigned long long)s.enhanceOffered, (unsigned long long)s.enhanceCompleted,
+					(unsigned long long)s.enhanceFailed, (unsigned long long)s.framesEnhanced,
+					(unsigned long long)s.framesRendered);
+			line = buf;
+			line += " ms p50/p95/p99/max:";
+			line += distLine("round_trip", s.enhanceMs);
+			line += distLine("input_gpu", s.enhanceInputGpuMs);
+			line += distLine("age", s.enhanceAgeMs);
+			if(!s.enhancer.empty())
+				line += " engine=\"" + s.enhancer + "\"";
+			Log::instance().write('I', line.c_str());
+		}
+		if(analysis_ && !final_report)
+			Log::instance().write('I', formatAnalysisLine(analysis_->snapshot(video::hostTimeUs())).c_str());
 		if(!final_report)
 			pipeline_->resetStats();
 		if(!s.colorDescription.empty() && s.hdr)

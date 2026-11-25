@@ -3,6 +3,7 @@
 // Pleikkari.app: native macOS PS5 Remote Play client (AppKit, no Qt/SDL/libplacebo).
 // See macos/app/README.md.
 
+#import "AnalysisView.h"
 #import "StreamWindow.h"
 
 #include "Log.h"
@@ -14,6 +15,7 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include <atomic>
 #include <condition_variable>
 #include <csignal>
 #include <cstdio>
@@ -91,11 +93,36 @@ int runHeadless(const Options &o)
 		done = true;
 		cv.notify_all();
 	});
+	// --keys without a window: the Video menu's keys make their choices directly, one after
+	// the other on a queue of their own, so one run can measure with and without something.
+	dispatch_queue_t keyQueue = dispatch_queue_create("plk.keys", DISPATCH_QUEUE_SERIAL);
+	auto keysOver = std::make_shared<std::atomic<bool>>(false);
+	std::vector<KeyPress> presses;
+	if(started && !o.keys.empty() && parseKeyScript(o.keys, presses, nullptr))
+	{
+		for(const KeyPress &press : presses)
+		{
+			const std::string key = press.key;
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(press.at_s * NSEC_PER_SEC)), keyQueue, ^{
+				if(keysOver->load())
+					return;
+				std::string what;
+				if(r->pressKey(key, &what))
+					PLK_LOGI("--keys: %s (%s)", key.c_str(), what.c_str());
+				else
+					PLK_LOGW("--keys: %s is not a key of the Video menu that works without a window", key.c_str());
+			});
+		}
+	}
 	if(started)
 	{
 		std::unique_lock<std::mutex> lk(m);
 		cv.wait(lk, [&] { return done; });
 	}
+	// No key after this, and the one being pressed has finished.
+	keysOver->store(true);
+	dispatch_sync(keyQueue, ^{
+	});
 	runner.requestStop();
 	runner.shutdownWorkers();
 	runner.shutdownVideo();
@@ -131,6 +158,8 @@ int runHeadless(const Options &o)
 	NSTimer *_headroomTimer;
 	id _screenObserver;
 	NSArray *_fullscreenObservers;
+	PLKAnalysisView *_analysisView;
+	NSTimer *_analysisTimer;
 }
 
 - (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
@@ -159,6 +188,16 @@ int runHeadless(const Options &o)
 		[NSApp terminate:nil];
 		return;
 	}
+	// What becomes of loading the neural rendering engine, from its own thread.
+	PLKAppDelegate *__weak noticeSelf = self;
+	_runner->setNoticeHandler([noticeSelf](const std::string &text) {
+		NSString *notice = @(text.c_str());
+		dispatch_async(dispatch_get_main_queue(), ^{
+			PLKAppDelegate *strongSelf = noticeSelf;
+			if(strongSelf && !strongSelf->_terminating && !strongSelf->_cleanedUp)
+				[strongSelf->_window.videoView showNotice:notice seconds:3.0];
+		});
+	});
 	_activity = [NSProcessInfo.processInfo beginActivityWithOptions:kStreamActivity reason:@"Pleikkari stream"];
 	if(!_savedNote.empty())
 		PLK_LOGI("Remembered from the Video menu: %s", _savedNote.c_str());
@@ -252,7 +291,11 @@ int runHeadless(const Options &o)
 	const bool ours = action == @selector(plkSelectScaler:) || action == @selector(plkSelectSdrColor:)
 			|| action == @selector(plkSelectHdrOutput:) || action == @selector(plkToggleHdr:)
 			|| action == @selector(plkStepHdrBrightness:) || action == @selector(plkToggleHdrToneMap:)
-			|| action == @selector(plkToggleFullscreenSync:);
+			|| action == @selector(plkToggleFullscreenSync:)
+			|| action == @selector(plkToggleNr:) || action == @selector(plkSelectNrNetwork:)
+			|| action == @selector(plkSelectNrHeight:) || action == @selector(plkStepNrStrength:)
+			|| action == @selector(plkSelectNrLook:) || action == @selector(plkToggleNrCompare:)
+			|| action == @selector(plkToggleAnalysis:);
 	if(!ours)
 		return YES;
 	if(!_runner || _terminating || _cleanedUp)
@@ -283,6 +326,33 @@ int runHeadless(const Options &o)
 		else
 			enabled = stepHdrBrightness(v.hdr_brightness, (int)item.tag) != v.hdr_brightness;
 	}
+	else if(action == @selector(plkToggleNr:))
+	{
+		on = v.nr;
+		// Left enabled when it is not installed: choosing it says what is missing.
+		item.title = v.nr_available ? (v.nr_loading ? @"Neural rendering (loading)" : @"Neural rendering")
+									: @"Neural rendering (not installed)";
+	}
+	else if(action == @selector(plkSelectNrNetwork:))
+		on = (NSInteger)v.nr_network == item.tag;
+	else if(action == @selector(plkSelectNrHeight:))
+		on = v.nr_height == item.tag;
+	else if(action == @selector(plkStepNrStrength:))
+	{
+		if(item.tag == 0)
+		{
+			on = v.nr_strength == kNrStrengthDefault;
+			item.title = on ? @"Strength 100 %" : [NSString stringWithFormat:@"Strength %d %%: back to 100 %%", v.nr_strength];
+		}
+		else
+			enabled = stepNrStrength(v.nr_strength, (int)item.tag) != v.nr_strength;
+	}
+	else if(action == @selector(plkSelectNrLook:))
+		on = item.tag >= 0 && (NSInteger)v.nr_look == item.tag;
+	else if(action == @selector(plkToggleNrCompare:))
+		on = v.nr_compare;
+	else if(action == @selector(plkToggleAnalysis:))
+		on = _analysisView != nil;
 	else
 	{
 		on = v.hdr;
@@ -431,6 +501,151 @@ int runHeadless(const Options &o)
 	});
 }
 
+#pragma mark - Neural rendering
+
+// What a choice about the neural rendering says on screen: the choice, and why nothing
+// may be seen of it right now.
+- (void)showNrNotice:(NSString *)text
+{
+	const Runner::ViewState v = _runner->viewState();
+	if(!v.nr)
+		text = [text stringByAppendingString:@" - neural rendering is off (N)"];
+	else if(!v.nr_available)
+		text = [text stringByAppendingString:@" - neural rendering is not installed"];
+	else if(_runner->pictureIsHdr())
+		text = [text stringByAppendingString:@" - for an SDR picture; this one is HDR"];
+	[_window.videoView showNotice:text];
+}
+
+- (void)plkToggleNr:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const bool on = !_runner->viewState().nr;
+	_runner->setNr(on);
+	if(_options.saved_choices)
+		saveNr(on);
+	const Runner::ViewState v = _runner->viewState();
+	NSString *text;
+	if(!on)
+		text = @"Neural rendering off";
+	else if(!v.nr_available)
+		// The reason is long (a path): the log has it in full, the notice stays a while.
+		text = [@"Neural rendering is not installed: " stringByAppendingString:@(v.nr_status.c_str())];
+	else if(_runner->pictureIsHdr())
+		text = @"Neural rendering on - for an SDR picture; this one is HDR";
+	else
+		text = v.nr_loading ? @"Neural rendering on: loading the model..." : @"Neural rendering on";
+	[_window.videoView showNotice:text seconds:on && !v.nr_available ? 6.0 : 2.0];
+}
+
+- (void)plkSelectNrNetwork:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const auto network = (NrNetwork)[sender tag];
+	if(_runner->viewState().nr_network == network)
+		return;
+	std::string missing;
+	if(!_runner->setNrNetwork(network, &missing))
+	{
+		// Nothing changed and nothing is remembered: the network in use keeps working.
+		[_window.videoView showNotice:[@"Not installed: " stringByAppendingString:@(missing.c_str())] seconds:6.0];
+		return;
+	}
+	if(_options.saved_choices)
+		saveNrNetwork(network);
+	[self showNrNotice:[@"Neural rendering: " stringByAppendingString:[sender title]]];
+}
+
+- (void)plkSelectNrHeight:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const int height = (int)[sender tag];
+	_runner->setNrHeight(height);
+	if(_options.saved_choices)
+		saveNrHeight(height);
+	[self showNrNotice:[@"Neural rendering: " stringByAppendingString:[sender title]]];
+}
+
+- (void)plkStepNrStrength:(id)sender
+{
+	// Also reached straight from a key (a held X or Z), past the menu's validation.
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const int direction = (int)[sender tag];
+	const int before = _runner->viewState().nr_strength;
+	const int percent = _runner->setNrStrength(direction ? stepNrStrength(before, direction) : kNrStrengthDefault);
+	if(_options.saved_choices && percent != before)
+		saveNrStrength(percent);
+	[self showNrNotice:[NSString stringWithFormat:@"Neural rendering strength %d %%", percent]];
+}
+
+- (void)plkSelectNrLook:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const NSInteger tag = [sender tag];
+	const NrLook look = tag < 0 ? nextNrLook(_runner->viewState().nr_look) : (NrLook)tag;
+	_runner->setNrLook(look);
+	if(_options.saved_choices)
+		saveNrLook(look);
+	[self showNrNotice:[NSString stringWithFormat:@"Neural rendering look: %s", toString(look)]];
+}
+
+- (void)plkToggleNrCompare:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const bool on = !_runner->viewState().nr_compare;
+	_runner->setNrCompare(on);
+	[self showNrNotice:on ? @"Comparison: left half without neural rendering" : @"Comparison off"];
+}
+
+#pragma mark - Analysis panel
+
+- (void)plkToggleAnalysis:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	PLKVideoView *view = _window.videoView;
+	if(_analysisView)
+	{
+		[_analysisTimer invalidate];
+		_analysisTimer = nil;
+		[_analysisView removeFromSuperview];
+		_analysisView = nil;
+		view.bottomInset = 0;
+		PLK_LOGI("Analysis panel off");
+		return;
+	}
+	const CGFloat margin = 12, height = [PLKAnalysisView preferredHeight];
+	_analysisView = [[PLKAnalysisView alloc]
+			initWithFrame:NSMakeRect(margin, margin, MAX(100, view.bounds.size.width - 2 * margin), height)];
+	_analysisView.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
+	[view addSubview:_analysisView];
+	view.bottomInset = height + margin;
+	PLKAppDelegate *__weak weakSelf = self;
+	_analysisTimer = [NSTimer timerWithTimeInterval:0.25
+											repeats:YES
+											  block:^(NSTimer *timer) {
+												  [weakSelf updateAnalysis];
+											  }];
+	_analysisTimer.tolerance = 0.05;
+	[NSRunLoop.mainRunLoop addTimer:_analysisTimer forMode:NSRunLoopCommonModes];
+	[self updateAnalysis];
+	// A view over the picture: a fullscreen picture is composited with it while it shows.
+	PLK_LOGI("Analysis panel on");
+}
+
+- (void)updateAnalysis
+{
+	if(!_analysisView || !_runner || _terminating || _cleanedUp)
+		return;
+	[_analysisView showReport:_runner->analysis()];
+}
+
 #pragma mark - --keys (test tool)
 
 // The app presses the keys itself: the events go through the application's own queue, the
@@ -463,7 +678,9 @@ int runHeadless(const Options &o)
 	// code of a key that types nothing (kVK_F20), which only the characters then identify.
 	static const struct { char character; unsigned short code; } codes[] = {
 		{ '1', 18 }, { '2', 19 }, { '3', 20 }, { '4', 21 }, { 'a', 0 }, { 'v', 9 }, { 'h', 4 }, { 'p', 35 },
-		{ 'l', 37 }, { 'm', 46 }, { 'f', 3 },
+		{ 'l', 37 }, { 'm', 46 }, { 'f', 3 }, { '5', 23 }, { '6', 22 }, { '7', 26 }, { '8', 28 }, { '9', 25 },
+		{ '0', 29 }, { 't', 17 }, { 'n', 45 }, { 's', 1 }, { 'x', 7 }, { 'z', 6 }, { 'e', 14 }, { 'c', 8 },
+		{ 'i', 34 },
 	};
 	NSString *characters = name;
 	unsigned short code = 90;
@@ -535,6 +752,8 @@ int runHeadless(const Options &o)
 {
 	[_headroomTimer invalidate];
 	_headroomTimer = nil;
+	[_analysisTimer invalidate];
+	_analysisTimer = nil;
 	if(_screenObserver)
 		[NSNotificationCenter.defaultCenter removeObserver:_screenObserver];
 	_screenObserver = nil;
