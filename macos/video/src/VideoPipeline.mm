@@ -42,6 +42,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <functional>
 #include <future>
 #include <map>
 #include <mach/mach_time.h>
@@ -196,9 +198,9 @@ ColorInfo colorInfoFor(CVPixelBufferRef buf)
 
 struct alignas(16) ShaderParams {
 	simd_float4 r0, r1, r2;
-	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize, toneMap, sdrMap;
+	simd_float2 lumaSize, chromaSize, uvScale, uvOffset, chromaShift, linearize, toneMap, sdrMap, warp, unusedWarp;
 };
-static_assert(sizeof(ShaderParams) == 112, "must match Params in Shaders.metal");
+static_assert(sizeof(ShaderParams) == 128, "must match Params in Shaders.metal");
 
 // Where SDR white is in the SDR rendition of a PQ picture that an enhancer is given
 // (sdr_rendition() in Shaders.metal): HDR reference white, ITU-R BT.2408.
@@ -209,7 +211,16 @@ struct alignas(16) NrShaderParams {
 	simd_float2 keySize, motion;
 	float strength;
 	float split;
+	float guided;
+	float unused;
 };
+struct alignas(16) GridShaderParams {
+	simd_float4 lumaWeights;
+	float blend, unused0, unused1, unused2;
+};
+static_assert(sizeof(GridShaderParams) == 32, "must match GridParams in Shaders.metal");
+// The grid's size: kGridCols, kGridRows and kGridBins in Shaders.metal.
+constexpr NSUInteger kGridWidth = 32 * 8, kGridHeight = 18;
 static_assert(sizeof(NrShaderParams) == 48, "must match NrParams in Shaders.metal");
 
 struct alignas(16) OverlayShaderParams {
@@ -329,6 +340,11 @@ struct FrameRecord {
 	double readyUs = 0, submitUs = 0, decodedUs = 0, renderStartUs = 0, committedUs = 0;
 	double gpuStartUs = 0, gpuEndUs = 0, presentedUs = 0, targetPresentUs = 0;
 	double enhanceAgeMs = -1;
+	// When the picture this frame shows arrived: of a repeat, when its picture did; of a
+	// generated picture, when a picture at its place in time would have. 0: decodedUs.
+	double pictureUs = 0;
+	bool enhanceOffered = false;  // the enhancer was given this frame before it was rendered
+	bool repeat = false;          // the same picture as the frame before it (EnhanceConfig::skipRepeats)
 	bool presentExpected = false;
 	std::atomic<int> pending{0};
 	std::shared_ptr<const HdrMeta> hdr;
@@ -385,6 +401,16 @@ struct EnhanceState {
 	std::atomic<bool> busy{false};          // a frame is being drawn for, or is with, the enhancer
 	std::atomic<bool> needReset{true};      // the next frame offered does not continue the last one
 	std::atomic<double> holdUntilUs{0.0};   // nothing is offered before this (after a refusal)
+	std::atomic<double> roundTripMs{0.0};   // what a result takes, smoothed; 0 before the first
+	// m: wakes the render thread when the enhancer has become idle (a result, a refusal) or
+	// a held frame's wait is over. Cleared before the Impl it points into goes away.
+	std::function<void()> wake;
+	void signal()
+	{
+		std::lock_guard<std::mutex> lk(m);
+		if(wake)
+			wake();
+	}
 };
 
 // Statistics shared with Metal/VT handlers that may outlive the Impl.
@@ -436,6 +462,11 @@ struct Shared {
 		if(onEnhance)
 			onEnhance(t);
 	}
+
+	// From a frame's rendering to its being on the glass, lately: what the camera warp aims
+	// at when a frame has no set time to be shown at (in a window that is 13 to 18 ms, not
+	// the one refresh that was assumed).
+	std::atomic<double> renderToGlassUs{8000.0};
 
 	void finish(const FrameRecord &r)
 	{
@@ -638,13 +669,88 @@ struct VideoPipeline::Impl {
 	uint64_t keySeq = 0;
 	double lastOfferUs = 0;
 	id<MTLCommandBuffer> lastKeyCommandBuffer;
+	// EnhanceConfig::wait: frames that wait for the enhancer's result of themselves, oldest
+	// first. At most two: the one the enhancer is working on and the one that is next.
+	struct Held {
+		DecodedFrame f;
+		uint64_t keySeq = 0;   // the offer's sequence number; 0 with `tried`: could not be offered
+		bool tried = false;
+		double deadlineUs = 0;
+	};
+	std::deque<Held> held;
+	// Without wait: the newest frame that found the enhancer busy. It is offered the moment
+	// the enhancer is idle, so the enhancer works back to back whatever the frames' cadence.
+	DecodedFrame nrPending;
+	double lastArrivalUs = 0, arrivalIntervalUs = 16667.0;
+	// Frame generation (setInterpolator, setFrameGeneration): render-thread-only.
+	// A picture as frame generation wants it: R'G'B' code values in one texture.
+	struct RgbPicture {
+		CVPixelBufferRef buf = nullptr;
+		CVMetalTextureRef tex = nullptr;
+		~RgbPicture()
+		{
+			if(tex) CFRelease(tex);
+			if(buf) CVPixelBufferRelease(buf);
+		}
+	};
+	std::shared_ptr<FrameInterpolator> interpolator;
+	int generating = 0;                      // pictures made between two of the stream's; 0: off
+	uint64_t generation = 0;                 // a picture generated for an older one is not shown
+	std::shared_ptr<RgbPicture> lastPicture; // the newest picture of the stream
+	double lastPictureUs = 0;
+	CVPixelBufferPoolRef rgbPool = nullptr;
+	size_t rgbPoolW = 0, rgbPoolH = 0;
+	OSType rgbPoolFormat = 0;
+	uint64_t rgbSeq = 0;
+	id<MTLCommandBuffer> lastRgbCommandBuffer;
+	// The picture that waits for its turn after the generated one before it.
+	struct DuePicture {
+		std::shared_ptr<RgbPicture> picture;
+		DecodedFrame f;
+		double dueUs = 0;
+		bool generated = false;
+	};
+	std::deque<DuePicture> due;
+	double lastDueUs = 0;
+	// A picture of the stream on its way to the screen: with the generated picture that
+	// comes before it, once that is made or given up.
+	struct Stage {
+		std::shared_ptr<RgbPicture> picture;
+		std::vector<std::shared_ptr<RgbPicture>> made;  // what comes before it, earliest first
+		DecodedFrame f;
+		bool done = false, shown = false;
+	};
+	std::deque<std::shared_ptr<Stage>> order;
+	bool generationBusy = false;
+	double lastNewPictureUs = 0, pictureIntervalUs = 33333.0;
+	// Pictures that wait for the enhancer's result of themselves before all that (EnhanceConfig::wait).
+	std::deque<Held> awaiting;
+
+	// Camera warp (setWarp): render-thread-only.
+	std::function<void(const PictureMotion &)> motionSink;
+	std::function<void(double, double, float *, float *)> warpSource;
+	double lastPictureArrivalUs = 0;   // when the newest picture of the game arrived
+
+	// EnhanceConfig::guided: the enhancer's change as a table of place and brightness, made
+	// of each result once. Two textures: the table in use and the one the next is drawn into.
+	id<MTLTexture> gridTex[2];
+	int gridIndex = 0;
+	uint64_t gridSeq = 0;      // the result the table in use was made of
+	uint64_t gridGeneration = 0;
+	bool gridValid = false;
+
+	// EnhanceConfig::skipRepeats: the luma of the last frame at a few hundred points, and
+	// the largest difference between two frames lately, which says what a new picture is.
+	std::vector<uint16_t> lastSignature;
+	std::deque<double> recentChanges;
+	bool lastWasRepeat = false;
 	std::atomic<bool> mixStatesBuilt{false};  // any thread: setEnhancer() builds them once
 
 	enum Frag { FragBilinear = 0, FragBicubic, FragLanczos, FragCopy, FragBilinearNr, FragBicubicNr, FragLanczosNr,
-		FragOverlay };
+		FragOverlay, FragRgb, FragGridBuild };
 	// What a pass needs on top of the plane textures to mix an enhancer's result in.
 	struct NrDraw {
-		id<MTLTexture> key, out;
+		id<MTLTexture> key, out, grid;
 		NrShaderParams params;
 	};
 	// A second draw in the pass that fills the target: the overlay, blended over the frame.
@@ -1180,7 +1286,7 @@ struct VideoPipeline::Impl {
 				DecodedFrame f = takeSlot();
 				if(!f.buf)
 					break;
-				renderFrame(f, nil, 0);
+				frameArrived(f);
 			}
 		}
 	}
@@ -1323,7 +1429,7 @@ struct VideoPipeline::Impl {
 	id<MTLRenderPipelineState> makePipeline(Frag frag, MTLPixelFormat fmt) const
 	{
 		static const char *names[] = {"fs_bilinear", "fs_bicubic", "fs_lanczos", "fs_copy",
-			"fs_bilinear_nr", "fs_bicubic_nr", "fs_lanczos_nr", "fs_overlay"};
+			"fs_bilinear_nr", "fs_bicubic_nr", "fs_lanczos_nr", "fs_overlay", "fs_rgb", "fs_grid_build"};
 		MTLRenderPipelineDescriptor *d = [MTLRenderPipelineDescriptor new];
 		d.vertexFunction = [library newFunctionWithName:@"vs_fullscreen"];
 		d.fragmentFunction = [library newFunctionWithName:@(names[frag])];
@@ -1487,6 +1593,41 @@ struct VideoPipeline::Impl {
 		return [device newTextureWithDescriptor:d];
 	}
 
+	// The two maps of what is fixed to the screen (MotionState), as textures: made empty,
+	// and filled in whenever the motion queue has new ones.
+	id<MTLTexture> fixedTex, fixedCentreTex;
+	void fixedMasks()
+	{
+		auto make = [&](int w, int h, int bytes) {
+			MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:bytes == 2 ? MTLPixelFormatRG8Unorm : MTLPixelFormatR8Unorm
+																					 width:(NSUInteger)w height:(NSUInteger)h mipmapped:NO];
+			d.usage = MTLTextureUsageShaderRead;
+			d.storageMode = MTLStorageModeShared;
+			id<MTLTexture> t = [device newTextureWithDescriptor:d];
+			std::vector<uint8_t> none((size_t)w * h * bytes, 0);
+			[t replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h) mipmapLevel:0 withBytes:none.data() bytesPerRow:(NSUInteger)(w * bytes)];
+			return t;
+		};
+		if(!fixedTex)
+		{
+			fixedTex = make(kMotionW, kMotionH, 2);
+			fixedCentreTex = make(kCentreW, kCentreH, 1);
+		}
+		std::vector<uint8_t> mask, centre;
+		{
+			std::lock_guard<std::mutex> lk(motion->m);
+			if(!motion->maskNew)
+				return;
+			motion->maskNew = false;
+			mask = motion->mask;
+			centre = motion->centreMask;
+		}
+		if(mask.size() == (size_t)kMotionW * kMotionH * 2)
+			[fixedTex replaceRegion:MTLRegionMake2D(0, 0, kMotionW, kMotionH) mipmapLevel:0 withBytes:mask.data() bytesPerRow:kMotionW * 2];
+		if(centre.size() == (size_t)kCentreW * kCentreH)
+			[fixedCentreTex replaceRegion:MTLRegionMake2D(0, 0, kCentreW, kCentreH) mipmapLevel:0 withBytes:centre.data() bytesPerRow:kCentreW];
+	}
+
 	void drawPass(id<MTLCommandBuffer> cb, id<MTLTexture> target, MTLRegion vp, id<MTLRenderPipelineState> pso,
 			id<MTLTexture> t0, id<MTLTexture> t1, const ShaderParams *params, const NrDraw *nr = nullptr,
 			const OverlayDraw *overlay = nullptr)
@@ -1503,11 +1644,19 @@ struct VideoPipeline::Impl {
 		if(t1)
 			[enc setFragmentTexture:t1 atIndex:1];
 		if(params)
+		{
 			[enc setFragmentBytes:params length:sizeof(ShaderParams) atIndex:0];
+			// What the camera warp leaves where it is. Always there, as the shaders name them.
+			fixedMasks();
+			[enc setFragmentTexture:fixedTex atIndex:6];
+			[enc setFragmentTexture:fixedCentreTex atIndex:7];
+		}
 		if(nr)
 		{
 			[enc setFragmentTexture:nr->key atIndex:2];
 			[enc setFragmentTexture:nr->out atIndex:3];
+			// Something is bound whatever the mix: the shader names the texture either way.
+			[enc setFragmentTexture:nr->grid ?: nr->key atIndex:4];
 			[enc setFragmentBytes:&nr->params length:sizeof(NrShaderParams) atIndex:1];
 		}
 		[enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -1637,25 +1786,84 @@ struct VideoPipeline::Impl {
 		draw.params.motion = simd_make_float2(low, std::max(low + 1e-4f, enhanceCfg.motionHigh));
 		draw.params.strength = (float)(std::min(2.0f, enhanceCfg.strength) * fade);
 		draw.params.split = std::min(1.0f, std::max(0.0f, enhanceCfg.compareSplit));
+		draw.params.guided = 0.0f;
+		draw.params.unused = 0.0f;
+		draw.grid = nil;
 		*ageMs = age;
 		return e;
+	}
+
+	// EnhanceConfig::guided: makes sure the table of `e`'s change exists (drawn into `cb`,
+	// ahead of the pass that uses it) and names it in `draw`. One small pass per result.
+	void useGrid(id<MTLCommandBuffer> cb, const std::shared_ptr<EnhancedFrame> &e, NrDraw &draw)
+	{
+		if(!enhanceCfg.guided || enhanceCfg.wait || !e)
+			return;
+		id<MTLRenderPipelineState> pso = pipelineIfBuilt(FragGridBuild, MTLPixelFormatRGBA16Float);
+		if(!pso)
+			return;
+		uint64_t generationNow;
+		{
+			std::lock_guard<std::mutex> lk(enhance->m);
+			generationNow = enhance->generation;
+		}
+		if(generationNow != gridGeneration)
+		{
+			gridGeneration = generationNow;
+			gridValid = false;
+		}
+		if(!gridValid || gridSeq != e->key->seq)
+		{
+			for(auto &t : gridTex)
+				if(!t)
+					t = makeTexture(MTLPixelFormatRGBA16Float, kGridWidth, kGridHeight,
+							MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+			const int next = 1 - gridIndex;
+			MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+			rp.colorAttachments[0].texture = gridTex[next];
+			rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+			rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+			id<MTLRenderCommandEncoder> enc = [cb renderCommandEncoderWithDescriptor:rp];
+			[enc setRenderPipelineState:pso];
+			[enc setViewport:(MTLViewport){0.0, 0.0, (double)kGridWidth, (double)kGridHeight, 0.0, 1.0}];
+			[enc setFragmentTexture:draw.key atIndex:0];
+			[enc setFragmentTexture:draw.out atIndex:1];
+			[enc setFragmentTexture:gridTex[gridIndex] atIndex:2];
+			GridShaderParams gp = {};
+			gp.lumaWeights = draw.params.lumaWeights;
+			// Half of the table before it stays: a table is an average of few samples, and
+			// two of them differ by more than the picture did.
+			gp.blend = gridValid ? 0.5f : 0.0f;
+			[enc setFragmentBytes:&gp length:sizeof(gp) atIndex:0];
+			[enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			[enc endEncoding];
+			gridIndex = next;
+			gridSeq = e->key->seq;
+			gridValid = true;
+		}
+		draw.grid = gridTex[gridIndex];
+		draw.params.guided = 1.0f;
+		// The detail is held to the same test of stillness as a whole change is without the
+		// table. Measured on three PS5 clips against each frame's own result (2026-11-27): a
+		// stricter test (0.012 to 0.045, 0.006 to 0.025) was no better and on two clips worse,
+		// and no detail at all, the table alone, still made 70 % of the network's change.
 	}
 
 	// Draws this frame for the enhancer and hands it over, if the enhancer is idle. Runs
 	// after the frame's own command buffer has been committed: on the GPU the copy comes
 	// after the presented picture, and nothing here is waited for.
-	void offerToEnhancer(const std::shared_ptr<FrameRecord> &rec, CVPixelBufferRef buf, CVMetalTextureRef ty,
+	uint64_t offerToEnhancer(const std::shared_ptr<FrameRecord> &rec, CVPixelBufferRef buf, CVMetalTextureRef ty,
 			CVMetalTextureRef tc, const ShaderParams &shown, CGRect clean, const ColorInfo &ci)
 	{
 		if(enhance->busy.load() || nowUs() < enhance->holdUntilUs.load())
-			return;
+			return 0;
 		size_t sw = (size_t)clean.size.width, sh = (size_t)clean.size.height;
 		size_t ph = enhanceCfg.processHeight <= 0 || (size_t)enhanceCfg.processHeight >= sh
 			? sh : (size_t)std::max(enhanceCfg.processHeight, 320);
 		size_t pw = ph == sh ? sw : (size_t)std::llround((double)sw * (double)ph / (double)sh);
 		pw += pw & 1;
 		if(pw < 64 || ph < 64)
-			return;
+			return 0;
 		const OSType format = enhancerFormat(ci);
 		if(!keyPool || pw != keyPoolW || ph != keyPoolH || format != keyPoolFormat)
 		{
@@ -1672,7 +1880,7 @@ struct VideoPipeline::Impl {
 			if(CVPixelBufferPoolCreate(kCFAllocatorDefault, nullptr, (__bridge CFDictionaryRef)attrs, &keyPool) != kCVReturnSuccess)
 			{
 				keyPool = nullptr;
-				return;
+				return 0;
 			}
 			keyPoolW = pw;
 			keyPoolH = ph;
@@ -1684,11 +1892,11 @@ struct VideoPipeline::Impl {
 		}
 		auto key = std::make_shared<KeyFrame>();
 		if(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, keyPool, &key->buf) != kCVReturnSuccess || !key->buf)
-			return;
+			return 0;
 		key->tex = wrapEnhancerBuffer(key->buf, true);
 		id<MTLRenderPipelineState> pso = pipelineFor(FragBilinear, enhancerTextureFormat(format));
 		if(!key->tex || !pso)
-			return;
+			return 0;
 		// The picture as the enhancer works on it, whatever the frame on screen was made
 		// into: the code values of an SDR picture, the SDR rendition of a PQ picture.
 		ShaderParams params = shown;
@@ -1758,6 +1966,13 @@ struct VideoPipeline::Impl {
 						timing.inputGpuMs = inputGpuMs;
 						timing.enhancerMs = enhancerMs;
 						timing.totalMs = (nowUs() - handedUs) / 1000.0;
+						if(e)
+						{
+							double smooth = st->roundTripMs.load();
+							st->roundTripMs.store(smooth <= 0 ? timing.totalMs : smooth * 0.8 + timing.totalMs * 0.2);
+						}
+						// Idle, and with a result or without: frames that wait hear of it.
+						st->signal();
 						{
 							std::lock_guard<std::mutex> sl(sh2->m);
 							if(e)
@@ -1776,6 +1991,7 @@ struct VideoPipeline::Impl {
 				st->needReset.store(true);
 				st->holdUntilUs.store(nowUs() + 250000.0);
 				st->busy.store(false);
+				st->signal();
 			}
 			std::lock_guard<std::mutex> sl(sh2->m);
 			if(taken)
@@ -1787,9 +2003,1426 @@ struct VideoPipeline::Impl {
 		}];
 		[cb commit];
 		lastKeyCommandBuffer = cb;
+		rec->enhanceOffered = true;
+		return key->seq;
 	}
 
-	void renderFrame(DecodedFrame &f, id<CAMetalDrawable> drawable, double targetPresentUs)
+	// ---- which frames the enhancer gets, and which frames wait for it -------
+
+	// The plane textures of a decoded frame and the shader parameters that depend only on
+	// the frame: what offerToEnhancer() needs of a frame that is not being rendered now.
+	bool keyPlanes(CVPixelBufferRef buf, const ColorInfo &ci, CVMetalTextureRef *ty, CVMetalTextureRef *tc,
+			ShaderParams &params, CGRect &clean)
+	{
+		bool ten = ci.bits > 8;
+		size_t w0 = CVPixelBufferGetWidthOfPlane(buf, 0), h0 = CVPixelBufferGetHeightOfPlane(buf, 0);
+		size_t w1 = CVPixelBufferGetWidthOfPlane(buf, 1), h1 = CVPixelBufferGetHeightOfPlane(buf, 1);
+		*ty = *tc = nullptr;
+		CVReturn r0 = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, texCache, buf, nullptr,
+				ten ? MTLPixelFormatR16Unorm : MTLPixelFormatR8Unorm, w0, h0, 0, ty);
+		CVReturn r1 = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, texCache, buf, nullptr,
+				ten ? MTLPixelFormatRG16Unorm : MTLPixelFormatRG8Unorm, w1, h1, 1, tc);
+		if(r0 != kCVReturnSuccess || r1 != kCVReturnSuccess || !*ty || !*tc)
+		{
+			if(*ty) CFRelease(*ty);
+			if(*tc) CFRelease(*tc);
+			*ty = *tc = nullptr;
+			return false;
+		}
+		clean = CVImageBufferGetCleanRect(buf);
+		if(clean.size.width <= 0 || clean.size.height <= 0)
+			clean = CGRectMake(0, 0, w0, h0);
+		params = {};
+		colorRows(ci, params);
+		params.lumaSize = simd_make_float2((float)w0, (float)h0);
+		params.chromaSize = simd_make_float2((float)w1, (float)h1);
+		params.uvScale = simd_make_float2((float)(clean.size.width / w0), (float)(clean.size.height / h0));
+		params.uvOffset = simd_make_float2((float)(clean.origin.x / w0), (float)(clean.origin.y / h0));
+		params.chromaShift = simd_make_float2(ci.chromaLeft ? 0.25f : 0.0f, ci.chromaTop ? 0.25f : 0.0f);
+		params.sdrMap = simd_make_float2(ci.transfer == Transfer::PQ ? 10000.0f / kEnhancerSdrWhiteNits : 0.0f, 0.0f);
+		return true;
+	}
+
+	// Offers a frame that is not being rendered now. 0 when it could not be offered.
+	uint64_t offerFrame(const DecodedFrame &f)
+	{
+		ColorInfo ci = colorInfoFor(f.buf);
+		CVMetalTextureRef ty = nullptr, tc = nullptr;
+		ShaderParams params;
+		CGRect clean;
+		if(!keyPlanes(f.buf, ci, &ty, &tc, params, clean))
+			return 0;
+		uint64_t seq = offerToEnhancer(f.rec, f.buf, ty, tc, params, clean, ci);
+		CFRelease(ty);
+		CFRelease(tc);
+		return seq;
+	}
+
+	// EnhanceConfig::wait is honoured for this frame: there is an enhancer for its kind of
+	// picture, it takes frames, and frames are shown as they come.
+	bool waitsForEnhancer(const DecodedFrame &f)
+	{
+		return enhanceCfg.wait && activePacing != PacingMode::DisplayLink && enhancing(colorInfoFor(f.buf))
+			&& enhanceCfg.strength > 0 && nowUs() >= enhance->holdUntilUs.load();
+	}
+
+	void clearPending()
+	{
+		if(nrPending.buf)
+			CVPixelBufferRelease(nrPending.buf);
+		nrPending = DecodedFrame();
+	}
+
+	// ---- camera warp: how far the whole picture moved ------------------------
+
+	static constexpr int kMotionW = 192, kMotionH = 108;
+
+	// The luma of a decoded frame as kMotionW x kMotionH means of 4 x 4 points each.
+	static bool smallLuma(CVPixelBufferRef buf, bool wide, std::vector<uint8_t> &out)
+	{
+		const OSType format = CVPixelBufferGetPixelFormatType(buf);
+		if((format >> 24) == '&' || !CVPixelBufferIsPlanar(buf)
+			|| CVPixelBufferLockBaseAddress(buf, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
+			return false;
+		const uint8_t *base = (const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(buf, 0);
+		const size_t stride = CVPixelBufferGetBytesPerRowOfPlane(buf, 0);
+		const size_t w = CVPixelBufferGetWidthOfPlane(buf, 0), h = CVPixelBufferGetHeightOfPlane(buf, 0);
+		const bool ok = base && w >= (size_t)kMotionW * 4 && h >= (size_t)kMotionH * 4;
+		if(ok)
+		{
+			out.resize((size_t)kMotionW * kMotionH);
+			const size_t step = wide ? 2 : 1, high = wide ? 1 : 0;
+			for(int j = 0; j < kMotionH; j++)
+			{
+				for(int i = 0; i < kMotionW; i++)
+				{
+					unsigned sum = 0;
+					for(int b = 0; b < 4; b++)
+					{
+						const uint8_t *row = base + ((size_t)(8 * j + 2 * b + 1) * h / (size_t)(8 * kMotionH)) * stride;
+						for(int a = 0; a < 4; a++)
+							sum += row[((size_t)(8 * i + 2 * a + 1) * w / (size_t)(8 * kMotionW)) * step + high];
+					}
+					out[(size_t)j * kMotionW + i] = (uint8_t)(sum >> 4);
+				}
+			}
+		}
+		CVPixelBufferUnlockBaseAddress(buf, kCVPixelBufferLock_ReadOnly);
+		return ok;
+	}
+
+	// A new picture of the game: how far it moved against the last one is measured and
+	// told: see measureMotionOf() for how (piece by piece, the far pieces first).
+	//
+	// It takes 3 to 5 ms a picture, which no frame can wait for on the render thread: the
+	// work is done on a queue of its own, one picture at a time, with the frame's buffer
+	// kept until then, and the sink is told from there.
+	struct MotionState {
+		std::mutex m;
+		std::function<void(const PictureMotion &)> sink;  // m
+		std::function<void(const uint8_t *, int, int, double)> tap;  // m
+		std::vector<uint8_t> last;                        // the queue only
+		double lastUs = 0;
+		// What stays where it is on screen while the world slides (a character the camera
+		// follows, a crosshair, a HUD): see learnFixed(). The queue only, but for the two
+		// masks and their flag (m).
+		std::vector<uint8_t> centreLast;
+		std::vector<float> stay, slide, centreStay, centreSlide;
+		std::atomic<bool> busy{false};                    // a picture is being measured
+		std::atomic<uint64_t> skipped{0};                 // pictures not measured because of that
+		std::atomic<double> costUs{0};                    // what measuring one takes, lately
+		std::atomic<double> turnSinceUs{0};               // since when the camera is being turned hard; 0: it is not
+		std::vector<uint8_t> hard;                        // the queue only: what is fixed, yes or no
+		std::vector<uint8_t> mask, centreMask;            // m
+		bool maskNew = false;                             // m
+		dispatch_queue_t queue = dispatch_queue_create("plk.video.motion", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
+	};
+	std::shared_ptr<MotionState> motion = std::make_shared<MotionState>();
+
+	// When a picture would have arrived had the network not held it up: the stream's frames
+	// are numbered and the console makes them at an even pace, so the earliest that any
+	// frame has come, for its number, says when each is due. A frame's lateness against
+	// that is the network's doing (over mobile data they come 27 to 40 ms apart where they
+	// are made 33 apart), and the camera warp, which sets the stick against the pictures,
+	// needs the time the picture was made by, not the time it got here. Render thread only.
+	struct PictureClock {
+		bool have = false;
+		uint16_t lastIndex = 0;
+		double index = 0, firstUs = 0, lastUs = 0;
+		std::deque<std::pair<double, double>> recent;  // (number, arrival) of the last two seconds
+		double at(uint16_t frameIndex, double arrivalUs)
+		{
+			const int step = (int16_t)(uint16_t)(frameIndex - lastIndex);
+			if(!have || step <= 0 || step > 600 || arrivalUs - lastUs > 2e6)
+			{
+				have = true;
+				index = 0;
+				firstUs = arrivalUs;
+				recent.clear();
+			}
+			else
+				index += step;
+			lastIndex = frameIndex;
+			lastUs = arrivalUs;
+			recent.push_back({ index, arrivalUs });
+			while(recent.size() > 120)
+				recent.pop_front();
+			// The pace from the whole of the stream so far; until there are ten seconds of
+			// it, it is not known well enough to say anything, and the arrival stands.
+			if(index < 600)
+				return arrivalUs;
+			const double periodUs = (arrivalUs - firstUs) / index;
+			double made = arrivalUs;
+			for(const auto &r : recent)
+				made = std::min(made, r.second + (index - r.first) * periodUs);
+			return std::max(arrivalUs - 100000.0, made);
+		}
+	};
+	// Not on unless asked for (PLK_PICTURE_CLOCK=1): written on the home network, where there
+	// is nothing for it to do, and not yet seen at work over mobile data.
+	const bool pictureClockOn = getenv("PLK_PICTURE_CLOCK") && atoi(getenv("PLK_PICTURE_CLOCK")) != 0;
+	PictureClock pictureClock;
+
+	void measureMotion(const DecodedFrame &f)
+	{
+		const double madeUs = pictureClockOn ? pictureClock.at(f.rec->frameIndex, f.rec->decodedUs) : f.rec->decodedUs;
+		lastPictureArrivalUs = madeUs;
+		f.rec->pictureUs = madeUs;
+		if(!motionSink)
+			return;
+		// One at a time, and never a queue of them: a picture that comes while the one before
+		// is still being measured is not measured. (They were all queued once: measuring
+		// fell seconds behind the stream, what it told came too late to be set against the
+		// stick, the warp learned nothing, and the frames kept waiting ran the decoder's
+		// buffers short. 2026-11-27.)
+		std::shared_ptr<MotionState> st = motion;
+		if(st->busy.exchange(true))
+		{
+			st->skipped.fetch_add(1);
+			return;
+		}
+		CVPixelBufferRef buf = CVPixelBufferRetain(f.buf);
+		const bool wide = colorInfoFor(f.buf).bits > 8;
+		const double pictureUs = madeUs;
+		dispatch_async(st->queue, ^{
+			const double began = hostTimeUs();
+			measureMotionOf(*st, buf, wide, pictureUs);
+			CVPixelBufferRelease(buf);
+			st->costUs.store(st->costUs.load() * 0.95 + (hostTimeUs() - began) * 0.05);
+			st->busy.store(false);
+		});
+	}
+
+	// The middle of the picture point for point: kCentreW x kCentreH of a 1080p frame, a
+	// 7.5th of the width and of the height of any. A crosshair is a few points thin, and
+	// in the small picture it is lost among what is behind it.
+	static constexpr int kCentreW = 256, kCentreH = 144;
+
+	static bool centreLuma(CVPixelBufferRef buf, bool wide, std::vector<uint8_t> &out)
+	{
+		if(CVPixelBufferLockBaseAddress(buf, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
+			return false;
+		const uint8_t *base = (const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(buf, 0);
+		const size_t stride = CVPixelBufferGetBytesPerRowOfPlane(buf, 0);
+		const size_t w = CVPixelBufferGetWidthOfPlane(buf, 0), h = CVPixelBufferGetHeightOfPlane(buf, 0);
+		const bool ok = base && w >= 640 && h >= 360;
+		if(ok)
+		{
+			out.resize((size_t)kCentreW * kCentreH);
+			const size_t step = wide ? 2 : 1, high = wide ? 1 : 0;
+			const double x0 = w * (0.5 - 1.0 / 15.0), y0 = h * (0.5 - 1.0 / 15.0), sx = w / 7.5 / kCentreW, sy = h / 7.5 / kCentreH;
+			for(int j = 0; j < kCentreH; j++)
+			{
+				const uint8_t *row = base + (size_t)(y0 + (j + 0.5) * sy) * stride;
+				for(int i = 0; i < kCentreW; i++)
+					out[(size_t)j * kCentreW + i] = row[(size_t)(x0 + (i + 0.5) * sx) * step + high];
+			}
+		}
+		CVPixelBufferUnlockBaseAddress(buf, kCVPixelBufferLock_ReadOnly);
+		return ok;
+	}
+
+	// What is fixed to the screen, from one pair of pictures in which the world slid by
+	// (sx, sy) points of this map: a point of the world is what it was (sx, sy) away and
+	// has changed where it is; a point fixed to the screen is the other way round. Both
+	// differences are kept as means over the last such pairs, and a point is fixed by so
+	// much as the first is small against the second (none where neither says anything: a
+	// flat sky is as well moved as not).
+	//
+	// `whole`: the map of the whole picture, which is then made of whole things only. A point
+	// here and there called fixed among points that are not tears the picture into a mosaic
+	// when it is moved (seen 2026-11-27, with a rule that asked for no measured shift and
+	// called much of the sand and the sea fixed): single points and thin bits are dropped,
+	// what is left is grown a little, and its edge is made soft, so that the picture is
+	// stretched there, not torn. The map of the middle keeps its thin lines: a crosshair is one.
+	static void learnFixed(const std::vector<uint8_t> &last, const std::vector<uint8_t> &now, int w, int h, int sx, int sy,
+			std::vector<float> &stay, std::vector<float> &slide, float floor, bool whole, std::vector<uint8_t> &mask,
+			std::vector<uint8_t> &hard)
+	{
+		if(stay.size() != now.size())
+		{
+			stay.assign(now.size(), 0.0f);
+			slide.assign(now.size(), 0.0f);
+		}
+		const float rate = 0.06f;
+		for(int y = 0; y < h; y++)
+		{
+			const int fromY = y - sy;
+			if(fromY < 0 || fromY >= h)
+				continue;
+			for(int x = 0; x < w; x++)
+			{
+				const int fromX = x - sx;
+				if(fromX < 0 || fromX >= w)
+					continue;
+				const size_t at = (size_t)y * w + x;
+				const float a = (float)std::abs((int)now[at] - (int)last[at]);
+				float c = (float)std::abs((int)now[at] - (int)last[(size_t)fromY * w + fromX]);
+				// Both ways: what was here must also not have gone where the world went. Beside
+				// a fixed thing the first test alone fails for the world too (what "came from"
+				// there is the fixed thing), and a border as wide as the shift, each side of
+				// the character, was called fixed with it.
+				const int toX = x + sx, toY = y + sy;
+				if(toX >= 0 && toX < w && toY >= 0 && toY < h)
+					c = std::min(c, (float)std::abs((int)now[(size_t)toY * w + toX] - (int)last[at]));
+				stay[at] += (a - stay[at]) * rate;
+				slide[at] += (c - slide[at]) * rate;
+			}
+		}
+		const size_t n = now.size();
+		std::vector<uint8_t> raw(n), tmp(n);
+		for(size_t i = 0; i < n; i++)
+		{
+			const float c = slide[i], a = stay[i];
+			const float f = c > floor ? std::max(0.0f, std::min(1.0f, (0.67f - a / c) * 3.0f)) : 0.0f;
+			raw[i] = (uint8_t)(f * 255.0f);
+		}
+		// The least (`grow` false) or the most of each point and those within `r` of it.
+		auto spread = [&](std::vector<uint8_t> &from, std::vector<uint8_t> &to, int r, bool grow) {
+			for(int pass = 0; pass < 2; pass++)
+			{
+				std::vector<uint8_t> &src = pass ? to : from, &dst = pass ? from : to;
+				for(int y = 0; y < h; y++)
+					for(int x = 0; x < w; x++)
+					{
+						uint8_t v = grow ? 0 : 255;
+						for(int k = -r; k <= r; k++)
+						{
+							const int xx = pass ? x : std::max(0, std::min(w - 1, x + k)), yy = pass ? std::max(0, std::min(h - 1, y + k)) : y;
+							const uint8_t u = src[(size_t)yy * w + xx];
+							v = grow ? std::max(v, u) : std::min(v, u);
+						}
+						dst[(size_t)y * w + x] = v;
+					}
+			}
+		};
+		if(!whole)
+		{
+			// A point by itself is nothing: it stays only with seven others among the 24
+			// round it (a line two points thick has nine).
+			for(int y = 0; y < h; y++)
+				for(int x = 0; x < w; x++)
+				{
+					int with = 0;
+					for(int j = std::max(0, y - 2); j <= std::min(h - 1, y + 2); j++)
+						for(int i = std::max(0, x - 2); i <= std::min(w - 1, x + 2); i++)
+							with += raw[(size_t)j * w + i] >= 128 ? 1 : 0;
+					tmp[(size_t)y * w + x] = raw[(size_t)y * w + x] >= 128 && with >= 8 ? 255 : 0;
+				}
+			raw = tmp;
+			// Three points beyond: a crosshair half covered is drawn twice, once where it
+			// is and once where the picture beside it was fetched from.
+			spread(raw, tmp, 3, true);
+			mask = raw;
+			hard = raw;
+			return;
+		}
+		for(size_t i = 0; i < n; i++)
+			raw[i] = raw[i] >= 128 ? 255 : 0;
+		spread(raw, tmp, 1, false);   // what is not three points thick each way goes
+		// What is left, back to its size and four points beyond. Generously: a fixed thing not
+		// wholly covered is drawn twice, once where it is and once where the world beside it
+		// was fetched from (an arm beside the character, a slice of the minimap beside it),
+		// which is worse than a little too much of the picture standing still.
+		spread(raw, tmp, 4, true);
+		// A HUD is a box, and what is inside it may well move (a minimap turns with the
+		// camera): a fixed thing of some size near the picture's edge is taken with the whole
+		// box round it. Then the map is left as it is, all or nothing: a point half fixed is
+		// moved half as far as the one beside it, and the picture ripples there (seen
+		// 2026-11-27 with a soft edge: the minimap bent like a flag and the sand round the
+		// character's legs waved).
+		// Twice: the first round's boxes, each a point larger all round, join what belongs to
+		// one HUD (a minimap came out as two boxes with a strip of world between them).
+		for(int round = 0; round < 2; round++)
+		{
+		const int grow = round == 0 ? 2 : 1;
+		std::vector<int> label(n, 0);
+		std::vector<int> stack;
+		int next = 0;
+		for(size_t start = 0; start < n; start++)
+		{
+			if(raw[start] < 128 || label[start])
+				continue;
+			next++;
+			int x0 = w, x1 = 0, y0 = h, y1 = 0, area = 0;
+			stack.assign(1, (int)start);
+			label[start] = next;
+			while(!stack.empty())
+			{
+				const int at = stack.back();
+				stack.pop_back();
+				const int x = at % w, y = at / w;
+				x0 = std::min(x0, x);
+				x1 = std::max(x1, x);
+				y0 = std::min(y0, y);
+				y1 = std::max(y1, y);
+				area++;
+				const int around[4] = { x > 0 ? at - 1 : -1, x < w - 1 ? at + 1 : -1, y > 0 ? at - w : -1, y < h - 1 ? at + w : -1 };
+				for(int o : around)
+					if(o >= 0 && raw[(size_t)o] >= 128 && !label[(size_t)o])
+					{
+						label[(size_t)o] = next;
+						stack.push_back(o);
+					}
+			}
+			const double cx = (x0 + x1) / 2.0 / w, cy = (y0 + y1) / 2.0 / h;
+			const bool atEdge = cx < 0.25 || cx > 0.75 || cy < 0.2 || cy > 0.8;
+			const int box = (x1 - x0 + 1) * (y1 - y0 + 1);
+			if(atEdge && area >= 24 && box <= w * h / 12)
+				for(int y = std::max(0, y0 - grow); y <= std::min(h - 1, y1 + grow); y++)
+					for(int x = std::max(0, x0 - grow); x <= std::min(w - 1, x1 + grow); x++)
+						raw[(size_t)y * w + x] = 255;
+		}
+		}
+		// Not "fixed or not" but how far from the nearest fixed point, in points of this map
+		// (a byte: 255 at a fixed point, 8 less for each point away). The picture is then
+		// moved the less the nearer to something fixed, over a distance that grows with the
+		// move itself: stretched round the character, not cut along a box (the cut showed as
+		// lines through the surf and the sand each side of him).
+		// That is for what stands in the picture's middle (the character). What is fixed at
+		// its edge (a HUD) is small, and the picture is cut round it instead: stretching
+		// reaches twice the move's length, and bent a vapour trail a fifth of the picture
+		// away from an ammunition count.
+		std::vector<uint8_t> edge(n, 0);
+		{
+			std::vector<int> label(n, 0);
+			std::vector<int> stack, members;
+			for(size_t start = 0; start < n; start++)
+			{
+				if(raw[start] < 128 || label[start])
+					continue;
+				double sx2 = 0, sy2 = 0;
+				members.clear();
+				stack.assign(1, (int)start);
+				label[start] = 1;
+				while(!stack.empty())
+				{
+					const int at = stack.back();
+					stack.pop_back();
+					members.push_back(at);
+					const int x = at % w, y = at / w;
+					sx2 += x;
+					sy2 += y;
+					const int around[4] = { x > 0 ? at - 1 : -1, x < w - 1 ? at + 1 : -1, y > 0 ? at - w : -1, y < h - 1 ? at + w : -1 };
+					for(int o : around)
+						if(o >= 0 && raw[(size_t)o] >= 128 && !label[(size_t)o])
+						{
+							label[(size_t)o] = 1;
+							stack.push_back(o);
+						}
+				}
+				const double cx = sx2 / members.size() / w, cy = sy2 / members.size() / h;
+				if((cx < 0.25 || cx > 0.75 || cy < 0.2 || cy > 0.8) && (int)members.size() <= w * h / 12)
+					for(int at : members)
+						edge[(size_t)at] = 255;
+			}
+		}
+		std::vector<float> far(n);
+		for(size_t i = 0; i < n; i++)
+			far[i] = raw[i] >= 128 && !edge[i] ? 0.0f : 1e6f;
+		for(int y = 0; y < h; y++)
+			for(int x = 0; x < w; x++)
+			{
+				float &d = far[(size_t)y * w + x];
+				if(x > 0) d = std::min(d, far[(size_t)y * w + x - 1] + 1.0f);
+				if(y > 0) d = std::min(d, far[(size_t)(y - 1) * w + x] + 1.0f);
+				if(x > 0 && y > 0) d = std::min(d, far[(size_t)(y - 1) * w + x - 1] + 1.414f);
+				if(x < w - 1 && y > 0) d = std::min(d, far[(size_t)(y - 1) * w + x + 1] + 1.414f);
+			}
+		for(int y = h - 1; y >= 0; y--)
+			for(int x = w - 1; x >= 0; x--)
+			{
+				float &d = far[(size_t)y * w + x];
+				if(x < w - 1) d = std::min(d, far[(size_t)y * w + x + 1] + 1.0f);
+				if(y < h - 1) d = std::min(d, far[(size_t)(y + 1) * w + x] + 1.0f);
+				if(x < w - 1 && y < h - 1) d = std::min(d, far[(size_t)(y + 1) * w + x + 1] + 1.414f);
+				if(x > 0 && y < h - 1) d = std::min(d, far[(size_t)(y + 1) * w + x - 1] + 1.414f);
+			}
+		hard = raw;
+		// Two bytes a point: how near the middle's fixed things are, and whether this is one of the edge's.
+		mask.resize(n * 2);
+		for(size_t i = 0; i < n; i++)
+		{
+			mask[i * 2] = (uint8_t)std::max(0.0f, 255.0f - far[i] * 8.0f);
+			mask[i * 2 + 1] = edge[i];
+		}
+	}
+
+	static void measureMotionOf(MotionState &st, CVPixelBufferRef buf, bool wide, double pictureUs)
+	{
+		{
+			// The small grey picture for whoever looks on.
+			std::function<void(const uint8_t *, int, int, double)> tap;
+			{
+				std::lock_guard<std::mutex> lk(st.m);
+				tap = st.tap;
+			}
+			if(tap && CVPixelBufferIsPlanar(buf) && CVPixelBufferLockBaseAddress(buf, kCVPixelBufferLock_ReadOnly) == kCVReturnSuccess)
+			{
+				const int tw = 480, th = 270;
+				const uint8_t *base = (const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(buf, 0);
+				const size_t stride = CVPixelBufferGetBytesPerRowOfPlane(buf, 0);
+				const size_t w = CVPixelBufferGetWidthOfPlane(buf, 0), h = CVPixelBufferGetHeightOfPlane(buf, 0);
+				std::vector<uint8_t> grey((size_t)tw * th);
+				const size_t step = wide ? 2 : 1, high = wide ? 1 : 0;
+				if(base)
+					for(int j = 0; j < th; j++)
+					{
+						const uint8_t *row = base + ((size_t)(2 * j + 1) * h / (size_t)(2 * th)) * stride;
+						for(int i = 0; i < tw; i++)
+							grey[(size_t)j * tw + i] = row[((size_t)(2 * i + 1) * w / (size_t)(2 * tw)) * step + high];
+					}
+				CVPixelBufferUnlockBaseAddress(buf, kCVPixelBufferLock_ReadOnly);
+				if(base)
+					tap(grey.data(), tw, th, pictureUs);
+			}
+		}
+		std::vector<uint8_t> &motionLast = st.last;
+		double &motionLastUs = st.lastUs;
+		std::vector<uint8_t> now;
+		if(!smallLuma(buf, wide, now))
+		{
+			motionLast.clear();
+			return;
+		}
+		PictureMotion m;
+		m.previousUs = motionLastUs;
+		m.pictureUs = pictureUs;
+		if(motionLast.size() == now.size() && m.pictureUs - m.previousUs < 150000.0)
+		{
+			// A picture is not one sheet. The character the camera follows and the HUD stand
+			// still; sand, sea and sky have nothing in them to tell by, or move in their own
+			// way (waves; ground near an orbiting camera); what tells how far the camera
+			// turned is whatever has shape and went the same way: far islands, trees, houses.
+			// So the picture is asked piece by piece: each of 24 pieces finds its own best
+			// shift, the pieces whose shift fits them much better than no shift are believed,
+			// and the camera's turn is what most of those agree on. (One shift for the whole
+			// picture, as this was, measured a beach in daylight turning at 65 % of its width
+			// a second as standing still: only the strip along the horizon said otherwise.
+			// 2026-11-27.)
+			const int rangeX = 24, rangeY = 14, marginX = rangeX + 4, marginY = rangeY + 4;
+			const int tilesX = 6, tilesY = 4, tileW = (kMotionW - 2 * marginX) / tilesX, tileH = (kMotionH - 2 * marginY) / tilesY;
+			const std::vector<uint8_t> &fixedNow = st.hard;
+			const bool haveFixed = fixedNow.size() == now.size();
+			struct Piece { double x, y; bool upper; };
+			std::vector<Piece> pieces;
+			for(int ty = 0; ty < tilesY; ty++)
+				for(int tx = 0; tx < tilesX; tx++)
+				{
+					const int x0 = marginX + tx * tileW, y0 = marginY + ty * tileH;
+					// What has shape in this piece, and is not known to be fixed to the screen.
+					int points = 0, rough = 0;
+					for(int y = y0; y < y0 + tileH; y++)
+						for(int x = x0; x < x0 + tileW; x++)
+						{
+							const size_t at = (size_t)y * kMotionW + x;
+							if(haveFixed && fixedNow[at] >= 128)
+								continue;
+							points++;
+							rough += std::abs((int)motionLast[at + 1] - (int)motionLast[at - 1]) >= 5 ? 1 : 0;
+						}
+					if(points < tileW * tileH / 2 || rough < 10)
+						continue;
+					auto cost = [&](int dx, int dy) {
+						uint64_t c = 0;
+						for(int y = y0; y < y0 + tileH; y++)
+						{
+							const uint8_t *pa = motionLast.data() + (size_t)y * kMotionW, *pb = now.data() + (size_t)(y + dy) * kMotionW + dx;
+							const uint8_t *pf = haveFixed ? fixedNow.data() + (size_t)y * kMotionW : nullptr;
+							for(int x = x0; x < x0 + tileW; x++)
+								if(!pf || pf[x] < 128)
+									c += (uint64_t)std::abs((int)pa[x] - (int)pb[x]);
+						}
+						return (double)c / points;
+					};
+					int bx = 0, by = 0;
+					double best = 1e30;
+					for(int dy = -rangeY; dy <= rangeY; dy += 2)
+						for(int dx = -rangeX; dx <= rangeX; dx += 2)
+						{
+							const double c = cost(dx, dy);
+							if(c < best)
+							{
+								best = c;
+								bx = dx;
+								by = dy;
+							}
+						}
+					int fx = bx, fy = by;
+					for(int dy = -1; dy <= 1; dy++)
+						for(int dx = -1; dx <= 1; dx++)
+						{
+							const int x = std::max(-rangeX, std::min(rangeX, bx + dx)), y = std::max(-rangeY, std::min(rangeY, by + dy));
+							const double c = cost(x, y);
+							if(c < best)
+							{
+								best = c;
+								fx = x;
+								fy = y;
+							}
+						}
+					// Believed only if it is a place of its own: two points to either side the
+					// piece must fit clearly worse. Sand and open water fit as well, or as badly,
+					// wherever they are put, and say nothing; and a piece that fits best unmoved
+					// is as good a witness as one that fits best moved (a slow turn, under a
+					// point of this map a picture, is told by them: counted as "standing still"
+					// they had every turn slower than 8 % of the width a second measured as
+					// none, and the table learned that the stick does nothing there. 2026-11-27).
+					if(std::abs(fx) >= rangeX || std::abs(fy) >= rangeY || best > 8.0)
+						continue;
+					const double beside = std::min(cost(std::max(-rangeX, fx - 2), fy), cost(std::min(rangeX, fx + 2), fy));
+					if(beside < best * 1.4 + 0.3)
+						continue;
+					// Between the points: the lowest place of a parabola through the best cost
+					// and the two beside it, each way.
+					auto between = [&](int ax, int ay) {
+						const double lo = cost(fx - ax, fy - ay), hi = cost(fx + ax, fy + ay), bend = lo - 2 * best + hi;
+						return bend > 1e-6 ? std::max(-0.5, std::min(0.5, 0.5 * (lo - hi) / bend)) : 0.0;
+					};
+					pieces.push_back({ fx + between(1, 0), fy + between(0, 1), ty < tilesY / 2 });
+				}
+			double shiftX = 0, shiftY = 0;
+			// While the player is turning the camera, a piece that moved is believed before
+			// pieces that did not: under an open sky the only things with shape are the ones
+			// fixed to the screen (the character, a crosshair, an ammunition count), and
+			// until those have been learned as fixed they outvote the one cloud that shows
+			// the turn (2026-11-27: a turn measured as none, looking up). If nothing moved,
+			// the camera is at the end of its way, and that is what is told.
+			const double turnedSince = st.turnSinceUs.load();
+			if(turnedSince > 0 && pictureUs - turnedSince > 250000.0)
+			{
+				std::vector<Piece> moving;
+				for(const Piece &p : pieces)
+					if(std::hypot(p.x, p.y) >= 0.3)
+						moving.push_back(p);
+				if(!moving.empty() && moving.size() < pieces.size())
+				{
+					if(moving.size() == 1)
+						moving.push_back(moving[0]);
+					pieces.swap(moving);
+				}
+				else if(moving.empty())
+				{
+					// Nothing that could be followed moved. If the picture as a whole changed
+					// all the same, the camera is turning too fast to follow (it blurs) and
+					// only what is fixed to the screen was left to match: that is "cannot
+					// say", not "stands still". (Taken for standing still, a fast turn made
+					// the warp believe the stick had stopped moving the camera.)
+					uint64_t changed = 0, counted = 0;
+					for(int y = marginY; y < kMotionH - marginY; y += 2)
+						for(int x = marginX; x < kMotionW - marginX; x += 2)
+						{
+							const size_t at = (size_t)y * kMotionW + x;
+							if(haveFixed && fixedNow[at] >= 128)
+								continue;
+							changed += (uint64_t)std::abs((int)now[at] - (int)motionLast[at]);
+							counted++;
+						}
+					if(counted && (double)changed / counted > 2.5)
+						pieces.clear();
+				}
+			}
+			// What is far away tells the camera's turn; what is near moves by more or less than
+			// that when the camera goes round the character (bushes at his feet, a car beside
+			// him: with them voting, a third of the pictures of a turn had no shift that most
+			// agreed on, and the rest were told now by the far and now by the near). Far is,
+			// nearly always, the upper half of the picture: if three pieces there have
+			// something to say, they are the ones asked.
+			bool turnsRound = false;
+			{
+				std::vector<Piece> upper, lower;
+				for(const Piece &p : pieces)
+					(p.upper ? upper : lower).push_back(p);
+				// Unless the lower half goes the other way: then the camera looks down on the
+				// scene and a turn takes the picture round its middle. No one shift is that,
+				// and none is told (told the upper half's, the whole picture was pushed
+				// sideways while its lower half went the other way).
+				if(upper.size() >= 3 && lower.size() >= 3)
+				{
+					auto middle = [](std::vector<Piece> v) {
+						std::sort(v.begin(), v.end(), [](const Piece &a, const Piece &b) { return a.x < b.x; });
+						return v[v.size() / 2].x;
+					};
+					const double up = middle(upper), down = middle(lower);
+					turnsRound = std::abs(up) >= 0.5 && up * down < 0 && std::abs(down) >= 0.3 * std::abs(up);
+				}
+				if(upper.size() >= 3)
+					pieces.swap(upper);
+			}
+			if(turnsRound)
+				pieces.clear();
+			if(pieces.size() >= 2)
+			{
+				// What most agree on: the middle one each way, and how many are near it.
+				std::vector<double> xs, ys;
+				for(const Piece &p : pieces)
+				{
+					xs.push_back(p.x);
+					ys.push_back(p.y);
+				}
+				std::sort(xs.begin(), xs.end());
+				std::sort(ys.begin(), ys.end());
+				const double mx = xs[xs.size() / 2], my = ys[ys.size() / 2];
+				const double within = 0.6 + 0.08 * std::max(std::abs(mx), std::abs(my));
+				double sumX = 0, sumY = 0;
+				int near = 0;
+				for(const Piece &p : pieces)
+					if(std::abs(p.x - mx) <= within && std::abs(p.y - my) <= within)
+					{
+						sumX += p.x;
+						sumY += p.y;
+						near++;
+					}
+				m.valid = near >= 2 && near * 2 >= (int)pieces.size();
+				if(m.valid)
+				{
+					shiftX = sumX / near;
+					shiftY = sumY / near;
+				}
+			}
+			else
+				m.valid = false;
+			const int fineX = (int)std::lround(shiftX), fineY = (int)std::lround(shiftY);
+			m.dx = (float)(shiftX / kMotionW);
+			m.dy = (float)(shiftY / kMotionH);
+			// What does not slide with the rest, from a pair in which the rest clearly did.
+			std::vector<uint8_t> centre;
+			const bool haveCentre = centreLuma(buf, wide, centre);
+			// What does not slide with the rest, from a pair in which the rest clearly did.
+			if(m.valid)
+			{
+				std::vector<uint8_t> mask, centreMask;
+				if(std::abs(fineX) + std::abs(fineY) >= 2)
+					learnFixed(motionLast, now, kMotionW, kMotionH, fineX, fineY, st.stay, st.slide, 2.0f, true, mask, st.hard);
+				// The middle point for point: kCentreW of them are a 7.5th of the width.
+				const int px = (int)std::lround(m.dx * kCentreW * 7.5), py = (int)std::lround(m.dy * kCentreH * 7.5);
+				if(haveCentre && st.centreLast.size() == centre.size() && std::abs(px) + std::abs(py) >= 4)
+				{
+					std::vector<uint8_t> unused;
+					learnFixed(st.centreLast, centre, kCentreW, kCentreH, px, py, st.centreStay, st.centreSlide, 3.5f, false, centreMask, unused);
+				}
+				if(!mask.empty() || !centreMask.empty())
+				{
+					std::lock_guard<std::mutex> lk(st.m);
+					if(!mask.empty())
+						st.mask.swap(mask);
+					if(!centreMask.empty())
+						st.centreMask.swap(centreMask);
+					st.maskNew = true;
+				}
+			}
+			if(haveCentre)
+				st.centreLast.swap(centre);
+			else
+				st.centreLast.clear();
+		}
+		else
+			st.centreLast.clear();
+		motionLast.swap(now);
+		motionLastUs = pictureUs;
+		std::function<void(const PictureMotion &)> sink;
+		{
+			std::lock_guard<std::mutex> lk(st.m);
+			sink = st.sink;
+		}
+		if(m.previousUs > 0 && sink)
+			sink(m);
+	}
+
+	// Whether this frame shows the picture the frame before it showed: a game that renders
+	// 30 pictures a second in a 60 fps stream sends every one twice. The two differ by what
+	// the encoder made of them (a mean of 0.2 eight-bit levels, measured on four clips of a
+	// PS5 game, against 5 to 6 between two pictures), so the test is against what
+	// a picture has changed by lately and not against zero. A still scene, where a new picture is no more
+	// different than a repeat, counts as new pictures throughout: the enhancer then does
+	// every frame, as without this. Luma only, at 48 x 27 points, read from the decoder's
+	// own buffer.
+	bool repeatsLastFrame(CVPixelBufferRef buf)
+	{
+		const OSType format = CVPixelBufferGetPixelFormatType(buf);
+		// A compressed surface has no pixels to read here.
+		if((format >> 24) == '&' || !CVPixelBufferIsPlanar(buf)
+			|| CVPixelBufferLockBaseAddress(buf, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
+		{
+			lastSignature.clear();
+			return false;
+		}
+		const uint8_t *base = (const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(buf, 0);
+		const size_t stride = CVPixelBufferGetBytesPerRowOfPlane(buf, 0);
+		const size_t w = CVPixelBufferGetWidthOfPlane(buf, 0), h = CVPixelBufferGetHeightOfPlane(buf, 0);
+		const bool wide = w > 0 && stride >= 2 * w && colorInfoFor(buf).bits > 8;
+		const size_t kCols = 48, kRows = 27;
+		std::vector<uint16_t> signature;
+		if(base && w >= kCols && h >= kRows)
+		{
+			signature.reserve(kCols * kRows);
+			for(size_t j = 0; j < kRows; j++)
+			{
+				const uint8_t *row = base + ((2 * j + 1) * h / (2 * kRows)) * stride;
+				for(size_t i = 0; i < kCols; i++)
+				{
+					const size_t x = (2 * i + 1) * w / (2 * kCols);
+					// Sixteen bits either way: an 8-bit sample in the high byte.
+					signature.push_back(wide ? (uint16_t)(row[2 * x] | (row[2 * x + 1] << 8)) : (uint16_t)(row[x] << 8));
+				}
+			}
+		}
+		CVPixelBufferUnlockBaseAddress(buf, kCVPixelBufferLock_ReadOnly);
+		bool repeat = false;
+		if(!signature.empty() && signature.size() == lastSignature.size())
+		{
+			double sum = 0;
+			for(size_t i = 0; i < signature.size(); i++)
+				sum += std::abs((int)signature[i] - (int)lastSignature[i]);
+			const double change = sum / (double)signature.size() / 65535.0;
+			// Against what a new picture has changed by lately: the median of the larger half
+			// of the last eight changes, which one cut or one still moment does not move. A
+			// repeat is under half of that (a quarter, measured), and never follows a repeat:
+			// a frame after one is taken for a picture, whatever it measures.
+			if(recentChanges.size() >= 8 && !lastWasRepeat)
+			{
+				std::vector<double> sorted(recentChanges.begin(), recentChanges.end());
+				std::sort(sorted.begin(), sorted.end());
+				const double typical = (sorted[5] + sorted[6]) / 2;
+				repeat = change < typical * 0.5;
+			}
+			recentChanges.push_back(change);
+			if(recentChanges.size() > 8)
+				recentChanges.pop_front();
+		}
+		else
+			recentChanges.clear();
+		lastWasRepeat = repeat;
+		// A repeat is compared with nothing: the next frame is measured against the picture.
+		if(!repeat)
+			lastSignature.swap(signature);
+		return repeat;
+	}
+
+	// A decoded frame, in an immediate pacing mode: rendered now, or held for its result.
+	void frameArrived(DecodedFrame &f)
+	{
+		double t = f.rec->decodedUs;
+		if(lastArrivalUs > 0 && t > lastArrivalUs && t - lastArrivalUs < 200000.0)
+			arrivalIntervalUs = arrivalIntervalUs * 0.95 + (t - lastArrivalUs) * 0.05;
+		lastArrivalUs = t;
+		if(generatesFor(f))
+		{
+			pictureArrived(f);
+			return;
+		}
+		if(lastPicture || !due.empty() || !awaiting.empty() || !order.empty())
+			endGeneration();
+		bool repeat = false;
+		const bool enhances = enhanceCfg.skipRepeats && enhancing(colorInfoFor(f.buf));
+		if(enhances || motionSink || warpSource)
+		{
+			const double t0 = nowUs();
+			repeat = repeatsLastFrame(f.buf);
+			const double took = nowUs() - t0;
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.repeatChecks++;
+			shared->c.repeatCheckUs += took;
+		}
+		// The camera warp: a new picture is measured, and a repeat is the picture that came
+		// with the frame before it.
+		if(repeat)
+			f.rec->pictureUs = lastPictureArrivalUs;
+		else if(motionSink || warpSource)
+			measureMotion(f);
+		if(repeat && enhances)
+		{
+			// The picture has been given to the enhancer already, as the frame before this.
+			f.rec->repeat = true;
+			f.rec->enhanceOffered = true;
+			{
+				std::lock_guard<std::mutex> sl(shared->m);
+				shared->c.framesRepeated++;
+			}
+			if(!held.empty())
+			{
+				// That frame still waits for its result and will be shown with it; this one
+				// would be the same picture again, right behind it.
+				CVPixelBufferRelease(f.buf);
+				f = DecodedFrame();
+				return;
+			}
+			renderFrame(f, nil, 0);
+			return;
+		}
+		if(!waitsForEnhancer(f))
+		{
+			flushHeld();
+			renderFrame(f, nil, 0);
+			return;
+		}
+		clearPending();
+		// One frame is with the enhancer and one is next. A frame that arrives while both
+		// places are taken replaces the one that is next: an enhancer slower than the stream
+		// shows the frames it can do, each as fresh as it can be, and the others not at all.
+		while(held.size() >= 2)
+		{
+			if(held.back().tried)
+			{
+				renderHeldFront(true);
+				continue;
+			}
+			CVPixelBufferRelease(held.back().f.buf);
+			held.pop_back();
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.enhanceSkipped++;
+		}
+		Held h;
+		h.f = f;
+		f = DecodedFrame();
+		double waitUs = std::max(1.0, (double)enhanceCfg.maxWaitMs) * 1000.0;
+		h.deadlineUs = nowUs() + waitUs;
+		held.push_back(h);
+		submitHeld();
+		// The wait ends at the deadline whatever the enhancer does.
+		std::shared_ptr<EnhanceState> st = enhance;
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(waitUs * 1000.0) + 300000), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+			st->signal();
+		});
+	}
+
+	// The oldest frame that has not been offered goes to the enhancer, if it is idle.
+	void submitHeld()
+	{
+		if(enhance->busy.load())
+			return;
+		for(Held &h : held)
+		{
+			if(h.tried)
+				continue;
+			h.tried = true;
+			h.keySeq = offerFrame(h.f);
+			return;
+		}
+	}
+
+	void renderHeldFront(bool late)
+	{
+		DecodedFrame f = held.front().f;
+		held.pop_front();
+		if(late)
+		{
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.enhanceLate++;
+		}
+		renderFrame(f, nil, 0);
+	}
+
+	void flushHeld()
+	{
+		while(!held.empty())
+			renderHeldFront(true);
+	}
+
+	// ---- frame generation ---------------------------------------------------
+
+	bool generatesFor(const DecodedFrame &f)
+	{
+		if(!generating || !interpolator || activePacing == PacingMode::DisplayLink)
+			return false;
+		ColorInfo ci = colorInfoFor(f.buf);
+		return ci.transfer == Transfer::PQ || (!ci.hdr() && ci.bits == 8);
+	}
+
+	// Leaves frame generation: what still waits is shown, and nothing is kept.
+	void endGeneration()
+	{
+		generation++;
+		showDue(true);
+		// What is still on its way, in order and without what was to come before it. A
+		// generated picture that arrives after this finds its stage shown and is dropped.
+		for(auto &stage : order)
+		{
+			if(stage->shown)
+				continue;
+			stage->shown = true;
+			renderFrame(stage->f, nil, 0, stage->picture);
+		}
+		order.clear();
+		while(!awaiting.empty())
+		{
+			DecodedFrame f = takeAwaiting();
+			renderFrame(f, nil, 0);
+		}
+		lastPicture.reset();
+	}
+
+	// The pictures whose turn has come (all of them with `all`), oldest first.
+	void showDue(bool all)
+	{
+		while(!due.empty() && (all || nowUs() >= due.front().dueUs))
+		{
+			DuePicture d = due.front();
+			due.pop_front();
+			renderFrame(d.f, nil, 0, d.picture);
+			if(d.generated)
+			{
+				std::lock_guard<std::mutex> sl(shared->m);
+				shared->c.framesGenerated++;
+			}
+		}
+		// The next one in its time.
+		if(!due.empty() && !all)
+		{
+			std::shared_ptr<EnhanceState> st = enhance;
+			const double waitUs = std::max(0.0, due.front().dueUs - nowUs());
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(waitUs * 1000.0) + 100000), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+				st->signal();
+			});
+		}
+	}
+
+	// A record for a picture that no frame of the stream carried: the generated one. It
+	// has the times of the frame it leads up to, so what it took is counted from there.
+	static std::shared_ptr<FrameRecord> recordLike(const FrameRecord &r)
+	{
+		auto rec = std::make_shared<FrameRecord>();
+		rec->seq = r.seq;
+		rec->frameIndex = r.frameIndex;
+		rec->readyUs = r.readyUs;
+		rec->submitUs = r.submitUs;
+		rec->decodedUs = r.decodedUs;
+		rec->hdr = r.hdr;
+		return rec;
+	}
+
+	// The frame as one R'G'B' picture in the stream's code values, with the enhancer's
+	// newest result mixed in: what frame generation is given and what is shown of it.
+	// `offer`: the enhancer is given the picture too, if it is free and has not had it.
+	std::shared_ptr<RgbPicture> rgbPictureOf(const DecodedFrame &f, id<MTLCommandBuffer> __strong *commandBuffer, bool offer)
+	{
+		ColorInfo ci = colorInfoFor(f.buf);
+		CVMetalTextureRef ty = nullptr, tc = nullptr;
+		ShaderParams params;
+		CGRect clean;
+		if(!keyPlanes(f.buf, ci, &ty, &tc, params, clean))
+			return nullptr;
+		// Released when the GPU is done with them. Built in place: a copy would release twice.
+		struct Planes {
+			CVMetalTextureRef ty, tc;
+			Planes(CVMetalTextureRef y, CVMetalTextureRef c) : ty(y), tc(c) {}
+			Planes(const Planes &) = delete;
+			~Planes()
+			{
+				CFRelease(ty);
+				CFRelease(tc);
+			}
+		};
+		auto planes = std::make_shared<Planes>(ty, tc);
+		const size_t w = (size_t)clean.size.width, h = (size_t)clean.size.height;
+		const OSType format = enhancerFormat(ci);
+		if(!rgbPool || w != rgbPoolW || h != rgbPoolH || format != rgbPoolFormat)
+		{
+			if(rgbPool)
+				CVPixelBufferPoolRelease(rgbPool);
+			rgbPool = nullptr;
+			NSDictionary *attrs = @{
+				(__bridge NSString *)kCVPixelBufferPixelFormatTypeKey : @(format),
+				(__bridge NSString *)kCVPixelBufferWidthKey : @(w),
+				(__bridge NSString *)kCVPixelBufferHeightKey : @(h),
+				(__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey : @{},
+				(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey : @YES,
+			};
+			if(CVPixelBufferPoolCreate(kCFAllocatorDefault, nullptr, (__bridge CFDictionaryRef)attrs, &rgbPool) != kCVReturnSuccess)
+			{
+				rgbPool = nullptr;
+				return nullptr;
+			}
+			rgbPoolW = w;
+			rgbPoolH = h;
+			rgbPoolFormat = format;
+			lastPicture.reset();
+		}
+		auto picture = std::make_shared<RgbPicture>();
+		if(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, rgbPool, &picture->buf) != kCVReturnSuccess || !picture->buf)
+			return nullptr;
+		picture->tex = wrapEnhancerBuffer(picture->buf, true);
+		if(!picture->tex)
+			return nullptr;
+		MTLPixelFormat textureFormat = enhancerTextureFormat(format);
+		// The enhancer's result, as a frame shown at once gets it.
+		NrDraw nrDraw;
+		double nrAgeMs = 0;
+		std::shared_ptr<EnhancedFrame> nr;
+		id<MTLRenderPipelineState> mix = nil;
+		if(enhancing(ci))
+		{
+			nr = enhancedFor(f.rec->decodedUs, ci, nrDraw, &nrAgeMs);
+			mix = nr ? pipelineIfBuilt(FragBilinearNr, textureFormat) : nil;
+		}
+		id<MTLCommandBuffer> cb = [queue commandBuffer];
+		if(mix)
+			useGrid(cb, nr, nrDraw);
+		drawPass(cb, CVMetalTextureGetTexture(picture->tex), MTLRegionMake2D(0, 0, w, h),
+				mix ?: pipelineFor(FragBilinear, textureFormat), CVMetalTextureGetTexture(ty), CVMetalTextureGetTexture(tc),
+				&params, mix ? &nrDraw : nullptr);
+		if(mix)
+		{
+			f.rec->enhanceAgeMs = nrAgeMs;
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.framesEnhanced++;
+			if(nrAgeMs <= 0)
+				shared->c.framesEnhancedExact++;
+			shared->enhanceAge.add(nrAgeMs);
+		}
+		CVPixelBufferRef keepBuf = CVPixelBufferRetain(f.buf);
+		[cb addCompletedHandler:^(id<MTLCommandBuffer> c) {
+			(void)planes;
+			(void)nr;
+			CVPixelBufferRelease(keepBuf);
+		}];
+		if(offer && enhancing(ci) && !f.rec->enhanceOffered)
+			offerToEnhancer(f.rec, f.buf, ty, tc, params, clean, ci);
+		*commandBuffer = cb;
+		return picture;
+	}
+
+	// A decoded frame while frame generation is on.
+	void pictureArrived(DecodedFrame &f)
+	{
+		showDue(false);
+		{
+			const double t0 = nowUs();
+			const bool repeat = repeatsLastFrame(f.buf);
+			const double took = nowUs() - t0;
+			std::lock_guard<std::mutex> sl(shared->m);
+			shared->c.repeatChecks++;
+			shared->c.repeatCheckUs += took;
+			if(repeat)
+				shared->c.framesRepeated++;
+			if(repeat)
+			{
+				// Its picture is on its way to the screen already; in its place comes the
+				// picture between this one and the next.
+				CVPixelBufferRelease(f.buf);
+				f = DecodedFrame();
+				return;
+			}
+		}
+		if(motionSink || warpSource)
+			measureMotion(f);
+		// EnhanceConfig::wait: the picture first gets the enhancer's result of itself, so
+		// that what is generated lies between two enhanced pictures and nothing in them is
+		// a change made to another picture. Only while the enhancer is free when a picture
+		// comes (one that is slower than the game's pictures works beside them, as without).
+		while(!awaiting.empty())
+			pictureReady(takeAwaiting());
+		if(lastNewPictureUs > 0 && f.rec->decodedUs > lastNewPictureUs && f.rec->decodedUs - lastNewPictureUs < 200000.0)
+			pictureIntervalUs = pictureIntervalUs * 0.9 + (f.rec->decodedUs - lastNewPictureUs) * 0.1;
+		lastNewPictureUs = f.rec->decodedUs;
+		// And only while a result takes less than the game takes for a picture: one that takes
+		// longer would hold every picture back for a result that the next picture cuts short.
+		const double takes = enhance->roundTripMs.load() * 1000.0;
+		if(enhanceCfg.wait && enhanceCfg.strength > 0 && enhancing(colorInfoFor(f.buf)) && !enhance->busy.load()
+			&& nowUs() >= enhance->holdUntilUs.load() && (takes <= 0 || takes < pictureIntervalUs * 0.9))
+		{
+			const uint64_t offered = offerFrame(f);
+			if(offered)
+			{
+				Held h;
+				h.f = f;
+				f = DecodedFrame();
+				h.tried = true;
+				h.keySeq = offered;
+				const double waitUs = std::max(1.0, (double)enhanceCfg.maxWaitMs) * 1000.0;
+				h.deadlineUs = nowUs() + waitUs;
+				awaiting.push_back(h);
+				std::shared_ptr<EnhanceState> st = enhance;
+				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(waitUs * 1000.0) + 300000), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+					st->signal();
+				});
+				return;
+			}
+		}
+		pictureReady(f);
+	}
+
+	DecodedFrame takeAwaiting()
+	{
+		DecodedFrame f = awaiting.front().f;
+		awaiting.pop_front();
+		return f;
+	}
+
+	// The pictures that waited for the enhancer and have its result, or need wait no longer.
+	void serveAwaiting()
+	{
+		uint64_t latestSeq = 0;
+		{
+			std::lock_guard<std::mutex> lk(enhance->m);
+			if(enhance->latest)
+				latestSeq = enhance->latest->key->seq;
+		}
+		const bool idle = !enhance->busy.load();
+		while(!awaiting.empty())
+		{
+			const Held &h = awaiting.front();
+			if(h.keySeq > latestSeq && !idle && nowUs() < h.deadlineUs)
+				break;
+			pictureReady(takeAwaiting());
+		}
+	}
+
+	// A new picture of the stream, with whatever the enhancer is to add to it at hand: it
+	// becomes one R'G'B' picture, and the picture between it and the last one is asked for.
+	void pictureReady(DecodedFrame f)
+	{
+		// The generation is small and what the screen waits for; the enhancer's work is long
+		// and shares the GPU with it. When a picture is to be generated, the enhancer gets
+		// this one after that is made (pictureGenerated()), not before.
+		const bool generates = lastPicture && !generationBusy && f.rec->decodedUs - lastPictureUs <= 150000.0;
+		id<MTLCommandBuffer> cb = nil;
+		std::shared_ptr<RgbPicture> picture = rgbPictureOf(f, &cb, !generates);
+		if(!picture)
+		{
+			endGeneration();
+			renderFrame(f, nil, 0);
+			return;
+		}
+		std::shared_ptr<RgbPicture> previous = lastPicture;
+		// Across a pause the two pictures have nothing between them.
+		if(previous && f.rec->decodedUs - lastPictureUs > 150000.0)
+			previous.reset();
+		lastPicture = picture;
+		lastPictureUs = f.rec->decodedUs;
+		// The pictures reach the screen in the order they came in, whatever is generated
+		// between them and however long that takes: each has a place in `order`.
+		auto stage = std::make_shared<Stage>();
+		stage->picture = picture;
+		stage->f = f;
+		order.push_back(stage);
+		// One pair at a time. A picture that comes while the last pair is still in the works
+		// (the GPU is behind) gets nothing generated before it.
+		if(!previous || generationBusy)
+		{
+			[cb commit];
+			lastRgbCommandBuffer = cb;
+			stage->done = true;
+			serveOrder();
+			return;
+		}
+		generationBusy = true;
+		const uint64_t seq = ++rgbSeq;
+		std::shared_ptr<FrameInterpolator> target = interpolator;
+		std::shared_ptr<EnhanceState> st = enhance;
+		std::shared_ptr<Shared> sh = shared;
+		Impl *self = this;
+		// Posts to the render thread through the wake the enhancer's results use: it is
+		// cleared before this object goes, and what was posted is then dropped with it.
+		auto arrived = [self, st, stage](std::vector<std::shared_ptr<RgbPicture>> made) {
+			std::lock_guard<std::mutex> lk(st->m);
+			if(st->wake)
+				self->post([self, stage, made] { self->pictureGenerated(stage, made); });
+		};
+		const int wanted = generating;
+		// The generated frames of this pair, as they come in; given on with the last.
+		auto collected = std::make_shared<std::vector<std::shared_ptr<RgbPicture>>>();
+		// After the picture is drawn: the interpolator reads what this command buffer wrote.
+		[cb addCompletedHandler:^(id<MTLCommandBuffer> c) {
+			const double handedUs = nowUs();
+			bool taken = c.status == MTLCommandBufferStatusCompleted
+				&& target->interpolate(previous->buf, picture->buf, wanted, seq,
+						[sh, arrived, handedUs, collected](CVPixelBufferRef output, int index, int count, double) {
+					if(!output || !CVPixelBufferGetIOSurface(output) || count <= 0)
+					{
+						{
+							std::lock_guard<std::mutex> sl(sh->m);
+							sh->c.generateFailed++;
+						}
+						arrived({});
+						return;
+					}
+					auto made = std::make_shared<RgbPicture>();
+					made->buf = CVPixelBufferRetain(output);
+					collected->push_back(made);
+					if(index + 1 < count)
+						return;
+					{
+						std::lock_guard<std::mutex> sl(sh->m);
+						sh->c.generateMsTotal += (nowUs() - handedUs) / 1000.0;
+						sh->c.generatePairs++;
+					}
+					arrived(*collected);
+				});
+			if(!taken)
+			{
+				uint64_t failed;
+				{
+					std::lock_guard<std::mutex> sl(sh->m);
+					failed = ++sh->c.generateFailed;
+				}
+				// The first and then every three hundredth: one that refuses does so every time.
+				if(failed % 300 == 1)
+					NSLog(@"plk-video: frame generation did not take a pair (%s %zux%zu, command buffer status %lu%s%s)",
+							fourcc(CVPixelBufferGetPixelFormatType(picture->buf)).c_str(), CVPixelBufferGetWidth(picture->buf),
+							CVPixelBufferGetHeight(picture->buf), (unsigned long)c.status, c.error ? ": " : "",
+							c.error ? c.error.localizedDescription.UTF8String : "");
+				arrived({});
+			}
+		}];
+		[cb commit];
+		lastRgbCommandBuffer = cb;
+	}
+
+	// The picture before `stage`'s is made, or was not (render thread).
+	void pictureGenerated(std::shared_ptr<Stage> stage, std::vector<std::shared_ptr<RgbPicture>> made)
+	{
+		generationBusy = false;
+		if(!stage->shown && stage->f.buf && !stage->f.rec->enhanceOffered && enhancing(colorInfoFor(stage->f.buf)))
+			offerFrame(stage->f);
+		bool usable = !made.empty();
+		for(auto &m : made)
+		{
+			m->tex = wrapEnhancerBuffer(m->buf, false);
+			usable = usable && m->tex;
+		}
+		if(usable)
+			stage->made = made;
+		stage->done = true;
+		serveOrder();
+	}
+
+	// Gives the pictures that are ready, from the oldest on, their times on screen: a
+	// generated one as soon as may be, the picture it leads up to one frame of the stream
+	// after it, and never one before the one that came before it.
+	void serveOrder()
+	{
+		while(!order.empty() && order.front()->done)
+		{
+			std::shared_ptr<Stage> stage = order.front();
+			order.pop_front();
+			if(stage->shown)
+				continue;
+			stage->shown = true;
+			// The time from one picture of the game to the next, shared evenly among the
+			// generated ones and the picture itself; never under the panel's own shortest.
+			const double step = std::min(40000.0, std::max(8333.0, pictureIntervalUs / (double)(stage->made.size() + 1)));
+			const double now = nowUs();
+			// Not closer to the last one than the panel's shortest refresh (two pictures
+			// inside one refresh are one picture), nor than half a step, so that a picture
+			// that is late does not flash by; when all is in time this never holds one back.
+			double at = std::max(now, lastDueUs + std::max(8333.0, step * 0.5));
+			if(!offscreenMode())
+			{
+				// On screen the display keeps the times: the first generated picture at once
+				// (never before one that is still to come), and the others and the picture
+				// they lead up to rendered right behind it, each with its time on screen one
+				// step after the one before.
+				for(size_t i = 0; i < stage->made.size(); i++)
+				{
+					DecodedFrame between;
+					between.buf = CVPixelBufferRetain(stage->f.buf);
+					between.rec = recordLike(*stage->f.rec);
+					// Its place between the two pictures, as a time of arrival.
+					between.rec->pictureUs = stage->f.rec->decodedUs
+							- pictureIntervalUs * (double)(stage->made.size() - i) / (double)(stage->made.size() + 1);
+					renderFrame(between, nil, 0, stage->made[i], at > now + 1000.0 ? at : 0);
+					{
+						std::lock_guard<std::mutex> sl(shared->m);
+						shared->c.framesGenerated++;
+					}
+					// From when it can be on screen at the earliest: the GPU has it in a few ms.
+					at = std::max(at, now + 3000.0) + step;
+				}
+				renderFrame(stage->f, nil, 0, stage->picture, at > now + 1000.0 ? at : 0);
+				lastDueUs = std::max(at, now);
+				continue;
+			}
+			for(size_t i = 0; i < stage->made.size(); i++)
+			{
+				DuePicture between;
+				between.picture = stage->made[i];
+				between.f.buf = CVPixelBufferRetain(stage->f.buf);
+				between.f.rec = recordLike(*stage->f.rec);
+				between.dueUs = at;
+				between.generated = true;
+				due.push_back(between);
+				at += step;
+			}
+			DuePicture real;
+			real.picture = stage->picture;
+			real.f = stage->f;
+			real.dueUs = at;
+			due.push_back(real);
+			lastDueUs = at;
+		}
+		showDue(false);
+		if(!due.empty())
+		{
+			std::shared_ptr<EnhanceState> st = enhance;
+			const double waitUs = std::max(0.0, due.front().dueUs - nowUs());
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(waitUs * 1000.0) + 100000), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+				st->signal();
+			});
+		}
+	}
+
+	// The enhancer became idle, or a held frame's wait may be over (render thread).
+	void onEnhancerEvent()
+	{
+		showDue(false);
+		serveAwaiting();
+		uint64_t latestSeq = 0;
+		{
+			std::lock_guard<std::mutex> lk(enhance->m);
+			if(enhance->latest)
+				latestSeq = enhance->latest->key->seq;
+		}
+		bool idle = !enhance->busy.load();
+		while(!held.empty())
+		{
+			const Held &h = held.front();
+			// Its own result is in; or it has none to wait for (it could not be offered, or
+			// the enhancer came back without it); or it has waited long enough.
+			bool own = h.tried && h.keySeq != 0 && h.keySeq <= latestSeq;
+			bool none = h.tried && (h.keySeq == 0 || (idle && h.keySeq > latestSeq));
+			bool late = nowUs() >= h.deadlineUs;
+			if(!own && !none && !late)
+				break;
+			renderHeldFront(!own);
+		}
+		submitHeld();
+		if(held.empty() && nrPending.buf && !enhance->busy.load())
+		{
+			// Fresh enough to be worth the enhancer's time: the next frame is not here yet.
+			if(nowUs() - nrPending.rec->decodedUs < arrivalIntervalUs && enhancing(colorInfoFor(nrPending.buf)))
+				offerFrame(nrPending);
+			clearPending();
+		}
+	}
+
+	// `picture`: the frame's picture as R'G'B' code values in one texture (frame generation),
+	// shown in place of the frame's own planes; whatever an enhancer does is in it already.
+	// `presentAtUs`: when the frame is to be on screen, on nowUs()'s clock; 0 for at once.
+	// The display itself keeps that time (it has a 4.17 ms grid of its own on a 120 Hz
+	// panel), which no timer of ours could.
+	void renderFrame(DecodedFrame &f, id<CAMetalDrawable> drawable, double targetPresentUs,
+			std::shared_ptr<RgbPicture> picture = nullptr, double presentAtUs = 0)
 	{
 		auto rec = f.rec;
 		rec->renderStartUs = nowUs();
@@ -1889,6 +3522,13 @@ struct VideoPipeline::Impl {
 			// At 100 % a PQ drawable gets the decoder's code values untouched.
 			params.linearize = simd_make_float2(2.0f, gain);
 		params.sdrMap = simd_make_float2(ci.transfer == Transfer::PQ ? 10000.0f / kEnhancerSdrWhiteNits : 0.0f, 0.0f);
+		if(warpSource)
+		{
+			// For when this frame is on screen: its time if it has one, else a refresh from now.
+			float wx = 0, wy = 0;
+			warpSource(rec->pictureUs > 0 ? rec->pictureUs : rec->decodedUs, presentAtUs > 0 ? presentAtUs : nowUs() + shared->renderToGlassUs.load(), &wx, &wy);
+			params.warp = simd_make_float2(wx, wy);
+		}
 
 		// Target.
 		id<MTLTexture> target;
@@ -1923,18 +3563,25 @@ struct VideoPipeline::Impl {
 		Scaler eff = scaler;
 		if(eff == Scaler::MetalFX && (dest.size.width < (NSUInteger)clean.size.width || dest.size.height < (NSUInteger)clean.size.height))
 			eff = Scaler::Bilinear;  // MetalFX spatial upscales only
+		if(picture)
+			eff = Scaler::Bilinear;  // one texture, one tap: every picture of the sequence alike
 
 		// The enhancer's newest result, if this frame can carry it (see offerToEnhancer()
 		// for where the results come from).
-		bool enhanceOn = enhancing(ci);
+		bool enhanceOn = !picture && enhancing(ci);
 		NrDraw nrDraw;
 		double nrAgeMs = 0;
 		std::shared_ptr<EnhancedFrame> nr;
 		if(enhanceOn)
 			nr = enhancedFor(rec->decodedUs, ci, nrDraw, &nrAgeMs);
+		// A repeat carries the result of the picture it repeats: of its own picture.
+		if(nr && rec->repeat && nrAgeMs <= arrivalIntervalUs / 1000.0 * 1.6)
+			nrAgeMs = 0;
 		bool mixed = false;
 
 		id<MTLCommandBuffer> cb = [queue commandBuffer];
+		if(nr)
+			useGrid(cb, nr, nrDraw);
 		bool encoded = false;
 		if(eff == Scaler::MetalFX)
 		{
@@ -1950,7 +3597,10 @@ struct VideoPipeline::Impl {
 		{
 			Frag frag = eff == Scaler::Bicubic ? FragBicubic : eff == Scaler::Lanczos ? FragLanczos : FragBilinear;
 			id<MTLRenderPipelineState> mix = nr ? pipelineIfBuilt(mixedIn(frag), target.pixelFormat) : nil;
-			if(mix)
+			if(picture)
+				drawPass(cb, target, dest, pipelineFor(FragRgb, target.pixelFormat), CVMetalTextureGetTexture(picture->tex), texC,
+						&params, nullptr, overlay);
+			else if(mix)
 				drawPass(cb, target, dest, mix, texY, texC, &params, &nrDraw, overlay);
 			else
 				drawPass(cb, target, dest, pipelineFor(frag, target.pixelFormat), texY, texC, &params, nullptr, overlay);
@@ -1980,6 +3630,7 @@ struct VideoPipeline::Impl {
 			CFRelease(tc);
 			CVPixelBufferRelease(keepBuf);
 			(void)nr;  // the result's textures live until the GPU is done with them
+			(void)picture;
 			if(rec->pending.fetch_sub(1) == 1)
 				sh->finish(*rec);
 		}];
@@ -1987,10 +3638,16 @@ struct VideoPipeline::Impl {
 		{
 			[drawable addPresentedHandler:^(id<MTLDrawable> d) {
 				rec->presentedUs = d.presentedTime * 1e6;
+				const double took = rec->presentedUs - rec->renderStartUs;
+				if(took > 0 && took < 100000.0)
+					sh->renderToGlassUs.store(sh->renderToGlassUs.load() * 0.9 + took * 0.1);
 				if(rec->pending.fetch_sub(1) == 1)
 					sh->finish(*rec);
 			}];
-			[cb presentDrawable:drawable];
+			if(presentAtUs > 0)
+				[cb presentDrawable:drawable atTime:presentAtUs / 1e6];
+			else
+				[cb presentDrawable:drawable];
 		}
 		rec->committedUs = nowUs();
 		{
@@ -2006,6 +3663,8 @@ struct VideoPipeline::Impl {
 			if(mixed)
 			{
 				shared->c.framesEnhanced++;
+				if(nrAgeMs <= 0)
+					shared->c.framesEnhancedExact++;
 				shared->enhanceAge.add(nrAgeMs);
 			}
 		}
@@ -2017,7 +3676,14 @@ struct VideoPipeline::Impl {
 		(void)targetPresentUs;
 		if(enhanceOn)
 		{
-			offerToEnhancer(rec, buf, ty, tc, params, clean, ci);
+			// After the frame's own command buffer: on the GPU the copy comes after the
+			// presented picture. A frame that was held has been offered already.
+			if(!rec->enhanceOffered && !offerToEnhancer(rec, buf, ty, tc, params, clean, ci) && enhance->busy.load())
+			{
+				clearPending();
+				nrPending.buf = CVPixelBufferRetain(buf);
+				nrPending.rec = rec;
+			}
 			CFRelease(ty);
 			CFRelease(tc);
 			CVPixelBufferRelease(buf);
@@ -2247,6 +3913,7 @@ std::unique_ptr<VideoPipeline> VideoPipeline::create(void *metalLayer, const Pip
 	std::promise<void> ready;
 	auto readyFuture = ready.get_future();
 	Impl *raw = impl.get();
+	raw->enhance->wake = [raw] { raw->post([raw] { raw->onEnhancerEvent(); }); };
 	impl->renderThread = std::thread([raw, &ready] { raw->renderThreadMain(&ready); });
 	readyFuture.wait();
 	return std::unique_ptr<VideoPipeline>(new VideoPipeline(std::move(impl)));
@@ -2279,6 +3946,38 @@ VideoPipeline::~VideoPipeline()
 		d->writeCaptured();
 		// A result still on its way lands in the state its callback holds and is dropped there.
 		d->dropEnhanced();
+		{
+			std::lock_guard<std::mutex> lk(d->enhance->m);
+			d->enhance->wake = nullptr;
+		}
+		{
+			// Nothing is told any more; a picture still being measured ends by itself.
+			std::lock_guard<std::mutex> lk(d->motion->m);
+			d->motion->sink = nullptr;
+		}
+		// Whoever was being told has been told when this returns: what the sink reaches may go.
+		dispatch_sync(d->motion->queue, ^{});
+		[d->lastRgbCommandBuffer waitUntilCompleted];
+		for(auto &p : d->due)
+			if(p.f.buf)
+				CVPixelBufferRelease(p.f.buf);
+		for(auto &stage : d->order)
+			if(!stage->shown && stage->f.buf)
+				CVPixelBufferRelease(stage->f.buf);
+		d->order.clear();
+		for(auto &h : d->awaiting)
+			if(h.f.buf)
+				CVPixelBufferRelease(h.f.buf);
+		d->awaiting.clear();
+		d->due.clear();
+		d->lastPicture.reset();
+		if(d->rgbPool)
+			CVPixelBufferPoolRelease(d->rgbPool);
+		for(auto &h : d->held)
+			if(h.f.buf)
+				CVPixelBufferRelease(h.f.buf);
+		d->held.clear();
+		d->clearPending();
 		if(d->keyPool)
 			CVPixelBufferPoolRelease(d->keyPool);
 		DecodedFrame f = d->takeSlot();
@@ -2445,6 +4144,8 @@ void VideoPipeline::setEnhancer(std::shared_ptr<FrameEnhancer> enhancer)
 		if(!d->mixStatesBuilt.exchange(true))
 		{
 			const std::pair<Impl::Frag, MTLPixelFormat> wanted[] = {
+				// The table of EnhanceConfig::guided.
+				{Impl::FragGridBuild, MTLPixelFormatRGBA16Float},
 				{Impl::FragBilinearNr, MTLPixelFormatBGRA8Unorm},
 				{Impl::FragBicubicNr, MTLPixelFormatBGRA8Unorm},
 				{Impl::FragLanczosNr, MTLPixelFormatBGRA8Unorm},
@@ -2479,6 +4180,76 @@ void VideoPipeline::setEnhancer(std::shared_ptr<FrameEnhancer> enhancer)
 	});
 }
 
+void VideoPipeline::setInterpolator(std::shared_ptr<FrameInterpolator> interpolator)
+{
+	Impl *d = impl_.get();
+	// The states a whole R'G'B' picture is drawn with, built here and not on the render
+	// thread, which has frames to show meanwhile.
+	std::vector<std::pair<std::pair<int, MTLPixelFormat>, id<MTLRenderPipelineState>>> built;
+	if(interpolator)
+		for(MTLPixelFormat fmt : {MTLPixelFormatBGRA8Unorm, MTLPixelFormatBGR10A2Unorm, MTLPixelFormatRGBA16Float})
+			built.push_back({{(int)Impl::FragRgb, fmt}, d->makePipeline(Impl::FragRgb, fmt)});
+	d->post([d, interpolator, built] {
+		for(const auto &b : built)
+			if(b.second && !d->pipelines.count(b.first))
+				d->pipelines[b.first] = b.second;
+		d->endGeneration();
+		d->interpolator = interpolator;
+	});
+}
+
+void VideoPipeline::motionCost(double *costMs, uint64_t *skipped) const
+{
+	*costMs = impl_->motion->costUs.load() / 1000.0;
+	*skipped = impl_->motion->skipped.load();
+}
+
+void VideoPipeline::setTurning(bool turning)
+{
+	std::atomic<double> &since = impl_->motion->turnSinceUs;
+	if(!turning)
+		since.store(0);
+	else if(since.load() == 0)
+		since.store(hostTimeUs());
+}
+
+void VideoPipeline::setFrameTap(std::function<void(const uint8_t *grey, int width, int height, double pictureUs)> tap)
+{
+	std::shared_ptr<Impl::MotionState> st = impl_->motion;
+	std::lock_guard<std::mutex> lk(st->m);
+	st->tap = tap;
+}
+
+void VideoPipeline::setWarp(std::function<void(const PictureMotion &)> motion,
+		std::function<void(double pictureUs, double displayUs, float *dx, float *dy)> warp)
+{
+	Impl *d = impl_.get();
+	d->post([d, motion, warp] {
+		d->motionSink = motion;
+		d->warpSource = warp;
+		std::shared_ptr<Impl::MotionState> st = d->motion;
+		{
+			std::lock_guard<std::mutex> lk(st->m);
+			st->sink = motion;
+		}
+		dispatch_async(st->queue, ^{
+			st->last.clear();
+			st->lastUs = 0;
+		});
+	});
+}
+
+void VideoPipeline::setFrameGeneration(int generated)
+{
+	Impl *d = impl_.get();
+	generated = generated < 0 ? 0 : generated > 15 ? 15 : generated;
+	d->post([d, generated] {
+		if(d->generating && !generated)
+			d->endGeneration();
+		d->generating = generated;
+	});
+}
+
 void VideoPipeline::setEnhanceConfig(const EnhanceConfig &config)
 {
 	Impl *d = impl_.get();
@@ -2487,6 +4258,9 @@ void VideoPipeline::setEnhanceConfig(const EnhanceConfig &config)
 		d->enhanceCfg = config;
 		if(was != config.enabled)
 			d->dropEnhanced();
+		// Frames held under the old choice are not kept waiting under the new one.
+		if(!config.wait || !config.enabled)
+			d->flushHeld();
 	});
 }
 

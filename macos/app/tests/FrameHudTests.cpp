@@ -15,6 +15,7 @@ PaceSnapshot steady(double fps = 60.0)
 	PaceSnapshot p;
 	p.fps = fps;
 	p.frame_ms = 1000.0 / fps;
+	p.latency_ms = 9.5;
 	p.budget_ms = 1000.0 / 60.0;
 	p.intervals_ms.assign(120, (float)p.frame_ms);
 	return p;

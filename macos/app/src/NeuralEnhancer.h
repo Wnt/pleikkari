@@ -75,6 +75,7 @@ public:
 	uint64_t errors() const;
 
 private:
+	friend class FrameGenerator;
 	struct Api;
 	struct Core; // the engine and what its callbacks reach; outlives this object
 	NeuralEnhancer(std::unique_ptr<Core> core, std::string description);
@@ -82,6 +83,34 @@ private:
 
 	std::unique_ptr<Core> core_;
 	const std::string description_;
+};
+
+/** Where a run with these options looks for the frame generation weights. */
+std::string frameGenerationWeightsPath(const Options &o);
+/** Empty when the library and the weights are there; otherwise what is missing, for the log. */
+std::string frameGenerationMissing(const std::string &library, const std::string &weights);
+
+/**
+ * NVIDIA's DLSS frame generation network, through the same engine library: of two pictures,
+ * the one between them. Its weights are a file made once from the user's own
+ * nvngx_dlssg.dll (MLX-DLSS's `mlxdlss-weights extract-fg`), framegen.safetensors beside the
+ * neural rendering models.
+ */
+class FrameGenerator : public video::FrameInterpolator
+{
+public:
+	/** Opens the library and loads the weights: not on the main thread. */
+	static std::shared_ptr<FrameGenerator> load(const std::string &library, const std::string &weights, std::string *error);
+	/** Returns at once; the generator, which waits for its pair in flight, ends on a queue of its own. */
+	~FrameGenerator() override;
+
+	bool interpolate(CVPixelBufferRef previous, CVPixelBufferRef current, int count, uint64_t seq, Done done) override;
+	std::string describe() const override { return "DLSS frame generation, float16"; }
+
+private:
+	FrameGenerator(const void *api, void *engine) : api_(api), engine_(engine) {}
+	const void *const api_;
+	void *const engine_;
 };
 
 } // namespace plk::app

@@ -3,7 +3,7 @@
 // What was last picked in the Video menu, kept in the app's own preferences
 // (defaults read fi.madekivi.pleikkari.mac): scaler, SDR colour, HDR on or off, HDR output,
 // HDR brightness, HDR tone mapping, the neural rendering's on or off, network, height,
-// strength and look, the frame rate overlay, and where the picture is beside the pipeline
+// strength, look and whether frames wait for it, the frame rate overlay, and where the picture is beside the pipeline
 // panel.
 // A run uses a saved choice only where its command line gives no option.
 
@@ -26,6 +26,8 @@ struct SavedChoices
 	std::optional<video::SdrColor> sdr_color;
 	std::optional<video::HdrOutput> hdr_output;
 	std::optional<bool> hdr;
+	std::optional<ChiakiVideoResolutionPreset> resolution;
+	std::optional<unsigned> bitrate_kbps;
 	std::optional<int> hdr_brightness; // percent
 	std::optional<video::HdrToneMap> hdr_tone_map;
 	std::optional<bool> fullscreen_sync;
@@ -34,6 +36,10 @@ struct SavedChoices
 	std::optional<int> nr_height;   // 0: the stream's own
 	std::optional<int> nr_strength; // percent
 	std::optional<NrLook> nr_look;
+	std::optional<NrTiming> nr_timing;
+	std::optional<bool> frame_generation;
+	std::optional<bool> camera_warp;
+	std::optional<int> frame_generation_factor;
 	std::optional<bool> fps_overlay;
 	std::optional<bool> panel_beside;
 };
@@ -45,6 +51,8 @@ void saveScaler(video::Scaler scaler, const std::string &domain = kChoicesDomain
 void saveSdrColor(video::SdrColor color, const std::string &domain = kChoicesDomain);
 void saveHdrOutput(video::HdrOutput output, const std::string &domain = kChoicesDomain);
 void saveHdr(bool on, const std::string &domain = kChoicesDomain);
+void saveResolution(ChiakiVideoResolutionPreset resolution, const std::string &domain = kChoicesDomain);
+void saveBitrate(unsigned kbps, const std::string &domain = kChoicesDomain);
 void saveHdrBrightness(int percent, const std::string &domain = kChoicesDomain);
 void saveHdrToneMap(video::HdrToneMap tone_map, const std::string &domain = kChoicesDomain);
 void saveFullscreenSync(bool on, const std::string &domain = kChoicesDomain);
@@ -53,6 +61,10 @@ void saveNrNetwork(NrNetwork network, const std::string &domain = kChoicesDomain
 void saveNrHeight(int height, const std::string &domain = kChoicesDomain);
 void saveNrStrength(int percent, const std::string &domain = kChoicesDomain);
 void saveNrLook(NrLook look, const std::string &domain = kChoicesDomain);
+void saveNrTiming(NrTiming timing, const std::string &domain = kChoicesDomain);
+void saveFrameGeneration(bool on, const std::string &domain = kChoicesDomain);
+void saveCameraWarp(bool on, const std::string &domain = kChoicesDomain);
+void saveFrameGenerationFactor(int factor, const std::string &domain = kChoicesDomain);
 void saveFpsOverlay(bool on, const std::string &domain = kChoicesDomain);
 void savePanelBeside(bool beside, const std::string &domain = kChoicesDomain);
 /** Removes every value. */

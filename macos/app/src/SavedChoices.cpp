@@ -16,6 +16,8 @@ const char *const kScalerKey = "scaler";
 const char *const kSdrColorKey = "sdrColor";
 const char *const kHdrOutputKey = "hdrOutput";
 const char *const kHdrKey = "hdr";
+const char *const kResolutionKey = "streamResolution";
+const char *const kBitrateKey = "streamBitrate";
 const char *const kHdrBrightnessKey = "hdrBrightness";
 const char *const kHdrToneMapKey = "hdrToneMap";
 const char *const kFullscreenSyncKey = "fullscreenSync";
@@ -25,6 +27,10 @@ const char *const kNrHeightKey = "nrHeight";
 const char *const kNrStrengthKey = "nrStrength";
 const char *const kNrLookKey = "nrLook";
 const char *const kFpsOverlayKey = "fpsOverlay";
+const char *const kNrTimingKey = "nrTiming";
+const char *const kFrameGenerationKey = "frameGeneration";
+const char *const kCameraWarpKey = "cameraWarp";
+const char *const kFrameGenerationFactorKey = "frameGenerationFactor";
 const char *const kPanelPictureKey = "panelPicture";
 
 // A whole number within a range; false for anything else.
@@ -93,6 +99,16 @@ SavedChoices loadSavedChoices(const std::string &domain)
 	video::HdrOutput output;
 	if(readString(domain, kHdrOutputKey, &s) && video::parseHdrOutput(s, &output))
 		c.hdr_output = output;
+	ChiakiVideoResolutionPreset resolution;
+	if(readString(domain, kResolutionKey, &s) && parseResolution(s, &resolution))
+		c.resolution = resolution;
+	if(readString(domain, kBitrateKey, &s))
+	{
+		char *end = nullptr;
+		const unsigned long kbps = strtoul(s.c_str(), &end, 10);
+		if(end && !*end && kbps >= 1000 && kbps <= 100000)
+			c.bitrate_kbps = (unsigned)kbps;
+	}
 	if(readString(domain, kHdrKey, &s) && (s == "on" || s == "off"))
 		c.hdr = s == "on";
 	if(readString(domain, kHdrBrightnessKey, &s))
@@ -120,8 +136,17 @@ SavedChoices loadSavedChoices(const std::string &domain)
 	NrLook look;
 	if(readString(domain, kNrLookKey, &s) && parseNrLook(s, &look))
 		c.nr_look = look;
+	if(readString(domain, kCameraWarpKey, &s) && (s == "on" || s == "off"))
+		c.camera_warp = s == "on";
+	if(readString(domain, kFrameGenerationKey, &s) && (s == "on" || s == "off"))
+		c.frame_generation = s == "on";
+	if(readString(domain, kFrameGenerationFactorKey, &s) && (s == "2" || s == "4"))
+		c.frame_generation_factor = s == "4" ? 4 : 2;
 	if(readString(domain, kFpsOverlayKey, &s) && (s == "on" || s == "off"))
 		c.fps_overlay = s == "on";
+	NrTiming timing;
+	if(readString(domain, kNrTimingKey, &s) && parseNrTiming(s, &timing))
+		c.nr_timing = timing;
 	if(readString(domain, kPanelPictureKey, &s) && (s == "beside" || s == "under"))
 		c.panel_beside = s == "beside";
 	return c;
@@ -187,6 +212,36 @@ void saveNrLook(NrLook look, const std::string &domain)
 	writeString(domain, kNrLookKey, toString(look));
 }
 
+void saveNrTiming(NrTiming timing, const std::string &domain)
+{
+	writeString(domain, kNrTimingKey, toString(timing));
+}
+
+void saveResolution(ChiakiVideoResolutionPreset resolution, const std::string &domain)
+{
+	writeString(domain, kResolutionKey, resolutionName(resolution));
+}
+
+void saveBitrate(unsigned kbps, const std::string &domain)
+{
+	writeString(domain, kBitrateKey, std::to_string(kbps).c_str());
+}
+
+void saveFrameGeneration(bool on, const std::string &domain)
+{
+	writeString(domain, kFrameGenerationKey, on ? "on" : "off");
+}
+
+void saveCameraWarp(bool on, const std::string &domain)
+{
+	writeString(domain, kCameraWarpKey, on ? "on" : "off");
+}
+
+void saveFrameGenerationFactor(int factor, const std::string &domain)
+{
+	writeString(domain, kFrameGenerationFactorKey, factor == 4 ? "4" : "2");
+}
+
 void saveFpsOverlay(bool on, const std::string &domain)
 {
 	writeString(domain, kFpsOverlayKey, on ? "on" : "off");
@@ -199,8 +254,8 @@ void savePanelBeside(bool beside, const std::string &domain)
 
 void forgetSavedChoices(const std::string &domain)
 {
-	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kHdrBrightnessKey, kHdrToneMapKey,
-				kFullscreenSyncKey, kNrKey, kNrNetworkKey, kNrHeightKey, kNrStrengthKey, kNrLookKey, kFpsOverlayKey,
+	for(const char *key : { kScalerKey, kSdrColorKey, kHdrOutputKey, kHdrKey, kResolutionKey, kBitrateKey, kHdrBrightnessKey, kHdrToneMapKey,
+				kFullscreenSyncKey, kNrKey, kNrNetworkKey, kNrHeightKey, kNrStrengthKey, kNrLookKey, kNrTimingKey, kCameraWarpKey, kFrameGenerationKey, kFrameGenerationFactorKey, kFpsOverlayKey,
 				kPanelPictureKey })
 		writeString(domain, key, nullptr);
 }
@@ -209,6 +264,16 @@ std::string applySavedChoices(const SavedChoices &saved, Options &o)
 {
 	std::string taken;
 	auto note = [&taken](const std::string &what) { taken += (taken.empty() ? "" : ", ") + what; };
+	if(!o.resolution && saved.resolution)
+	{
+		o.resolution = saved.resolution;
+		note(std::string("stream resolution ") + resolutionName(*saved.resolution));
+	}
+	if(!o.bitrate_kbps && saved.bitrate_kbps)
+	{
+		o.bitrate_kbps = saved.bitrate_kbps;
+		note("stream bitrate " + std::to_string(*saved.bitrate_kbps) + " kbit/s");
+	}
 	if(!o.scaler && saved.scaler)
 	{
 		o.scaler = saved.scaler;
@@ -263,6 +328,26 @@ std::string applySavedChoices(const SavedChoices &saved, Options &o)
 	{
 		o.nr_look = saved.nr_look;
 		note(std::string("neural rendering look ") + toString(*saved.nr_look));
+	}
+	if(!o.nr_timing && saved.nr_timing)
+	{
+		o.nr_timing = saved.nr_timing;
+		note(std::string("neural rendering timing ") + toString(*saved.nr_timing));
+	}
+	if(!o.camera_warp && saved.camera_warp)
+	{
+		o.camera_warp = saved.camera_warp;
+		note(*saved.camera_warp ? "camera warp on" : "camera warp off");
+	}
+	if(!o.frame_generation_factor && saved.frame_generation_factor)
+	{
+		o.frame_generation_factor = saved.frame_generation_factor;
+		note("frame generation " + std::to_string(*saved.frame_generation_factor) + "x");
+	}
+	if(!o.frame_generation && saved.frame_generation)
+	{
+		o.frame_generation = saved.frame_generation;
+		note(*saved.frame_generation ? "frame generation on" : "frame generation off");
 	}
 	if(!o.fps_overlay && saved.fps_overlay)
 	{

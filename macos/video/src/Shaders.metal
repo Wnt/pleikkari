@@ -44,10 +44,56 @@ struct Params {
 	                     // display's headroom, both in the units of the scaled linear light
 	float2 sdrMap;       // x > 0: a PQ picture, and its linear light (1.0 = 10000 nits) times x
 	                     // has SDR white at 1.0; see sdr_rendition(). y is not used
+	float2 warp;         // the picture is shown moved by this much of its width and height
+	                     // (camera warp, VideoPipeline::setWarp): what moves in at an edge is
+	                     // the picture mirrored there
+	float2 unusedWarp;
 };
 
 constexpr sampler kLinear(filter::linear, address::clamp_to_edge, coord::normalized);
+
 constexpr sampler kNearest(filter::nearest, address::clamp_to_edge, coord::normalized);
+
+// Where in the picture (0...1 each way) the pixel at `uv` of the target looks: the picture
+// moved by p.warp, and beyond an edge what lies as far inside it.
+//
+// Not everything in a picture slides when the camera turns: the character the camera
+// follows, a crosshair and a HUD stay where they are on screen. `fixed` says where they are
+// (1: fixed), as the pipeline learned it from the pictures, and `centre` the same point for
+// point for the middle 2/15 of the picture each way, where a crosshair is. A pixel that
+// shows something fixed is not moved, and neither is one that would be given something
+// fixed from where it looks: a character is not smeared over what is beside it.
+static inline float centre_fixed(float2 uv, texture2d<float> centre)
+{
+	float2 c = (uv - (0.5 - 1.0 / 15.0)) * 7.5;
+	return all(c > 0.0) && all(c < 1.0) ? centre.sample(kLinear, c).r : 0.0;
+}
+
+static inline float2 warped(float2 uv, constant Params &p, texture2d<float> fixed, texture2d<float> centre)
+{
+	if(all(p.warp == 0.0))
+		return uv;
+	// Towards the edge the picture comes in from, there is nothing beyond it to show: the
+	// shift is let go to nothing over the last three times its own size, so the picture is
+	// stretched a little there. (The edge repeated outwards drew streaks a twentieth of the
+	// picture wide; the picture mirrored there put a second tree at the edge.)
+	float2 band = max(abs(p.warp) * 3.0, float2(1e-5));
+	float2 from_edge = float2(p.warp.x > 0.0 ? uv.x : 1.0 - uv.x, p.warp.y > 0.0 ? uv.y : 1.0 - uv.y);
+	float2 shift = p.warp * smoothstep(float2(0.0), band, from_edge);
+	// And towards what is fixed to the screen (`fixed`: 1 at it, 8/255 less for each point
+	// of a 192 x 108 map away from it): nothing at it, all of the shift from twice the
+	// shift's own length away, at least three points. Never steeper than that, or what is
+	// shown would fold over itself.
+	float away = (1.0 - fixed.sample(kLinear, uv).r) * (255.0 / 8.0);
+	float reach = max(3.0, 2.0 * length(shift * float2(192.0, 108.0)));
+	shift *= smoothstep(0.0, reach, away);
+	// The middle, point for point (a crosshair): all or nothing, here and where this pixel
+	// would fetch from.
+	float moved = (1.0 - centre_fixed(uv, centre)) * (1.0 - centre_fixed(uv - shift, centre));
+	// And what is fixed at the picture's edge (a HUD; `fixed`'s second value): the same.
+	moved *= (1.0 - smoothstep(0.4, 0.6, fixed.sample(kLinear, uv).g)) * (1.0 - smoothstep(0.4, 0.6, fixed.sample(kLinear, uv - shift).g));
+	return clamp(uv - shift * moved, 0.0, 1.0);
+}
 
 // SMPTE ST 2084 EOTF: PQ code value -> linear light, 1.0 = 10000 nits.
 static inline float3 pq_eotf(float3 e)
@@ -236,9 +282,10 @@ static inline float lanczos3(texture2d<float> tex, float2 uv, float2 size)
 
 fragment float4 fs_bilinear(VSOut in [[stage_in]],
 		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
 		constant Params &p [[buffer(0)]])
 {
-	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float2 uv = warped(in.uv, p, tfixed, tcentre) * p.uvScale + p.uvOffset;
 	float y = ty.sample(kLinear, uv).r;
 	float2 c = tc.sample(kLinear, chroma_uv(uv, p)).rg;
 	return to_rgb(y, c, p);
@@ -246,9 +293,10 @@ fragment float4 fs_bilinear(VSOut in [[stage_in]],
 
 fragment float4 fs_bicubic(VSOut in [[stage_in]],
 		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
 		constant Params &p [[buffer(0)]])
 {
-	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float2 uv = warped(in.uv, p, tfixed, tcentre) * p.uvScale + p.uvOffset;
 	float y = catmull_rom(ty, uv, p.lumaSize).r;
 	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
 	return to_rgb(y, c, p);
@@ -256,9 +304,10 @@ fragment float4 fs_bicubic(VSOut in [[stage_in]],
 
 fragment float4 fs_lanczos(VSOut in [[stage_in]],
 		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
 		constant Params &p [[buffer(0)]])
 {
-	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float2 uv = warped(in.uv, p, tfixed, tcentre) * p.uvScale + p.uvOffset;
 	float y = lanczos3(ty, uv, p.lumaSize);
 	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
 	return to_rgb(y, c, p);
@@ -283,7 +332,84 @@ struct NrParams {
 	float2 motion;       // difference where the change starts (x) and ends (y) fading out
 	float strength;      // how much of the change is added; the fade by age is folded in
 	float split;         // > 0: left of this u the picture stays as it is (comparison)
+	float guided;        // > 0: the change's tone comes from the grid of texture(4), see below
+	float unused;
 };
+
+// ---- the guided mix: the enhancer's change as a function of place and brightness --------
+//
+// A change kept per pixel belongs to where things were in the key frame; laid over a later
+// frame it trails behind whatever moved. But most of what the network does to a picture is
+// tone: it lifts or lowers areas by how bright they are and where they are. That part can
+// be kept as a small table instead, the mean change in each of kGridCols x kGridRows places
+// for each of kGridBins brightnesses (a bilateral grid, as in Gharbi et al., "Deep Bilateral
+// Learning", 2017), and looked up for any later frame with that frame's own pixel: a bright
+// thing that moved takes the bright change with it, and the dark place it left gets the
+// dark one. Only the fine detail on top of the tone, the change minus the table's, is still
+// tied to the key frame's pixels, and it is added where the picture has not moved.
+//   texture(4): the grid, kGridCols * kGridBins wide and kGridRows high: for bin b, column
+//               c and row r the texel (b * kGridCols + c, r) holds the sum of the changes
+//               (rgb) and of their weights (a)
+
+constant int kGridCols = 32;
+constant int kGridRows = 18;
+constant int kGridBins = 8;
+
+struct GridParams {
+	float4 lumaWeights;  // xyz: weights of R', G', B' in luma
+	float blend;         // > 0: this much of the new table, the rest the one before (steadier)
+	float unused0, unused1, unused2;
+};
+
+// One texel of the table: the weighted mean change of the key frame's pixels around its
+// place whose brightness is near its bin. 12 x 12 taps over two cells each way.
+fragment float4 fs_grid_build(VSOut in [[stage_in]],
+		texture2d<float> tkey [[texture(0)]], texture2d<float> tenh [[texture(1)]],
+		texture2d<float> tprev [[texture(2)]], constant GridParams &g [[buffer(0)]])
+{
+	int ix = clamp(int(in.uv.x * float(kGridCols * kGridBins)), 0, kGridCols * kGridBins - 1);
+	int row = clamp(int(in.uv.y * float(kGridRows)), 0, kGridRows - 1);
+	int bin = ix / kGridCols;
+	int col = ix - bin * kGridCols;
+	float centre = float(bin) / float(kGridBins - 1);
+	float3 sum = float3(0.0);
+	float weights = 0.0;
+	const int kTaps = 12;
+	for(int j = 0; j < kTaps; j++)
+	{
+		for(int i = 0; i < kTaps; i++)
+		{
+			float2 o = (float2(i, j) + 0.5) / float(kTaps) * 2.0 - 1.0;
+			float2 uv = (float2(col, row) + 0.5 + o) / float2(kGridCols, kGridRows);
+			if(any(uv < float2(0.0)) || any(uv > float2(1.0)))
+				continue;
+			float3 k = tkey.sample(kLinear, uv).rgb;
+			float3 e = tenh.sample(kLinear, uv).rgb;
+			float w = (1.0 - abs(o.x)) * (1.0 - abs(o.y))
+					* max(0.0, 1.0 - abs(dot(k, g.lumaWeights.xyz) - centre) * float(kGridBins - 1));
+			sum += (e - k) * w;
+			weights += w;
+		}
+	}
+	float4 now = float4(sum, weights);
+	if(g.blend > 0.0)
+		now = mix(tprev.read(uint2(ix, row)), now, g.blend);
+	return now;
+}
+
+// The table's change for a pixel at `uv` whose brightness is `luma`.
+static inline float3 grid_change(texture2d<float> tgrid, float2 uv, float luma)
+{
+	float b = saturate(luma) * float(kGridBins - 1);
+	float b0 = min(floor(b), float(kGridBins - 2));
+	// Within a bin's own columns: the texels beside them belong to another brightness.
+	float u = clamp(uv.x * float(kGridCols), 0.5, float(kGridCols) - 0.5);
+	float v = clamp(uv.y * float(kGridRows), 0.5, float(kGridRows) - 0.5) / float(kGridRows);
+	float4 lo = tgrid.sample(kLinear, float2((u + b0 * float(kGridCols)) / float(kGridCols * kGridBins), v));
+	float4 hi = tgrid.sample(kLinear, float2((u + (b0 + 1.0) * float(kGridCols)) / float(kGridCols * kGridBins), v));
+	float4 s = mix(lo, hi, b - b0);
+	return s.w > 1e-4 ? s.rgb / s.w : float3(0.0);
+}
 
 // Adds `d`, a change in the code values the enhancer works in, to a pixel's code values.
 static inline float3 nr_apply(float3 code, float3 d, constant Params &p)
@@ -307,7 +433,7 @@ static inline float3 nr_apply(float3 code, float3 d, constant Params &p)
 }
 
 static inline float4 nr_mix(float3 code, float2 uv, texture2d<float> ty, texture2d<float> tc,
-		texture2d<float> tkey, texture2d<float> tenh, constant Params &p, constant NrParams &n)
+		texture2d<float> tkey, texture2d<float> tenh, texture2d<float> tgrid, constant Params &p, constant NrParams &n)
 {
 	bool hdr = p.sdrMap.x > 0.0;
 	// How far this frame is from the key frame, at the key frame's own resolution: this
@@ -319,6 +445,17 @@ static inline float4 nr_mix(float3 code, float2 uv, texture2d<float> ty, texture
 	float2 first = floor(pos);
 	float2 f = pos - first;
 	float diff = 0.0;
+	// The change, brought to this pixel (after Veyra-NRVideo's residual composite): the
+	// enhancer worked on a smaller picture, and each of the four key texels around this
+	// pixel has a change of its own. A plain bilinear mix of the four lays a change made to
+	// one side of an edge over the other side too. Here a texel counts for less the less its
+	// key colour is the colour of this very pixel, taken from the stream at its full
+	// resolution, so the change follows the picture's own edges. Measured against a result
+	// made at the stream's own size it is about 1 % closer than the plain mix, at the same
+	// cost (0.32 ms a frame either way), so it is the only way.
+	float3 here = hdr ? saturate(sdr_rendition(code, p)) : code;
+	float3 guidedChange = float3(0.0);
+	float guidedWeight = 0.0;
 	for(int j = 0; j < 2; j++)
 	{
 		for(int i = 0; i < 2; i++)
@@ -332,10 +469,23 @@ static inline float4 nr_mix(float3 code, float2 uv, texture2d<float> ty, texture
 			float3 then = tkey.sample(kNearest, kuv).rgb;
 			float w = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
 			diff += dot(abs(now - then), n.lumaWeights.xyz) * w;
+			float gw = w / (1.0 + 16.0 * dot(abs(here - then), n.lumaWeights.xyz));
+			guidedChange += (tenh.sample(kNearest, kuv).rgb - then) * gw;
+			guidedWeight += gw;
 		}
 	}
 	float keep = 1.0 - smoothstep(n.motion.x, n.motion.y, diff);
-	float3 change = tenh.sample(kLinear, uv).rgb - tkey.sample(kLinear, uv).rgb;
+	float3 change = guidedChange / max(guidedWeight, 1e-6);
+	if(n.guided > 0.0)
+	{
+		// Tone from the table, by this frame's own pixel; and of the key frame's pixel here
+		// only what its change has beyond the table's, where the picture has not moved.
+		float3 keyHere = tkey.sample(kLinear, uv).rgb;
+		float3 tone = grid_change(tgrid, uv, dot(here, n.lumaWeights.xyz));
+		float3 detail = change - grid_change(tgrid, uv, dot(keyHere, n.lumaWeights.xyz));
+		change = tone + keep * detail;
+		keep = 1.0;
+	}
 	if(n.split > 0.0)
 	{
 		// The comparison: nothing left of the line, and the line itself, in SDR white.
@@ -350,38 +500,50 @@ static inline float4 nr_mix(float3 code, float2 uv, texture2d<float> ty, texture
 
 fragment float4 fs_bilinear_nr(VSOut in [[stage_in]],
 		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
-		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]],
+		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]], texture2d<float> tgrid [[texture(4)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
 		constant Params &p [[buffer(0)]], constant NrParams &n [[buffer(1)]])
 {
-	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float2 uv = warped(in.uv, p, tfixed, tcentre) * p.uvScale + p.uvOffset;
 	float y = ty.sample(kLinear, uv).r;
 	float2 c = tc.sample(kLinear, chroma_uv(uv, p)).rg;
-	return nr_mix(code_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+	return nr_mix(code_rgb(y, c, p), warped(in.uv, p, tfixed, tcentre), ty, tc, tkey, tenh, tgrid, p, n);
 }
 
 fragment float4 fs_bicubic_nr(VSOut in [[stage_in]],
 		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
-		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]],
+		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]], texture2d<float> tgrid [[texture(4)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
 		constant Params &p [[buffer(0)]], constant NrParams &n [[buffer(1)]])
 {
-	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float2 uv = warped(in.uv, p, tfixed, tcentre) * p.uvScale + p.uvOffset;
 	float y = catmull_rom(ty, uv, p.lumaSize).r;
 	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
-	return nr_mix(code_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+	return nr_mix(code_rgb(y, c, p), warped(in.uv, p, tfixed, tcentre), ty, tc, tkey, tenh, tgrid, p, n);
 }
 
 fragment float4 fs_lanczos_nr(VSOut in [[stage_in]],
 		texture2d<float> ty [[texture(0)]], texture2d<float> tc [[texture(1)]],
-		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]],
+		texture2d<float> tkey [[texture(2)]], texture2d<float> tenh [[texture(3)]], texture2d<float> tgrid [[texture(4)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
 		constant Params &p [[buffer(0)]], constant NrParams &n [[buffer(1)]])
 {
-	float2 uv = in.uv * p.uvScale + p.uvOffset;
+	float2 uv = warped(in.uv, p, tfixed, tcentre) * p.uvScale + p.uvOffset;
 	float y = lanczos3(ty, uv, p.lumaSize);
 	float2 c = catmull_rom(tc, chroma_uv(uv, p), p.chromaSize).rg;
-	return nr_mix(code_rgb(y, c, p), in.uv, ty, tc, tkey, tenh, p, n);
+	return nr_mix(code_rgb(y, c, p), warped(in.uv, p, tfixed, tcentre), ty, tc, tkey, tenh, tgrid, p, n);
 }
 
 // 1:1 copy of an RGB texture into the letterbox rect (MetalFX output -> drawable).
+// A whole picture in the stream's own R'G'B' code values (frame generation works on such
+// pictures and returns one): from here on it is treated as a decoded frame's pixel is.
+fragment float4 fs_rgb(VSOut in [[stage_in]], texture2d<float> t [[texture(0)]],
+		texture2d<float> tfixed [[texture(6)]], texture2d<float> tcentre [[texture(7)]],
+		constant Params &p [[buffer(0)]])
+{
+	return finish(saturate(t.sample(kLinear, warped(in.uv, p, tfixed, tcentre)).rgb), p);
+}
+
 fragment float4 fs_copy(VSOut in [[stage_in]], texture2d<float> t [[texture(0)]])
 {
 	return float4(t.sample(kNearest, in.uv).rgb, 1.0);

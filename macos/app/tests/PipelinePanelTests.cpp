@@ -74,14 +74,14 @@ PLK_TEST(panel_pages_and_cards)
 	CHECK(m.pages[2].title == "Display");
 	CHECK(pageOfCard(m, "nr") == 0);
 	CHECK(pageOfCard(m, "scaling") == 0);
-	CHECK(pageOfCard(m, "hdr-stream") == 1);
+	CHECK(pageOfCard(m, "hdr-stream") == 0);
 	CHECK(pageOfCard(m, "hdr-picture") == 1);
 	CHECK(pageOfCard(m, "sdr-colour") == 1);
 	CHECK(pageOfCard(m, "fullscreen") == 2);
 	CHECK(pageOfCard(m, "fps-overlay") == 2);
 	CHECK(pageOfCard(m, "analysis") == 2);
 	CHECK(pageOfCard(m, "panel") == 2);
-	CHECK(pageOfCard(m, "frame-generation") == -1);
+	CHECK(pageOfCard(m, "frame-generation") == 0);
 	// Every stage of the order has a card to show.
 	for(const PanelStage &s : m.order)
 		CHECK(s.page == pageOfCard(m, s.card) && s.page >= 0);
@@ -141,7 +141,7 @@ PLK_TEST(panel_rows_show_the_state)
 	PanelState s = state();
 	s.view.scaler = video::Scaler::Lanczos;
 	s.view.nr_network = NrNetwork::HT;
-	s.view.nr_height = 540;
+	s.view.nr_height = 576;
 	s.view.nr_look = NrLook::Cinematic;
 	s.view.nr_strength = kNrStrengthMax;
 	s.view.nr_compare = true;
@@ -155,7 +155,7 @@ PLK_TEST(panel_rows_show_the_state)
 	CHECK(nr.has_toggle && nr.on && nr.toggle.command == PanelCommand::ToggleNr);
 	CHECK(nr.badge == "Experimental");
 	CHECK(selectedTag(*row(nr, "Model")) == (int)NrNetwork::HT);
-	CHECK(selectedTag(*row(nr, "Processing size")) == 540);
+	CHECK(selectedTag(*row(nr, "Processing size")) == 576);
 	CHECK(selectedTag(*row(nr, "Look")) == (int)NrLook::Cinematic);
 	const PanelRow &strength = *row(nr, "Strength");
 	CHECK(strength.kind == PanelRow::Kind::Stepper);
@@ -193,7 +193,7 @@ PLK_TEST(panel_reset_brings_back_the_defaults)
 {
 	PanelState s = state();
 	s.view.nr = false;
-	s.view.nr_network = NrNetwork::HT;
+	s.view.nr_network = NrNetwork::Small;
 	s.view.nr_height = 0;
 	s.view.nr_strength = 130;
 	s.view.nr_look = NrLook::Natural;

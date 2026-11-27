@@ -43,7 +43,7 @@ final class Engine: @unchecked Sendable {
       func deliver(_ message: UnsafePointer<CChar>?) {
         var result = plk_nr_result(
           seq: seq, output: output.map { Unmanaged.passUnretained($0.buffer) },
-          total_ms: milliseconds, error: message)
+          total_ms: milliseconds, error: message, index: 0, count: 1)
         callback(context, &result)
       }
       if let error { error.withCString { deliver($0) } } else { deliver(nil) }
@@ -127,11 +127,13 @@ final class Engine: @unchecked Sendable {
     Task.detached(priority: .userInitiated) { [self] in
       var output: MLXPixelBuffer?
       var failure: String?
+      await GPUGate.shared.enter()
       do {
         output = try await render(input, controls: controls, reset: reset)
       } catch {
         failure = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
       }
+      await GPUGate.shared.leave()
       let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
       // Idle before the result is delivered: whoever learns of it may offer the next
       // frame at once, from the callback or from another thread, and is not refused.

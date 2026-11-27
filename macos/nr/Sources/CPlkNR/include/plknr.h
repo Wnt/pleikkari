@@ -21,9 +21,10 @@ extern "C" {
 
 // Bumped when a struct or a function below changes incompatibly; the app refuses a
 // library whose version differs.
-#define PLK_NR_ABI_VERSION 2u
+#define PLK_NR_ABI_VERSION 4u
 
 typedef struct plk_nr_engine plk_nr_engine;
+typedef struct plk_fg_engine plk_fg_engine;
 
 // The look, as MLX-DLSS's rendering profiles name it.
 enum {
@@ -56,6 +57,10 @@ typedef struct {
 	CVPixelBufferRef output;  // NULL on error; valid during the callback, CFRetain to keep
 	double total_ms;          // submit to result, wall clock
 	const char *error;        // NULL on success; valid during the callback
+	// Frame generation only: which of the `count` frames between the two this one is, from
+	// 0 on (the earliest first). 0 and 1 for a neural rendering result, 0 and 0 for a pair
+	// that failed.
+	uint32_t index, count;
 } plk_nr_result;
 
 typedef void (*plk_nr_callback)(void *context, const plk_nr_result *result);
@@ -85,6 +90,29 @@ void plk_nr_set_controls(plk_nr_engine *engine, const plk_nr_controls *controls)
 
 // Waits for a frame in flight (its callback still runs), then frees the engine.
 void plk_nr_destroy(plk_nr_engine *engine);
+
+// ---- frame generation -------------------------------------------------------------------
+//
+// NVIDIA's DLSS frame generation network: of two frames, the picture halfway between them.
+// The weights are a .safetensors file made from the user's own nvngx_dlssg.dll (MLX-DLSS's
+// `mlxdlss-weights extract-fg`). It shares the GPU with a plk_nr_engine in the same
+// process: the two never evaluate at the same time, one waits for the other.
+
+// Loads the weights: call it off the render thread. Returns NULL and fills `error` on failure.
+plk_fg_engine *plk_fg_create(const char *weights_path, int half_precision, char *error, size_t error_size);
+
+// Offers two frames of equal size and pixel format (kCVPixelFormatType_32BGRA or
+// kCVPixelFormatType_64RGBAHalf), IOSurface-backed, the earlier one first, and asks for
+// `count` frames evenly spaced between them (1: the one halfway; 3: at a quarter, a half
+// and three quarters; up to 15). Returns 1 when they were taken: the callback is then
+// called once for each generated frame, in order (the result's index and count say which),
+// or exactly once without an output when the pair failed. Returns 0 when the generator is
+// busy or the buffers are unusable. Never blocks.
+int plk_fg_interpolate(plk_fg_engine *engine, CVPixelBufferRef previous, CVPixelBufferRef current, int count,
+		uint64_t seq, plk_nr_callback callback, void *context);
+
+// Waits for a pair in flight (its callback still runs), then frees the generator.
+void plk_fg_destroy(plk_fg_engine *engine);
 
 #endif  // PLKNR_TYPES_ONLY
 

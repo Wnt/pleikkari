@@ -8,6 +8,8 @@ add_library(plk-host STATIC
 	AudioOutput.h
 	AwdlGuard.cpp
 	AwdlGuard.h
+	AwdlHelperClient.h
+	AwdlHelperClient.mm
 	FrameRing.h
 	Playout.cpp
 	Playout.h
@@ -21,6 +23,14 @@ add_library(plk-host STATIC
 set_target_properties(plk-host PROPERTIES ${PLK_HOST_CXX_PROPERTIES})
 target_include_directories(plk-host PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(plk-host PRIVATE -Wall -Wextra)
+# The AWDL helper's client: SMAppService is Objective-C. The protocol header is the helper's.
+set_source_files_properties(AwdlHelperClient.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+set_target_properties(plk-host PROPERTIES OBJCXX_STANDARD 17 OBJCXX_STANDARD_REQUIRED ON)
+target_include_directories(plk-host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../awdl-helper")
+if(PLK_TEAM_ID)
+	set_property(SOURCE AwdlHelperClient.mm APPEND PROPERTY COMPILE_DEFINITIONS
+		"PLK_AWDL_HELPER_REQUIREMENT=\"identifier \\\"fi.madekivi.pleikkari.awdl-helper\\\" and anchor apple generic and certificate leaf[subject.OU] = \\\"${PLK_TEAM_ID}\\\"\"")
+endif()
 # memset_s(), which the compiler may not optimise away, for wiping registration keys.
 target_compile_definitions(plk-host PRIVATE __STDC_WANT_LIB_EXT1__=1)
 target_link_libraries(plk-host PUBLIC
@@ -28,6 +38,8 @@ target_link_libraries(plk-host PUBLIC
 	"-framework AudioToolbox"
 	"-framework CoreAudio"
 	"-framework CoreFoundation"
+	"-framework Foundation"
+	"-framework ServiceManagement"
 	"-framework SystemConfiguration")
 
 add_executable(plk-host-probe tools/plk-host-probe.cpp)

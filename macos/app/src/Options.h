@@ -25,7 +25,7 @@
 
 namespace plk::app {
 
-enum class Command { Help, Stream, Replay, List };
+enum class Command { Help, Stream, Replay, List, AwdlHelper };
 
 // Neural rendering (macos/nr): the two networks of an NVIDIA DLSS neural rendering model.
 // The small one is NVIDIA's own default and about twice as fast; HT is the original one.
@@ -39,11 +39,28 @@ const char *toString(NrLook look);
 bool parseNrLook(const std::string &s, NrLook *out);
 NrLook nextNrLook(NrLook look);
 
+// When the network's result reaches the screen (video::EnhanceConfig::wait).
+//   Wait    a frame is held for the result of itself: nothing ghosts, and every picture is
+//           later by what a result takes
+//   Beside  every frame at once, with the result of an earlier one: no delay, and what
+//           moves ghosts
+// A third way, a new picture at once and its repeat with the picture's own result, was
+// tried on 2026-11-27 and taken out the same day: the picture alternated between the plain
+// and the enhanced one thirty times a second, which the user found terrible to look at.
+//   Guided  every frame at once, as Beside, but the result's tone is looked up by each
+//           frame's own pixels (video::EnhanceConfig::guided), so it follows what moves; only
+//           its fine detail is tied to where things were, and shows where the picture is still
+enum class NrTiming { Beside, Wait, Guided };
+const char *toString(NrTiming timing);
+bool parseNrTiming(const std::string &s, NrTiming *out);
+
 struct Options
 {
 	Command command = Command::Help;
+	bool no_command = false;         // started with no command at all, as from the Finder
 	std::string nickname;            // stream
 	std::string host;                // stream
+	std::string awdl_helper_action;  // awdl-helper: status, register, unregister
 	std::string replay_path;         // replay
 	std::string profile;             // Qt settings profile (com.chiaki.Chiaki-<profile>.plist)
 
@@ -77,6 +94,10 @@ struct Options
 	std::optional<int> nr_height;           // height of the picture the network gets; 0 = the stream's
 	std::optional<int> nr_strength;         // percent of the network's change that is shown
 	std::optional<NrLook> nr_look;          // default standard
+	std::optional<bool> camera_warp;        // the picture moved by what the right stick asked for; default off
+	std::optional<bool> frame_generation;   // the picture between two of the game's; default off
+	std::optional<int> frame_generation_factor; // 2 or 4 times the game's pictures; default 2
+	std::optional<NrTiming> nr_timing;      // default wait in a window
 	// The frame rate over the picture's corner, and where the picture is while the pipeline
 	// panel is open (PipelinePanel.h): both in the Video menu and remembered too.
 	std::optional<bool> fps_overlay;        // default on in a window
@@ -113,6 +134,12 @@ struct Options
 
 	double retry_window_s = 20;      // restart a session that ends before it connects, for this long
 	double seconds = 0;              // stop after N seconds (0 = run until closed/ended)
+	std::string stick_sweep;         // move the right stick through set profiles and record what the picture did, to PREFIX-*.csv
+	std::string record_input;        // record what the controller sends, how the picture moved and the video, to PREFIX-*
+	std::string play_input;          // play a recorded PREFIX-input.csv to the console as the controller, then end
+	std::string control_socket;      // serve pictures to, and take the controller from, a program on this socket
+	bool probe_hold_l2 = false;      // --lag-probe and --stick-sweep hold L2 down meanwhile (aiming)
+	int lag_probe = 0;               // measure the input lag N times with the right stick, then end
 	bool loop = false;               // replay: start over at the end
 };
 
@@ -148,9 +175,17 @@ constexpr int kNrStrengthDefault = 100;
 constexpr int kNrStrengthStep = 10;
 int stepNrStrength(int percent, int direction);
 // The heights the menu offers for the picture the network is given (0: the stream's own).
-// The cost of a frame grows with its pixels: 720 is half of 1080's.
-constexpr int kNrHeights[] = { 540, 720, 0 };
-constexpr int kNrHeightDefault = 720;
+// The cost of a frame grows with its pixels. Multiples of 64, the network's own grid: 576
+// (1024x576, which needs no padding at all) is faster than 540, and 704 is the largest that
+// does every frame of a 60 fps stream on an M5 Max (13.4 ms a result, measured 2026-11-27).
+// Not 720: at exactly 1280x720 the network changes the picture about twice as much, and
+// darker, as at 704 or 768 or any other size tried (mean change of 5.0 eight-bit levels
+// against 2.0 to 2.7), for a reason not found.
+// The HT network, the one whose change is worth having (the user's judgement, 2026-11-27),
+// does every frame of a 60 fps stream at 448 on an M5 Max (12.5 ms a result; 15.5 at 512,
+// 17.5 at 576, 25 at 704), so that is the default.
+constexpr int kNrHeights[] = { 448, 576, 704, 0 };
+constexpr int kNrHeightDefault = 448;
 constexpr int kNrHeightMin = 360;
 constexpr int kNrHeightMax = 2160;
 
@@ -164,10 +199,14 @@ struct ViewChoices
 	video::HdrToneMap hdr_tone_map = video::HdrToneMap::App;
 	bool fullscreen_sync = true;
 	bool nr = true;
-	NrNetwork nr_network = NrNetwork::Small;
+	NrNetwork nr_network = NrNetwork::HT;
 	int nr_height = kNrHeightDefault;
 	int nr_strength = kNrStrengthDefault;
 	NrLook nr_look = NrLook::Standard;
+	NrTiming nr_timing = NrTiming::Wait;
+	bool frame_generation = false;
+	bool camera_warp = false;
+	int frame_generation_factor = 2;  // 2: one picture between two of the game's; 4: three
 	bool fps_overlay = true;
 	bool panel_beside = true;
 };

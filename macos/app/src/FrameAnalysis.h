@@ -74,6 +74,13 @@ struct PaceSnapshot
 {
 	double fps = 0;        // frames on glass over the last second (headless: rendered)
 	double frame_ms = 0;   // the mean of the last quarter second's intervals
+	// What a frame took from being complete off the network to being on glass (headless: to
+	// the GPU having finished it), as the mean of the last quarter second: decoding, a wait
+	// for the neural rendering, rendering, scan-out. 0: not known yet.
+	double latency_ms = 0;
+	// Neural rendering over the last second. nr_result_ms: what a result takes; 0: there
+	// was none. nr_age_ms: how old the result on a frame was; 0: each frame's own.
+	double nr_result_ms = 0, nr_age_ms = 0;
 	double budget_ms = 0;  // the stream's frame interval; 0: not known yet
 	std::vector<float> intervals_ms;  // the last present intervals, oldest first
 };
@@ -149,6 +156,8 @@ private:
 	mutable std::mutex mutex_;
 	std::deque<Frame> frames_;      // ten seconds
 	std::deque<Result> results_;    // ten seconds
+	double budgetLocked() const;
+	uint16_t last_index_ = 0;
 	std::deque<float> arrivals_;    // intervals between frames reaching the decoder
 	double last_at_us_ = 0, last_submit_us_ = 0, last_result_us_ = 0, last_baseline_check_us_ = 0;
 	double inactive_since_us_ = 0;  // 0 while the enhancer is active

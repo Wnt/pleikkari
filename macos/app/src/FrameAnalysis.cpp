@@ -98,11 +98,16 @@ void FrameAnalysis::onFrame(const video::FrameTiming &t)
 	}
 	if(last_submit_us_ > 0 && t.submitUs > last_submit_us_ && t.submitUs - last_submit_us_ < 1e6)
 	{
-		arrivals_.push_back((float)((t.submitUs - last_submit_us_) / 1000.0));
+		// Per frame of the stream, not per frame that got here: frames that were never shown
+		// (the neural rendering was behind) lie between two that were, and the stream's
+		// frame serial says how many.
+		const unsigned steps = (uint16_t)(t.frameIndex - last_index_);
+		arrivals_.push_back((float)((t.submitUs - last_submit_us_) / 1000.0 / (double)(steps >= 1 && steps <= 30 ? steps : 1)));
 		if(arrivals_.size() > kArrivals)
 			arrivals_.pop_front();
 	}
 	last_submit_us_ = t.submitUs;
+	last_index_ = t.frameIndex;
 	frames_.push_back(f);
 	while(!frames_.empty() && frames_.front().at_us < f.at_us - kHistoryUs)
 		frames_.pop_front();
@@ -180,27 +185,54 @@ void FrameAnalysis::updateBaseline(double now_us)
 	baseline_ = b;
 }
 
+// The stream's frame interval, from how its frames arrive: their mean interval, without the
+// longest twentieth (stalls). Not the median: a console's frames come in uneven pairs, 8 and
+// 25 ms apart, and the median of those is one or the other.
+double FrameAnalysis::budgetLocked() const
+{
+	if(arrivals_.size() < 5)
+		return 0;
+	std::vector<float> a(arrivals_.begin(), arrivals_.end());
+	std::sort(a.begin(), a.end());
+	const size_t n = a.size() - a.size() / 20;
+	double sum = 0;
+	for(size_t i = 0; i < n; i++)
+		sum += a[i];
+	return sum / (double)n;
+}
+
 PaceSnapshot FrameAnalysis::pace(double now_us) const
 {
 	PaceSnapshot p;
 	std::lock_guard<std::mutex> lk(mutex_);
-	double second = 0, quarter = 0;
-	size_t in_second = 0, in_quarter = 0;
+	double second = 0, quarter = 0, took = 0, took_second = 0;
+	size_t in_second = 0, in_quarter = 0, took_n = 0, took_second_n = 0;
 	// From the newest back, as far as the graph reaches.
 	for(auto it = frames_.rbegin(); it != frames_.rend() && p.intervals_ms.size() < kIntervals; ++it)
 	{
 		if(it->interval < 0 || it->at_us > now_us)
 			continue;
 		p.intervals_ms.push_back(it->interval);
+		const float whole = it->total >= 0 ? it->total : it->processing;
 		if(it->at_us > now_us - window_us_)
 		{
 			second += it->interval;
 			in_second++;
+			if(whole >= 0)
+			{
+				took_second += whole;
+				took_second_n++;
+			}
 		}
 		if(it->at_us > now_us - window_us_ / 4)
 		{
 			quarter += it->interval;
 			in_quarter++;
+			if(whole >= 0)
+			{
+				took += whole;
+				took_n++;
+			}
 		}
 	}
 	std::reverse(p.intervals_ms.begin(), p.intervals_ms.end());
@@ -210,11 +242,29 @@ PaceSnapshot FrameAnalysis::pace(double now_us) const
 		p.frame_ms = quarter / (double)in_quarter;
 	else if(in_second)
 		p.frame_ms = second / (double)in_second;
-	if(arrivals_.size() >= 5)
+	if(took_n)
+		p.latency_ms = took / (double)took_n;
+	else if(took_second_n)
+		p.latency_ms = took_second / (double)took_second_n;
+	p.budget_ms = budgetLocked();
+	double age = 0, result = 0;
+	size_t ages = 0, results = 0;
+	for(auto it = frames_.rbegin(); it != frames_.rend() && it->at_us > now_us - window_us_; ++it)
+		if(it->age >= 0 && it->at_us <= now_us)
+		{
+			age += it->age;
+			ages++;
+		}
+	for(auto it = results_.rbegin(); it != results_.rend() && it->at_us > now_us - window_us_; ++it)
+		if(it->ok && it->at_us <= now_us)
+		{
+			result += it->round_trip;
+			results++;
+		}
+	if(results && ages)
 	{
-		std::vector<float> a(arrivals_.begin(), arrivals_.end());
-		std::nth_element(a.begin(), a.begin() + (long)(a.size() / 2), a.end());
-		p.budget_ms = a[a.size() / 2];
+		p.nr_result_ms = result / (double)results;
+		p.nr_age_ms = age / (double)ages;
 	}
 	return p;
 }
@@ -261,8 +311,7 @@ AnalysisSnapshot FrameAnalysis::snapshot(double now_us) const
 	s.low1_fps = slow > 0 ? 1000.0 / slow : 0.0;
 	const size_t first = history.size() > kIntervals ? history.size() - kIntervals : 0;
 	s.intervals_ms.assign(history.begin() + (long)first, history.end());
-	if(arrivals_.size() >= 5)
-		s.budget_ms = percentile(std::vector<float>(arrivals_.begin(), arrivals_.end()), 0.5);
+	s.budget_ms = budgetLocked();
 
 	std::vector<float> input, network, round_trip;
 	for(const Result &r : results_)

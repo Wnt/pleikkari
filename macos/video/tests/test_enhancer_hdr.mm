@@ -387,6 +387,8 @@ int main()
 		auto fake = std::make_shared<FakeEnhancer>();
 		pipeline->setEnhancer(fake);
 		EnhanceConfig enhance;
+		// These tests show one picture again and again on purpose, and want each offered.
+		enhance.skipRepeats = false;
 		enhance.maxAgeMs = 600000;  // the test is about what is mixed in, not how fast the machine is
 		pipeline->setEnhanceConfig(enhance);
 

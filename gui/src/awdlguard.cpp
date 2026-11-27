@@ -342,7 +342,7 @@ void AwdlGuard::InstallRule()
 	const struct passwd *pw = getpwuid(getuid());
 	const QString user = pw ? QString::fromLocal8Bit(pw->pw_name) : QString();
 	// The name goes into a sudoers line and a shell command: anything unusual is refused.
-	static const QRegularExpression plain_name("^[A-Za-z_][A-Za-z0-9_-]*$");
+	static const QRegularExpression plain_name("^[A-Za-z_][A-Za-z0-9_.-]*$");
 	if(!plain_name.match(user).hasMatch())
 	{
 		qCWarning(awdlGuard) << "Cannot install the AWDL rule for this user name";

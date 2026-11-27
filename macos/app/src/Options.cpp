@@ -98,6 +98,9 @@ std::string usageText()
 		"usage: Pleikkari stream <nickname> <host> [options]\n"
 		"       Pleikkari replay <dump.plkv> [options]\n"
 		"       Pleikkari list [--profile NAME]\n"
+		"       Pleikkari awdl-helper status|register|unregister\n"
+		"                         the helper that keeps AWDL down during a Wi-Fi stream: what macOS\n"
+		"                         says about it, hand it to macOS, or take it away again\n"
 		"\n"
 		"stream: connect to a console registered in the Qt app (chiaki-ng) at <host>, a LAN\n"
 		"address or host name. Defaults come from the Qt app's settings for a local PS5,\n"
@@ -111,7 +114,8 @@ std::string usageText()
 		"  --feedback-interval MS  minimum spacing of stick/motion packets (lib default 8)\n"
 		"  --no-reorder            do not wait for a missing video packet (disable reordering)\n"
 		"  --keep-awdl             leave AWDL (AirDrop, AirPlay) up during a Wi-Fi stream; by default\n"
-		"                          it is switched off while the stream runs (asks for the password once)\n"
+		"                          it is switched off while the stream runs, by the app's helper (allowed once\n"
+		"                          in System Settings, Login Items)\n"
 		"  --idr-on-fec-failure    the lib requests an IDR itself when FEC fails\n"
 		"  --diagnostics           the lib's per-second stream statistics in the log\n"
 		"  --verbose               the lib's verbose log level\n"
@@ -136,12 +140,51 @@ std::string usageText()
 		"                          option.\n"
 		"  --nr on|off             neural rendering of the picture (default on in a window, when the\n"
 		"                          engine and a model are installed: see macos/nr/README.md)\n"
-		"  --nr-network small|ht   which network of the model (default small: about twice as fast)\n"
+		"  --nr-network small|ht   which network of the model (default ht; small is about twice as fast and changes less)\n"
 		"  --nr-height N           height of the picture the network is given, 360 to 2160, or 0 for\n"
-		"                          the stream's own (default 720; the cost grows with the pixels)\n"
+		"                          the stream's own (default 448; the cost grows with the pixels)\n"
 		"  --nr-strength PCT       how much of the network's change is shown, 10 to 200 (default 100)\n"
 		"  --nr-look standard|natural|cinematic|neutral   the look the network is asked for\n"
-		"                          These five are in the Video menu too (N, 5-6, 7-9, Z and X, E)\n"
+		"  --nr-timing wait|guided|beside   when a result reaches the screen. wait: a frame is held for the\n"
+		"                          result of itself (no ghost; later by what a result takes; default\n"
+		"                          in a window). beside: every frame at once, with the result of an\n"
+		"                          earlier one (no delay; what moves ghosts). guided: at once too,\n"
+		"                          with the result's tone following what moves and only its fine\n"
+		"                          detail left where the picture is still\n"
+		"  --camera-warp on|off    the picture is shown moved by what the right stick has asked for\n"
+		"                          and the console has not shown yet, so a turn of the camera is on\n"
+		"                          screen at once; how the game answers the stick is learned while\n"
+		"                          playing and kept in ~/Library/Application Support/Pleikkari/\n"
+		"                          camera-warp-<console>.txt (default off; K in the Video menu)\n"
+		"  --stick-sweep PREFIX    how the game answers the right stick: the app moves it through\n"
+		"                          set profiles (steps of 25 to 100 %, ramps, taps, reversals, a\n"
+		"                          sine, up and down), writes the stick to PREFIX-stick.csv and how\n"
+		"                          far each picture moved, with what the camera warp would have\n"
+		"                          shown, to PREFIX-motion.csv, and ends\n"
+		"  --record-input PREFIX   record a sitting: everything the controller sends to the console\n"
+		"                          to PREFIX-input.csv, how far each picture moved to\n"
+		"                          PREFIX-motion.csv and the video to PREFIX-video.plkv\n"
+		"  --play-input FILE       play a recorded PREFIX-input.csv back to the console as the\n"
+		"                          controller, with its own timing, then end. With --record-input\n"
+		"                          what the game made of it is recorded in turn\n"
+		"  --control SOCKET        let a program on this Mac play: it connects to the Unix socket\n"
+		"                          SOCKET, is sent every new picture of the game small and grey (a\n"
+		"                          header of 'PLKF', width, height as two bytes each and the arrival\n"
+		"                          time in microseconds as a double, then the bytes), and sends lines\n"
+		"                          of 'buttons l2 r2 left_x left_y right_x right_y' that are the\n"
+		"                          controller from then on; 'release' gives it back\n"
+		"  --probe-hold-l2         --stick-sweep and --lag-probe hold L2 down meanwhile (aiming)\n"
+		"  --lag-probe N           measure the input lag: the app itself pushes the right stick, to\n"
+		"                          the right and to the left in turn, N times, and times how long\n"
+		"                          the picture takes to start moving; the results go to the log,\n"
+		"                          and the app ends. Stand the player where the camera can turn\n"
+		"  --frame-generation off|2x|4x   a game that renders 30 pictures a second into a 60 fps stream\n"
+		"                          sends each twice. on: in place of the repeat, the picture between\n"
+		"                          two of the game's is generated (NVIDIA's network) and shown, so\n"
+		"                          motion is 60 pictures a second; every real picture is on screen\n"
+		"                          about 25 ms later than without. 4x: three pictures between two,\n"
+		"                          120 a second (default off; J in the Video menu)\n"
+		"                          These six are in the Video menu too (N, 5-6, 7-9, Z and X, E, W)\n"
 		"                          and remembered like the ones above. C splits the picture for\n"
 		"                          comparison, I shows what each stage of a frame costs.\n"
 		"  --fps-overlay on|off    the frame rate and the last frame times over the picture's corner\n"
@@ -375,6 +418,21 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 				return fail("--nr-look wants standard, natural, cinematic or neutral");
 			o.nr_look = look;
 		}
+		else if(a == "--frame-generation")
+		{
+			if(!value(&v) || (v != "on" && v != "off" && v != "2x" && v != "4x"))
+				return fail("--frame-generation wants off, on, 2x or 4x");
+			o.frame_generation = v != "off";
+			if(v == "2x" || v == "4x")
+				o.frame_generation_factor = v == "4x" ? 4 : 2;
+		}
+		else if(a == "--nr-timing")
+		{
+			NrTiming timing;
+			if(!value(&v) || !parseNrTiming(v, &timing))
+				return fail("--nr-timing wants wait, guided or beside");
+			o.nr_timing = timing;
+		}
 		else if(a == "--nr-library")
 		{
 			if(!value(&o.nr_library) || o.nr_library.empty())
@@ -470,6 +528,44 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 			if(!value(&o.dump_path) || o.dump_path.empty())
 				return fail("--dump wants a path");
 		}
+		else if(a == "--stick-sweep")
+		{
+			if(!value(&v) || v.empty())
+				return fail("--stick-sweep wants a file name prefix");
+			o.stick_sweep = v;
+		}
+		else if(a == "--record-input")
+		{
+			if(!value(&o.record_input) || o.record_input.empty())
+				return fail("--record-input wants a file name prefix");
+			if(o.dump_path.empty())
+				o.dump_path = o.record_input + "-video.plkv";
+		}
+		else if(a == "--play-input")
+		{
+			if(!value(&o.play_input) || o.play_input.empty())
+				return fail("--play-input wants a recorded input file");
+		}
+		else if(a == "--control")
+		{
+			if(!value(&o.control_socket) || o.control_socket.empty())
+				return fail("--control wants a socket path");
+		}
+		else if(a == "--probe-hold-l2")
+			o.probe_hold_l2 = true;
+		else if(a == "--lag-probe")
+		{
+			double n = 0;
+			if(!value(&v) || !parseDouble(v, 1.0, 1000.0, &n))
+				return fail("--lag-probe wants a number of measurements from 1 to 1000");
+			o.lag_probe = (int)n;
+		}
+		else if(a == "--camera-warp")
+		{
+			if(!value(&v) || (v != "on" && v != "off"))
+				return fail("--camera-warp wants on or off");
+			o.camera_warp = v == "on";
+		}
 		else if(a == "--seconds")
 		{
 			if(!value(&v) || !parseDouble(v, 0.0, 1e7, &o.seconds))
@@ -490,6 +586,8 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 
 	if(positional.empty())
 	{
+		// No command: the app was opened, not run. main() streams from the registered console.
+		o.no_command = true;
 		o.command = Command::Help;
 		return true;
 	}
@@ -516,6 +614,13 @@ bool parseOptions(int argc, const char *const *argv, Options &o, std::string *er
 		if(positional.size() != 1)
 			return fail("list takes no arguments");
 		o.command = Command::List;
+	}
+	else if(cmd == "awdl-helper")
+	{
+		if(positional.size() != 2 || (positional[1] != "status" && positional[1] != "register" && positional[1] != "unregister"))
+			return fail("awdl-helper wants status, register or unregister");
+		o.command = Command::AwdlHelper;
+		o.awdl_helper_action = positional[1];
 	}
 	else
 		return fail("unknown command " + cmd);
@@ -557,7 +662,7 @@ bool parseKeyScript(const std::string &list, std::vector<KeyPress> &out, std::st
 			return false;
 		}
 		press.key = entry.substr(colon + 1);
-		static const char *const names[] = { "up", "down", "left", "right", "enter", "esc", "space" };
+		static const char *const names[] = { "up", "down", "left", "right", "enter", "esc", "space", "pointer" };
 		bool known = press.key.size() == 1;
 		for(const char *name : names)
 			known = known || press.key == name;
@@ -597,6 +702,14 @@ ViewChoices resolveViewChoices(const Options &o)
 		v.nr_strength = *o.nr_strength;
 	if(o.nr_look)
 		v.nr_look = *o.nr_look;
+	// A headless run is a measurement of the stream's own path unless it asks for this.
+	if(o.camera_warp)
+		v.camera_warp = *o.camera_warp;
+	if(o.frame_generation)
+		v.frame_generation = *o.frame_generation;
+	if(o.frame_generation_factor)
+		v.frame_generation_factor = *o.frame_generation_factor;
+	v.nr_timing = o.nr_timing ? *o.nr_timing : o.headless ? NrTiming::Beside : NrTiming::Wait;
 	// And nothing over the picture it renders.
 	v.fps_overlay = o.fps_overlay ? *o.fps_overlay : !o.headless;
 	if(o.panel_beside)
@@ -609,6 +722,28 @@ video::PacingMode effectivePacing(video::PacingMode given, bool window_fullscree
 	if(given == video::PacingMode::Immediate && window_fullscreen && fullscreen_sync)
 		return video::PacingMode::ImmediateVsync;
 	return given;
+}
+
+const char *toString(NrTiming timing)
+{
+	switch(timing)
+	{
+		case NrTiming::Wait: return "wait";
+		case NrTiming::Guided: return "guided";
+		case NrTiming::Beside: break;
+	}
+	return "beside";
+}
+
+bool parseNrTiming(const std::string &s, NrTiming *out)
+{
+	for(NrTiming timing : { NrTiming::Beside, NrTiming::Wait, NrTiming::Guided })
+		if(s == toString(timing))
+		{
+			*out = timing;
+			return true;
+		}
+	return false;
 }
 
 const char *toString(NrLook look)

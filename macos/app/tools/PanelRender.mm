@@ -110,6 +110,7 @@ PaceSnapshot madeUpPace()
 	PaceSnapshot p;
 	p.fps = 59.6;
 	p.frame_ms = 16.8;
+	p.latency_ms = 21.4;
 	p.budget_ms = 1000.0 / 60.0;
 	for(int i = 0; i < 120; i++)
 		p.intervals_ms.push_back((float)(16.7 + ((i * 7) % 5 - 2) * 0.5 + (i % 37 == 20 ? 17.0 : 0.0) + (i == 95 ? 60.0 : 0.0)));
@@ -247,7 +248,7 @@ int check()
 {
 	PanelState state = madeUpState(false, 2656, 1494);
 	state.view.nr_strength = 120;
-	PLKPipelinePanelView *panel = [[PLKPipelinePanelView alloc] initWithFrame:NSMakeRect(0, 0, [PLKPipelinePanelView preferredWidth], 1000)];
+	PLKPipelinePanelView *panel = [[PLKPipelinePanelView alloc] initWithFrame:NSMakeRect(0, 0, [PLKPipelinePanelView preferredWidth], 2000)];
 	// What the clicks sent, in a box the block and the lambda below can both hold.
 	const auto box = std::make_shared<std::vector<PanelAction>>();
 	std::vector<PanelAction> &sent = *box;
@@ -267,9 +268,13 @@ int check()
 	// The first page: every setting of the neural rendering and the scaler answers a click
 	// with its own command.
 	CHECK(panel.page == 0);
+	// What comes in is the first card: HDR, the resolution and the bitrate asked for.
+	CHECK(click(PanelCommand::ToggleHdr, 0));
+	CHECK(click(PanelCommand::SelectResolution, (int)CHIAKI_VIDEO_RESOLUTION_PRESET_720p));
+	CHECK(click(PanelCommand::SelectBitrate, 25000));
 	CHECK(click(PanelCommand::ToggleNr, 0));
 	CHECK(click(PanelCommand::SelectNrNetwork, (int)NrNetwork::HT));
-	CHECK(click(PanelCommand::SelectNrHeight, 540));
+	CHECK(click(PanelCommand::SelectNrHeight, 576));
 	CHECK(click(PanelCommand::SelectNrHeight, 0));
 	CHECK(click(PanelCommand::StepNrStrength, 1));
 	CHECK(click(PanelCommand::StepNrStrength, -1));
@@ -282,7 +287,7 @@ int check()
 	CHECK(empty([panel rectOfCommand:PanelCommand::SelectSdrColor tag:(int)video::SdrColor::Vivid]));
 	// Between the controls a click does nothing, and says so.
 	sent.clear();
-	CHECK(![panel clickAt:NSMakePoint(2, 500)] && sent.empty());
+	CHECK(![panel clickAt:NSMakePoint(2, 300)] && sent.empty());
 
 	// A card's head closes and opens its settings.
 	CHECK([panel clickAt:NSMakePoint(NSMidX([panel rectOfCardHead:@"scaling"]) - 40, NSMidY([panel rectOfCardHead:@"scaling"]))]);
@@ -301,7 +306,7 @@ int check()
 	CHECK([panel clickAt:centre([panel rectOfTab:1])] && panel.page == 1);
 	[panel layoutNow];
 	CHECK(click(PanelCommand::SelectSdrColor, (int)video::SdrColor::Vivid));
-	CHECK(click(PanelCommand::ToggleHdr, 0));
+	CHECK(empty([panel rectOfCommand:PanelCommand::ToggleHdr tag:0]));  // the stream's own switches are on the first page
 	CHECK(click(PanelCommand::SelectHdrOutput, (int)video::HdrOutput::ExtendedLinear));
 	CHECK(click(PanelCommand::StepHdrBrightness, 1));
 	CHECK(empty([panel rectOfCommand:PanelCommand::StepHdrBrightness tag:0]));  // at 100 %: nothing to go back to

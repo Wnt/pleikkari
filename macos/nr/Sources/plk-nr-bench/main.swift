@@ -28,6 +28,7 @@ struct Options {
   var profile: Int32 = 0
   var intensity: Float = 1
   var motion = 6
+  var frameGen: String?
 }
 
 func usage() -> Never {
@@ -35,6 +36,7 @@ func usage() -> Never {
     usage: plk-nr-bench --model PATH.dlssmodel [--size WxH[,WxH...]] [--frames N]
                         [--temporal on|off] [--float32] [--profile 0..3] [--intensity X]
                         [--motion PIXELS_PER_FRAME] [--image IN.png] [--out OUT.png]
+           plk-nr-bench --framegen WEIGHTS.safetensors [--size WxH[,WxH...]] [--frames N] [--out OUT.png]
 
     """.utf8))
   exit(2)
@@ -62,12 +64,15 @@ func parse() -> Options {
     case "--profile": o.profile = Int32(next()) ?? 0
     case "--intensity": o.intensity = Float(next()) ?? 1
     case "--motion": o.motion = Int(next()) ?? 0
+    case "--framegen": o.frameGen = next()
+    case "--half-pictures": break
+    case "--generated": _ = next()
     case "--image": o.image = next()
     case "--out": o.out = next()
     default: usage()
     }
   }
-  if o.model.isEmpty { usage() }
+  if o.model.isEmpty && o.frameGen == nil { usage() }
   return o
 }
 
@@ -180,6 +185,94 @@ final class Waiter {
 }
 
 let options = parse()
+
+// --framegen WEIGHTS.safetensors: what the picture between two frames costs, and with
+// --out a look at one (the synthetic picture moves --motion pixels between the two).
+if let weights = options.frameGen {
+  var message = [CChar](repeating: 0, count: 512)
+  guard let generator = weights.withCString({ plk_fg_create($0, options.half ? 1 : 0, &message, message.count) }) else {
+    FileHandle.standardError.write(Data("plk_fg_create: \(String(cString: message))\n".utf8))
+    exit(1)
+  }
+  let waiter = Waiter()
+  let context = Unmanaged.passUnretained(waiter).toOpaque()
+  let callback: plk_nr_callback = { context, result in
+    let waiter = Unmanaged<Waiter>.fromOpaque(context!).takeUnretainedValue()
+    if let result = result?.pointee {
+      waiter.milliseconds = result.total_ms
+      waiter.output = result.output?.takeUnretainedValue()
+      waiter.error = result.error.map { String(cString: $0) }
+    }
+    // One signal for a pair: with its last frame, or with its failure.
+    if let result = result?.pointee, result.output != nil, result.index + 1 < result.count { return }
+    waiter.done.signal()
+  }
+  // --generated N: frames asked for between each two (1 or 3).
+  var generatedPerPair: Int32 = 1
+  if let at = CommandLine.arguments.firstIndex(of: "--generated"), at + 1 < CommandLine.arguments.count {
+    generatedPerPair = Int32(CommandLine.arguments[at + 1]) ?? 1
+  }
+  for (width, height) in options.sizes {
+    var times: [Double] = []
+    var first = 0.0
+    // --half-pictures: RGBA half float, as the pictures of an HDR stream are given.
+    let halfPictures = CommandLine.arguments.contains("--half-pictures")
+    func picture(_ shift: Int) -> CVPixelBuffer {
+      let eight = makeBuffer(width, height)
+      fillSynthetic(eight, shift: shift)
+      guard halfPictures else { return eight }
+      var buffer: CVPixelBuffer?
+      let attributes: [CFString: Any] = [
+        kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary, kCVPixelBufferMetalCompatibilityKey: true,
+      ]
+      CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_64RGBAHalf, attributes as CFDictionary, &buffer)
+      let half = buffer!
+      CVPixelBufferLockBaseAddress(eight, .readOnly)
+      CVPixelBufferLockBaseAddress(half, [])
+      let from = CVPixelBufferGetBaseAddress(eight)!.assumingMemoryBound(to: UInt8.self)
+      let to = CVPixelBufferGetBaseAddress(half)!
+      let fromStride = CVPixelBufferGetBytesPerRow(eight), toStride = CVPixelBufferGetBytesPerRow(half)
+      for y in 0..<height {
+        let row = (to + y * toStride).assumingMemoryBound(to: Float16.self)
+        for x in 0..<width {
+          row[x * 4] = Float16(Float(from[y * fromStride + x * 4 + 2]) / 255)
+          row[x * 4 + 1] = Float16(Float(from[y * fromStride + x * 4 + 1]) / 255)
+          row[x * 4 + 2] = Float16(Float(from[y * fromStride + x * 4]) / 255)
+          row[x * 4 + 3] = 1
+        }
+      }
+      CVPixelBufferUnlockBaseAddress(half, [])
+      CVPixelBufferUnlockBaseAddress(eight, .readOnly)
+      return half
+    }
+    var previous = picture(0)
+    for index in 1...options.frames {
+      let current = picture(index * options.motion)
+      guard plk_fg_interpolate(generator, previous, current, generatedPerPair, UInt64(index), callback, context) == 1 else {
+        print("\(width)x\(height): the generator refused pair \(index)")
+        exit(1)
+      }
+      waiter.done.wait()
+      if let error = waiter.error {
+        print("\(width)x\(height): pair \(index) failed: \(error)")
+        exit(1)
+      }
+      if index == 1 { first = waiter.milliseconds } else { times.append(waiter.milliseconds) }
+      previous = current
+    }
+    times.sort()
+    let median = times[times.count / 2]
+    print(String(
+      format: "frame generation %dx%d, \(generatedPerPair) per pair: first %.0f ms, then min %.1f  median %.1f  p90 %.1f  max %.1f ms",
+      width, height, first, times[0], median, times[min(times.count - 1, times.count * 9 / 10)], times[times.count - 1]))
+    if let out = options.out, let output = waiter.output, !halfPictures {
+      writePNG(output, to: out)
+      print("wrote \(out)")
+    }
+  }
+  plk_fg_destroy(generator)
+  exit(0)
+}
 var controls = plk_nr_controls(
   intensity: options.intensity, detail_strength: 1, colour_strength: 1, profile: options.profile,
   temporal: options.temporal ? 1 : 0)

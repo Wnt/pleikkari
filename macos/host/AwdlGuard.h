@@ -22,13 +22,15 @@ namespace plk {
  * looked under tunnels: a 100 ms stop every 0.52 s (207 in 121 s) and about 40 of 60 frames a
  * second shown.
  *
- * Taking awdl0 down needs root. The first time, the system's password dialog is shown once and
- * a sudoers rule is installed, checked with visudo first, that allows exactly
- * "ifconfig awdl0 down" and "ifconfig awdl0 up" without a password
- * (/private/etc/sudoers.d/chiaki-awdl, the rule the Qt client installs too; delete the file to
- * undo). After that the interface is taken down when a Wi-Fi stream starts, taken down again
- * within a second whenever macOS raises it, and brought back up three seconds after the last
- * stream ended or when the process exits.
+ * Taking awdl0 down needs root, and the app has none. A helper inside the app bundle does it
+ * (macos/awdl-helper): a launch daemon that macOS registers and the user allows once, in
+ * System Settings under Login Items, and can switch off there. It does nothing but keep awdl0
+ * down for as long as a stream holds it: down when a Wi-Fi stream starts, down again within a
+ * second whenever macOS raises it, back up three seconds after the last stream ended. The
+ * hold ends with the app's connection, so an app that is killed does not leave AWDL down.
+ * Until the helper is allowed the stream runs with AWDL up, and the guard keeps asking, so
+ * allowing it takes effect in the running stream. macOS registers the helper only for an app
+ * signed with a certificate; an ad hoc build has no helper and says so once.
  *
  * One guard serves the process and counts streams. All of it runs on a queue of its own:
  * acquire() and release() return at once and may be called from any thread.
@@ -41,7 +43,8 @@ public:
 	/**
 	 * A stream to host starts.
 	 * @param host         IPv4/IPv6 literal or host name, as the session connects to it
-	 * @param allow_prompt show the password dialog when the rule is not installed yet
+	 * @param allow_prompt register the helper when it is not, and open System Settings where
+	 *                     the user allows it
 	 * @return true when the stream leaves over Wi-Fi, as it is or inside a tunnel: release()
 	 *         has to follow
 	 */

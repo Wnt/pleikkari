@@ -131,11 +131,28 @@ HudImage renderFrameHud(const PaceSnapshot &pace, int scale)
 			snprintf(text, sizeof(text), "-");
 		drawText(ctx, text, big, space, health == 2 ? kBad : health == 1 ? kWarn : kText, pad + 30, 27);
 		drawText(ctx, "Frametime", small, space, kLabel, pad, 45);
-		if(pace.frame_ms > 0)
-			snprintf(text, sizeof(text), pace.frame_ms >= 100 ? "%.0f ms" : "%.1f ms", pace.frame_ms);
+		// What a frame takes from the network to the screen, not the time between frames:
+		// the frame rate above says that already, and this is what a setting costs.
+		if(pace.latency_ms > 0)
+			snprintf(text, sizeof(text), pace.latency_ms >= 100 ? "%.0f ms" : "%.1f ms", pace.latency_ms);
 		else
 			snprintf(text, sizeof(text), "- ms");
 		drawText(ctx, text, value, space, kText, w - pad, 45, true);
+		// The neural rendering: what a result takes when every frame shown carries its own
+		// (that time is in the frame time above), or how far behind the picture its results
+		// are when it works beside the stream (it is not).
+		drawText(ctx, "Neural", small, space, kLabel, pad, 61);
+		Color colour = kText;
+		if(pace.nr_result_ms <= 0)
+			snprintf(text, sizeof(text), "off");
+		else if(pace.nr_age_ms < 1.0)
+			snprintf(text, sizeof(text), "%.1f ms", pace.nr_result_ms);
+		else
+		{
+			snprintf(text, sizeof(text), "%.0f ms behind", pace.nr_age_ms);
+			colour = kWarn;
+		}
+		drawText(ctx, text, value, space, colour, w - pad, 61, true);
 	}
 	for(CTFontRef font : { label, small, big, value })
 		if(font)

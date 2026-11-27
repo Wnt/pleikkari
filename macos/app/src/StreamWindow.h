@@ -3,12 +3,12 @@
 // The stream window: one resizable window whose content view is backed by the CAMetalLayer
 // the video pipeline renders into. The pipeline letterboxes (aspect fit, black bars) into
 // whatever drawable size the view reports; the view reports its size in pixels whenever its
-// bounds or backing scale change. The cursor is hidden over the video (a blank cursor
-// rect), Cmd-F toggles native fullscreen.
+// bounds or backing scale change. The cursor is hidden over the video while it rests (a blank
+// cursor rect); when it moves it is shown, together with a bar of buttons that open the
+// settings. Cmd-F toggles native fullscreen.
 //
 // The Video menu changes the picture while the stream runs: scaling, the colour of an SDR
-// picture, HDR on or off, HDR output. It is in the menu bar, under a right click on the
-// picture and under the M key (arrow keys and Return work in it), and each choice has a
+// picture, HDR on or off, HDR output. It is in the menu bar only, and each choice has a
 // key of its own without a modifier: the DualSense is the input device, so the keyboard is
 // free. Other key presses are swallowed (no beep). The same choices, laid out as the
 // pipeline they change, are in the pipeline panel (G; PipelinePanelView.h).
@@ -23,8 +23,6 @@ NS_ASSUME_NONNULL_BEGIN
 /** Called on the main thread with the drawable size in pixels. */
 @property(nonatomic, copy, nullable) void (^onDrawableSize)(int width, int height);
 - (void)reportDrawableSize;
-/** Opens the Video menu in the middle of the picture (the M key), or where the event was. */
-- (void)popUpVideoMenuWithEvent:(nullable NSEvent *)event;
 /** A line of text over the picture for two seconds: what a key press just changed. */
 - (void)showNotice:(NSString *)text;
 /** seconds 0: stays until the next notice. */
@@ -36,6 +34,18 @@ NS_ASSUME_NONNULL_BEGIN
  * opened from the keyboard are centred in the rest, and the pointer is not hidden there.
  */
 @property(nonatomic) CGFloat rightInset;
+/**
+ * The pointer moved over the picture: it is shown, and with it a bar over the picture's top
+ * right corner with the ways into the settings (the pipeline panel, fullscreen). Both go away when the pointer has rested for 2.5 s off the bar and the panel.
+ */
+- (void)pointerMoved;
+/**
+ * The comparison line (neural rendering's Compare): where it is in the view, in points from
+ * the left, or a negative number when there is none. While there is one, a press or a drag
+ * on the picture moves it: onCompareDrag gets the pointer's x in the view.
+ */
+@property(nonatomic) CGFloat compareLineX;
+@property(nonatomic, copy, nullable) void (^onCompareDrag)(CGFloat x);
 @end
 
 /**
@@ -67,6 +77,18 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)plkSelectNrLook:(id)sender;
 /** The left half of the picture as decoded, the right half with neural rendering. */
 - (void)plkToggleNrCompare:(id)sender;
+/** The sender's tag: the ChiakiVideoResolutionPreset the console is asked for. Reconnects. */
+- (void)plkSelectResolution:(id)sender;
+/** The sender's tag: the bitrate the console is asked for, in kbit/s. Reconnects. */
+- (void)plkSelectBitrate:(id)sender;
+/** The picture moved by what the right stick has asked for and the console has not shown yet, or not. */
+- (void)plkToggleCameraWarp:(id)sender;
+/** The sender's tag: 2 or 4 times the game's pictures. */
+- (void)plkSelectFrameGenerationFactor:(id)sender;
+/** The picture between two of the game's generated and shown, or not. */
+- (void)plkToggleFrameGeneration:(id)sender;
+/** The sender's tag: a plk::app::NrTiming, or -1 for the next one. */
+- (void)plkSelectNrTiming:(id)sender;
 /** The analysis panel (AnalysisView.h). */
 - (void)plkToggleAnalysis:(id)sender;
 /** The pipeline panel (PipelinePanelView.h). */
@@ -75,7 +97,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)plkToggleFpsOverlay:(id)sender;
 @end
 
-/** A new Video menu (an item belongs to one menu: the menu bar and the pop-up each get their own). */
+/** The Video menu of the menu bar: the same choices as the pipeline panel, each with its key. */
 NSMenu *PLKMakeVideoMenu(void);
 
 @interface PLKStreamWindow : NSWindow

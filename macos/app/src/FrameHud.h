@@ -31,7 +31,7 @@ struct HudImage
 };
 
 // Its size, and how far in from the picture's corner it sits, in points.
-constexpr int kHudWidth = 164, kHudHeight = 78, kHudMargin = 12;
+constexpr int kHudWidth = 164, kHudHeight = 94, kHudMargin = 12;
 
 /** scale: pixels per point, 1 to 4 (2 on a Retina display). */
 HudImage renderFrameHud(const PaceSnapshot &pace, int scale);

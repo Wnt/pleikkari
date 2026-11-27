@@ -12,9 +12,12 @@
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
 #include <climits>
+#include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <map>
 #include <mutex>
@@ -78,6 +81,29 @@ struct NeuralEnhancer::Api
 	int (*submit)(plk_nr_engine *, CVPixelBufferRef, uint64_t, int, plk_nr_callback, void *) = nullptr;
 	void (*set_controls)(plk_nr_engine *, const plk_nr_controls *) = nullptr;
 	void (*destroy)(plk_nr_engine *) = nullptr;
+	plk_fg_engine *(*fg_create)(const char *, int, char *, size_t) = nullptr;
+	int (*fg_interpolate)(plk_fg_engine *, CVPixelBufferRef, CVPixelBufferRef, int, uint64_t, plk_nr_callback, void *) = nullptr;
+	void (*fg_destroy)(plk_fg_engine *) = nullptr;
+
+	// An M5 or later has a Neural Accelerator in every GPU core. MLX sends the network's
+	// large matrix products there by itself; MLX-DLSS's feed-forward kernels go there only
+	// when asked (MLXDLSS_TENSOR_OPS_FFN, off upstream until someone had measured it on such
+	// a chip). Measured on an M5 Max, 2026-11-26, alternating runs: a result of the HT
+	// network at 1080p in 53.4 ms instead of 58, of the small one at 720p in 15.1 instead
+	// of 16.1, and the same frames byte for byte. Set before the engine reads it; a value
+	// in the environment already (0 to switch it off) is left alone.
+	static void preferNeuralAccelerators()
+	{
+		char brand[128] = {};
+		size_t size = sizeof(brand) - 1;
+		if(sysctlbyname("machdep.cpu.brand_string", brand, &size, nullptr, 0) != 0)
+			return;
+		int generation = 0;
+		if(sscanf(brand, "Apple M%d", &generation) != 1 || generation < 5)
+			return;
+		if(setenv("MLXDLSS_TENSOR_OPS_FFN", "1", 0) == 0 && strcmp(getenv("MLXDLSS_TENSOR_OPS_FFN"), "1") == 0)
+			PLK_LOGI("Neural rendering: feed-forward kernels on the GPU's Neural Accelerators (%s)", brand);
+	}
 
 	static const Api *open(const std::string &path, std::string *error)
 	{
@@ -87,6 +113,7 @@ struct NeuralEnhancer::Api
 		auto found = loaded.find(path);
 		if(found != loaded.end())
 			return found->second.get();
+		preferNeuralAccelerators();
 		void *handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
 		if(!handle)
 		{
@@ -101,7 +128,11 @@ struct NeuralEnhancer::Api
 		api->submit = (decltype(api->submit))dlsym(handle, "plk_nr_submit");
 		api->set_controls = (decltype(api->set_controls))dlsym(handle, "plk_nr_set_controls");
 		api->destroy = (decltype(api->destroy))dlsym(handle, "plk_nr_destroy");
-		if(!api->abi_version || !api->create || !api->describe || !api->submit || !api->set_controls || !api->destroy)
+		api->fg_create = (decltype(api->fg_create))dlsym(handle, "plk_fg_create");
+		api->fg_interpolate = (decltype(api->fg_interpolate))dlsym(handle, "plk_fg_interpolate");
+		api->fg_destroy = (decltype(api->fg_destroy))dlsym(handle, "plk_fg_destroy");
+		if(!api->abi_version || !api->create || !api->describe || !api->submit || !api->set_controls || !api->destroy
+				|| !api->fg_create || !api->fg_interpolate || !api->fg_destroy)
 		{
 			*error = path + " is not a neural rendering engine (an entry point is missing)";
 			return nullptr;
@@ -272,6 +303,70 @@ void NeuralEnhancer::setLook(NrLook look)
 {
 	const plk_nr_controls c = controlsFor(look);
 	core_->api->set_controls(core_->engine, &c);
+}
+
+std::string frameGenerationWeightsPath(const Options &o)
+{
+	const char *home = getenv("HOME");
+	return (o.nr_models.empty() ? defaultNrModelsDirectory(home ? home : "") : o.nr_models) + "/framegen.safetensors";
+}
+
+std::string frameGenerationMissing(const std::string &library, const std::string &weights)
+{
+	if(!exists(library, false))
+		return "no engine at " + library + " (macos/nr/build.sh builds it)";
+	if(!exists(weights, false))
+		return "no frame generation weights at " + weights + " (mlxdlss-weights extract-fg makes them from nvngx_dlssg.dll)";
+	return std::string();
+}
+
+std::shared_ptr<FrameGenerator> FrameGenerator::load(const std::string &library, const std::string &weights, std::string *error)
+{
+	std::string why;
+	const NeuralEnhancer::Api *api = NeuralEnhancer::Api::open(library, &why);
+	char message[512] = "";
+	plk_fg_engine *engine = api ? api->fg_create(weights.c_str(), 1, message, sizeof(message)) : nullptr;
+	if(!engine)
+	{
+		if(error)
+			*error = api ? std::string(message) : why;
+		return nullptr;
+	}
+	return std::shared_ptr<FrameGenerator>(new FrameGenerator(api, engine));
+}
+
+FrameGenerator::~FrameGenerator()
+{
+	struct Gone
+	{
+		const NeuralEnhancer::Api *api;
+		plk_fg_engine *engine;
+	};
+	dispatch_group_async_f(retiredGroup(), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0),
+			new Gone{ (const NeuralEnhancer::Api *)api_, (plk_fg_engine *)engine_ }, [](void *context) {
+				std::unique_ptr<Gone> gone((Gone *)context);
+				gone->api->fg_destroy(gone->engine);
+			});
+}
+
+bool FrameGenerator::interpolate(CVPixelBufferRef previous, CVPixelBufferRef current, int count, uint64_t seq, Done done)
+{
+	auto *pending = new Done(std::move(done));
+	const plk_nr_callback callback = [](void *context, const plk_nr_result *result) {
+		Done *finished = (Done *)context;
+		const bool failed = !result->output || result->count == 0;
+		if(failed)
+			PLK_LOGW("Frame generation: picture %llu failed: %s", (unsigned long long)result->seq,
+					result->error ? result->error : "no picture");
+		(*finished)(failed ? nullptr : result->output, (int)result->index, failed ? 0 : (int)result->count, result->total_ms);
+		// The last call for this pair.
+		if(failed || result->index + 1 >= result->count)
+			delete finished;
+	};
+	if(((const NeuralEnhancer::Api *)api_)->fg_interpolate((plk_fg_engine *)engine_, previous, current, count, seq, callback, pending))
+		return true;
+	delete pending;
+	return false;
 }
 
 } // namespace plk::app

@@ -72,3 +72,51 @@ public func plk_nr_destroy(_ handle: OpaquePointer?) {
   owned.takeUnretainedValue().close()
   owned.release()
 }
+
+// Frame generation. A handle is a retained `FrameGen`.
+
+private func frameGen(_ handle: OpaquePointer?) -> FrameGen? {
+  handle.map { Unmanaged<FrameGen>.fromOpaque(UnsafeRawPointer($0)).takeUnretainedValue() }
+}
+
+@_cdecl("plk_fg_create")
+public func plk_fg_create(
+  _ weightsPath: UnsafePointer<CChar>?, _ halfPrecision: Int32, _ error: UnsafeMutablePointer<CChar>?,
+  _ errorSize: Int
+) -> OpaquePointer? {
+  guard let weightsPath else {
+    write("no weights path", to: error, size: errorSize)
+    return nil
+  }
+  let url = URL(fileURLWithPath: String(cString: weightsPath))
+  guard FileManager.default.fileExists(atPath: url.path) else {
+    write("no frame generation weights at \(url.path)", to: error, size: errorSize)
+    return nil
+  }
+  do {
+    let created = try FrameGen(weightsURL: url, halfPrecision: halfPrecision != 0)
+    return OpaquePointer(Unmanaged.passRetained(created).toOpaque())
+  } catch let failure {
+    let text = (failure as? LocalizedError)?.errorDescription ?? String(describing: failure)
+    write(text, to: error, size: errorSize)
+    return nil
+  }
+}
+
+@_cdecl("plk_fg_interpolate")
+public func plk_fg_interpolate(
+  _ handle: OpaquePointer?, _ previous: CVPixelBuffer?, _ current: CVPixelBuffer?, _ count: Int32,
+  _ seq: UInt64, _ callback: plk_nr_callback?, _ context: UnsafeMutableRawPointer?
+) -> Int32 {
+  guard let generator = frameGen(handle), let previous, let current, let callback else { return 0 }
+  return generator.interpolate(
+    previous, current, count: Int(count), seq: seq, callback: callback, context: context) ? 1 : 0
+}
+
+@_cdecl("plk_fg_destroy")
+public func plk_fg_destroy(_ handle: OpaquePointer?) {
+  guard let handle else { return }
+  let owned = Unmanaged<FrameGen>.fromOpaque(UnsafeRawPointer(handle))
+  owned.takeUnretainedValue().close()
+  owned.release()
+}

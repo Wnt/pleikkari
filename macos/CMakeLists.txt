@@ -1,4 +1,5 @@
 # The native macOS client and its modules (CHIAKI_ENABLE_MACOS_NATIVE):
+#   awdl-helper  the launch daemon that keeps AWDL down during a Wi-Fi stream
 #   host       SessionHost, AudioOutput, registration loader (links chiaki-lib)
 #   video      VideoToolbox -> Metal pipeline (standalone project, also builds here)
 #   dualsense  IOKit HID DualSense driver (standalone project, also builds here)
@@ -13,6 +14,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
 enable_language(OBJC)
 enable_language(OBJCXX)
 
+add_subdirectory(awdl-helper)
 add_subdirectory(host)
 add_subdirectory(video)
 add_subdirectory(dualsense)

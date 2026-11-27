@@ -340,6 +340,26 @@ bool loadRegisteredConsoles(const std::string &plist_path, std::vector<Registere
 	return true;
 }
 
+bool loadManualHosts(const std::string &plist_path, std::vector<std::string> &out, std::string *error)
+{
+	out.clear();
+	CFHolder<CFDictionaryRef> plist(loadPlistDictionary(plist_path, error));
+	if(!plist.ref)
+		return false;
+	long long count = 0;
+	if(!readInt(lookup(plist.ref, "manual_hosts.size"), count) || count < 0)
+		count = 0;
+	if(count > 4096)
+		count = 4096;
+	for(long long i = 1; i <= count; i++)
+	{
+		std::string host;
+		if(readString(lookup(plist.ref, "manual_hosts." + std::to_string(i) + ".host"), host) && !host.empty())
+			out.push_back(host);
+	}
+	return true;
+}
+
 bool loadQtStreamSettings(const std::string &plist_path, QtStreamSettings &out, std::string *error)
 {
 	out = QtStreamSettings();

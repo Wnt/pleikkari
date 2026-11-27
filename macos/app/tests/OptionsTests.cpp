@@ -137,6 +137,10 @@ PLK_TEST(options_errors_and_other_commands)
 	CHECK(o.command == Command::Help);
 	REQUIRE(parse({ "list" }, o));
 	CHECK(o.command == Command::List);
+	REQUIRE(parse({ "awdl-helper", "status" }, o));
+	CHECK(o.command == Command::AwdlHelper && o.awdl_helper_action == "status");
+	CHECK(!parse({ "awdl-helper", "remove" }, o));
+	CHECK(!parse({ "awdl-helper" }, o));
 	REQUIRE(parse({ "replay", "x.plkv", "--headless", "--loop" }, o));
 	CHECK(o.command == Command::Replay && o.replay_path == "x.plkv" && o.loop);
 	// Headless never writes to the controller.
@@ -333,8 +337,8 @@ PLK_TEST(options_neural_rendering)
 	// On in a window, with the performance model at 720p and all of its change.
 	ViewChoices v = resolveViewChoices(o);
 	CHECK(v.nr);
-	CHECK(v.nr_network == NrNetwork::Small);
-	CHECK(v.nr_height == 720);
+	CHECK(v.nr_network == NrNetwork::HT);
+	CHECK(v.nr_height == kNrHeightDefault);
 	CHECK(v.nr_strength == 100);
 	CHECK(v.nr_look == NrLook::Standard);
 	// A headless run is a measurement: only when it asks.

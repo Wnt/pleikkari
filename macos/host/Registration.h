@@ -102,6 +102,12 @@ std::string qtSettingsPlistPath(const std::string &profile = std::string());
  */
 bool loadRegisteredConsoles(const std::string &plist_path, std::vector<RegisteredConsole> &out, std::string *error = nullptr);
 
+/**
+ * The addresses of the Qt app's manually added consoles (manual_hosts), in array order.
+ * This is where a console's address is remembered: a registration itself has none.
+ */
+bool loadManualHosts(const std::string &plist_path, std::vector<std::string> &out, std::string *error = nullptr);
+
 /** The first console with this nickname, or nullptr. */
 const RegisteredConsole *findConsole(const std::vector<RegisteredConsole> &consoles, const std::string &nickname);
 

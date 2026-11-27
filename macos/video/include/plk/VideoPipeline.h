@@ -195,9 +195,43 @@ struct EnhanceConfig {
 	// For comparing by eye: above 0, the picture left of this share of its width (0...1)
 	// is shown as decoded, with a thin line where the two halves meet.
 	float compareSplit = 0.0f;
+	// A console's game often renders fewer pictures than its stream has frames (30 a second
+	// in a 60 fps stream: every picture is sent twice). true: a frame that repeats the one
+	// before it is not given to the enhancer, which so has twice the time for each picture;
+	// the repeat is shown with the result of the picture it repeats, or, with `wait`, not
+	// shown at all while that picture is still waiting for its result (it would add nothing).
+	bool skipRepeats = true;
+	// false: the enhancer works beside the stream. Every frame is shown as soon as it is
+	// decoded, with the change the enhancer made to an earlier frame, which ghosts where
+	// the picture moved since. true: a frame is held until the enhancer's result of that
+	// very frame is in and is shown with it, so nothing ghosts; a shown frame is later by
+	// what the enhancer takes. An enhancer slower than the stream then lowers the frame
+	// rate: the frames that arrive while it works and the next one waits are not shown.
+	// In the immediate pacing modes only.
+	bool wait = false;
+	// With `wait` false: the change's tone is kept as a table of place and brightness (a
+	// bilateral grid) and looked up with each frame's own pixels, so it follows what moves;
+	// only the change's fine detail stays tied to the key frame's pixels and is added where
+	// the picture is still. Nothing waits, and what moves keeps the network's tone without
+	// the trail a change kept per pixel leaves.
+	bool guided = false;
+	// The longest a frame is held: a guard against an enhancer that stalls. A frame that
+	// has not got its result by then is shown with the newest older one.
+	uint32_t maxWaitMs = 250;
 };
 
 class FrameEnhancer;
+class FrameInterpolator;
+
+// How far the whole picture moved from one picture of the game to the next (camera warp).
+struct PictureMotion {
+	double previousUs = 0, pictureUs = 0;  // when the two arrived (decoded), hostTimeUs()'s clock
+	// What is in the picture moved this much of its width (right is positive) and of its
+	// height (down is positive).
+	float dx = 0, dy = 0;
+	// false: the two pictures have no common shift that fits (a cut, a fade, too fast).
+	bool valid = false;
+};
 
 // A small picture drawn over the stream's, in the pass that draws the frame: a frame rate
 // counter, say. It is the pipeline that draws it and not a view over the layer, so a
@@ -300,6 +334,16 @@ struct Stats {
 	uint64_t enhanceCompleted = 0;     // results that came back with a picture
 	uint64_t enhanceFailed = 0;        // refused by the enhancer, or returned without a usable picture
 	uint64_t framesEnhanced = 0;       // rendered frames that had a result mixed in
+	uint64_t framesEnhancedExact = 0;  // of those: the result was made of that very frame
+	uint64_t enhanceLate = 0;          // frames held for their result (EnhanceConfig::wait) and shown without it
+	uint64_t framesRepeated = 0;       // frames that repeated the picture before them (EnhanceConfig::skipRepeats)
+	uint64_t framesGenerated = 0;      // pictures made between two of the stream's and shown (setFrameGeneration)
+	uint64_t generateFailed = 0;       // pictures that were to be generated and were not
+	uint64_t generatePairs = 0;        // pairs of pictures something was generated between
+	double generateMsTotal = 0;        // what those took, all together
+	uint64_t repeatChecks = 0;         // frames looked at for being a repeat
+	double repeatCheckUs = 0;          // what those looks took, all together
+	uint64_t enhanceSkipped = 0;       // frames not shown because the enhancer was behind (EnhanceConfig::wait)
 	Distribution enhanceMs;            // frame handed over -> result back
 	Distribution enhanceInputGpuMs;    // GPU time of drawing the frame the enhancer is given
 	Distribution enhanceAgeMs;         // at render: decode time of this frame - of the result's key frame
@@ -366,6 +410,44 @@ public:
 	void setEnhancer(std::shared_ptr<FrameEnhancer> enhancer);
 	// Takes effect with the next frame.
 	void setEnhanceConfig(const EnhanceConfig &config);
+
+	// Frame generation. A console's game often renders 30 pictures a second into a 60 fps
+	// stream, every picture twice. With an interpolator attached and frame generation on,
+	// the repeats are not shown; instead, when a picture arrives, the picture between it and
+	// the one before is generated and shown, and the picture itself one frame of the stream
+	// later. Motion is then 60 different pictures a second, and every real picture reaches
+	// the screen later than without: by what the generation takes plus one frame of the
+	// stream. An enhancer's result is mixed into the pictures before the one between them
+	// is made, as EnhanceConfig::wait false does it. In the immediate pacing modes only;
+	// the pictures are scaled bilinearly whatever the scaler.
+	void setInterpolator(std::shared_ptr<FrameInterpolator> interpolator);
+	// Camera warp. `motion` is told, on a thread of the pipeline's own and a few milliseconds
+	// after the picture arrived, how far each new picture of the
+	// game moved against the one before it (a repeat of a picture is not a new one). `warp`
+	// is asked, on the render thread and for every frame shown, how far that frame's picture
+	// is to be shown moved: by `dx` of its width and `dy` of its height, given when the
+	// picture arrived and when the frame will be on screen. What moves in at an edge is the
+	// picture mirrored there. Both nullptr: off, and nothing is measured.
+	void setWarp(std::function<void(const PictureMotion &)> motion,
+			std::function<void(double pictureUs, double displayUs, float *dx, float *dy)> warp);
+
+	// Whether the player is turning the camera hard just now (the right stick well over).
+	// While it is, the pipeline learns what in the picture does not turn with the rest (a
+	// HUD, a crosshair, the character): the camera warp leaves that where it is.
+	void setTurning(bool turning);
+	// What measuring one picture's motion takes, lately, and how many pictures went
+	// unmeasured because the one before was still being measured.
+	void motionCost(double *costMs, uint64_t *skipped) const;
+
+	// Every new picture of the game as a small grey one (480 x 270, a byte a point, row by
+	// row), with when it arrived: for something that looks at the game from outside (the
+	// app's --control). Called on a queue of the pipeline's own; nullptr: no more. Pictures
+	// are only looked at while setWarp() has a motion sink.
+	void setFrameTap(std::function<void(const uint8_t *grey, int width, int height, double pictureUs)> tap);
+
+	// `generated`: how many pictures are made between two of the game's. 0: none (off).
+	// 1: one, 60 pictures a second of a game that renders 30. 3: three, 120 a second.
+	void setFrameGeneration(int generated);
 
 	Stats stats() const;
 	// stats() without the distributions (left empty): a copy and nothing sorted, for a

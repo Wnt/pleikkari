@@ -33,10 +33,39 @@ const NamedChoice kNrNetworkChoices[2] = {
 	{ "Original model (HT network, slower)", "Original (HT)", (int)NrNetwork::HT, "6" },
 };
 
-const NamedChoice kNrHeightChoices[3] = {
-	{ "Process at 540p (fastest)", "540p", kNrHeights[0], "7" },
-	{ "Process at 720p", "720p", kNrHeights[1], "8" },
-	{ "Process at the stream's size (slowest)", "Stream", kNrHeights[2], "9" },
+const NamedChoice kNrHeightChoices[4] = {
+	{ "Process at 448p (fastest)", "448p", kNrHeights[0], "7" },
+	{ "Process at 576p", "576p", kNrHeights[1], "8" },
+	{ "Process at 704p", "704p", kNrHeights[2], "9" },
+	{ "Process at the stream's size (slowest)", "Stream", kNrHeights[3], "" },
+};
+
+const NamedChoice kResolutionChoices[4] = {
+	{ "Stream at 360p (reconnects)", "360p", (int)CHIAKI_VIDEO_RESOLUTION_PRESET_360p, "" },
+	{ "Stream at 540p (reconnects)", "540p", (int)CHIAKI_VIDEO_RESOLUTION_PRESET_540p, "" },
+	{ "Stream at 720p (reconnects)", "720p", (int)CHIAKI_VIDEO_RESOLUTION_PRESET_720p, "" },
+	{ "Stream at 1080p (reconnects)", "1080p", (int)CHIAKI_VIDEO_RESOLUTION_PRESET_1080p, "" },
+};
+
+// Up to what the Qt client's slider goes to, 100 Mbit/s; what a console really sends at the
+// top of it is the console's business.
+const NamedChoice kBitrateChoices[5] = {
+	{ "Bitrate 15 Mbit/s (reconnects)", "15", 15000, "" },
+	{ "Bitrate 25 Mbit/s (reconnects)", "25", 25000, "" },
+	{ "Bitrate 50 Mbit/s (reconnects)", "50", 50000, "" },
+	{ "Bitrate 75 Mbit/s (reconnects)", "75", 75000, "" },
+	{ "Bitrate 100 Mbit/s (reconnects)", "100", 100000, "" },
+};
+
+const NamedChoice kFrameGenerationChoices[2] = {
+	{ "Frame generation 2x: one picture between two (60 a second)", "2x  60", 2, "" },
+	{ "Frame generation 4x: three pictures between two (120 a second)", "4x  120", 4, "" },
+};
+
+const NamedChoice kNrTimingChoices[3] = {
+	{ "Timing: every frame waits for its own result", "Wait", (int)NrTiming::Wait, "" },
+	{ "Timing: guided, the result's tone follows the picture", "Guided", (int)NrTiming::Guided, "" },
+	{ "Timing: beside the stream, the latest result", "Beside", (int)NrTiming::Beside, "" },
 };
 
 const NamedChoice kNrLookChoices[4] = {
@@ -148,7 +177,7 @@ PanelCard neuralRendering(const PanelState &state)
 	card.has_toggle = true;
 	card.on = v.nr;
 	card.toggle = action(PanelCommand::ToggleNr);
-	char buf[160];
+	char buf[320];
 	if(!v.nr_available)
 		card.subtitle = "Not installed";
 	else if(!v.nr)
@@ -170,7 +199,7 @@ PanelCard neuralRendering(const PanelState &state)
 	}
 	if(!v.nr_available)
 		card.rows.push_back(noteRow(v.nr_status, true));
-	card.rows.push_back(choiceRow("Model", "The two networks of NVIDIA's model. Performance is the small one, about twice as fast.",
+	card.rows.push_back(choiceRow("Model", "The two networks of NVIDIA's model. Performance is the small one: about twice as fast, and it changes the picture less.",
 			PanelCommand::SelectNrNetwork, kNrNetworkChoices, (int)v.nr_network));
 	card.rows.push_back(choiceRow("Processing size", "The height of the picture the network is given. A result's cost grows with the pixels.",
 			PanelCommand::SelectNrHeight, kNrHeightChoices, v.nr_height));
@@ -179,18 +208,41 @@ PanelCard neuralRendering(const PanelState &state)
 			stepNrStrength(v.nr_strength, 1) != v.nr_strength));
 	card.rows.push_back(choiceRow("Look", "The rendering profile the network is asked for. Neutral leaves its changes out: a diagnostic.",
 			PanelCommand::SelectNrLook, kNrLookChoices, (int)v.nr_look));
-	card.rows.push_back(toggleRow("Compare", "The left half of the picture stays as decoded.", PanelCommand::ToggleNrCompare, v.nr_compare));
+	card.rows.push_back(choiceRow("Timing", "Wait: a frame is held for its own result (no ghost, later). Guided: at once; the "
+			"result's tone follows what moves, its fine detail shows where the picture is still. Beside: at once, ghosts.",
+			PanelCommand::SelectNrTiming, kNrTimingChoices, (int)v.nr_timing));
+	card.rows.push_back(toggleRow("Compare", "Left of the line the picture stays as decoded. Drag the line over the picture.",
+			PanelCommand::ToggleNrCompare, v.nr_compare));
 	if(working)
 	{
 		// What the mix is, said where it is switched on: a result is not made for the frame
 		// it is shown with.
-		if(t.nr_age.samples)
+		// Every frame with its own result: the age is nothing, and the cost is the wait.
+		const bool own = v.nr_timing == NrTiming::Wait && t.nr_age.samples && t.nr_age.mean_ms < 2.0;
+		const double takes = t.nr_round_trip.samples ? t.nr_round_trip.mean_ms : t.nr_network.mean_ms;
+		if(own && t.budget_ms > 0 && takes > t.budget_ms)
+		{
+			// Slower than the stream: the frames it cannot do are not shown.
+			snprintf(buf, sizeof(buf), "A result takes %s and a frame of the stream lasts %s: only the frames the network gets "
+					"done are shown, %.0f a second. The Performance model or a smaller processing size is faster.",
+					milliseconds(takes).c_str(), milliseconds(t.budget_ms).c_str(), t.fps);
+			card.rows.push_back(noteRow(buf, true));
+		}
+		else if(own)
+		{
+			snprintf(buf, sizeof(buf), "Every frame is shown with the network's result of itself, %s later than without.",
+					milliseconds(takes).c_str());
+			card.rows.push_back(noteRow(buf));
+		}
+		else if(t.nr_age.samples)
+		{
 			snprintf(buf, sizeof(buf), "A result is %.0f ms old when it is shown, and is laid where the picture was then: a "
 					"moving picture ghosts, a still one does not.", t.nr_age.mean_ms);
+			card.rows.push_back(noteRow(buf, true));
+		}
 		else
-			snprintf(buf, sizeof(buf), "A result is made from an older frame and laid where the picture was then: a moving "
-					"picture ghosts, a still one does not.");
-		card.rows.push_back(noteRow(buf, true));
+			card.rows.push_back(noteRow("A result is made from an older frame and laid where the picture was then: a moving "
+					"picture ghosts, a still one does not.", true));
 		if(state.picture_hdr)
 			card.rows.push_back(noteRow("Of an HDR picture the network is given an SDR rendition; its change is made to the HDR "
 					"picture in proportion."));
@@ -221,21 +273,61 @@ PanelCard scaling(const PanelState &state)
 	return card;
 }
 
+PanelCard frameGeneration(const PanelState &state)
+{
+	const Runner::ViewState &v = state.view;
+	const AnalysisSnapshot &t = state.report.timing;
+	PanelCard card;
+	card.id = "frame-generation";
+	card.title = "Frame generation";
+	card.icon = "square.stack.3d.forward.dottedline";
+	card.badge = "Experimental";
+	card.has_toggle = true;
+	card.on = v.frame_generation;
+	card.toggle = action(PanelCommand::ToggleFrameGeneration);
+	char buf[200];
+	if(!v.frame_generation_available)
+		card.subtitle = "Not installed";
+	else if(!v.frame_generation)
+		card.subtitle = "Off";
+	else
+	{
+		snprintf(buf, sizeof(buf), "%.0f pictures a second on screen", t.fps);
+		card.subtitle = buf;
+	}
+	if(!v.frame_generation_available)
+		card.rows.push_back(noteRow(v.frame_generation_status, true));
+	card.rows.push_back(choiceRow("Rate", "How many pictures are made between two of the game's: one, for 60 a second, or "
+			"three, for the 120 this display can show. Three cost the GPU about three times as much.",
+			PanelCommand::SelectFrameGenerationFactor, kFrameGenerationChoices, v.frame_generation_factor));
+	card.rows.push_back(noteRow("The game renders about 30 pictures a second and the stream sends each twice. On: in place of "
+			"the repeat, the picture between two of the game's is generated, so motion has 60 pictures a second. Every real "
+			"picture reaches the screen about 25 ms later than without, and all pictures are scaled bilinearly.", v.frame_generation));
+	return card;
+}
+
 PanelCard hdrStream(const PanelState &state)
 {
 	const Runner::ViewState &v = state.view;
 	PanelCard card;
 	card.id = "hdr-stream";
-	card.title = "HDR stream";
+	card.title = "Input";
 	card.icon = "dot.radiowaves.left.and.right";
 	card.has_toggle = true;
 	card.on = v.hdr_switchable ? v.hdr : state.picture_hdr;
 	card.toggle_enabled = v.hdr_switchable;
 	card.toggle = action(PanelCommand::ToggleHdr);
-	card.subtitle = !v.hdr_switchable ? (state.picture_hdr ? "HDR10; switched in a stream of a PS5 only" : "SDR; switched in a stream of a PS5 only")
-			: v.hdr ? "The console is asked for HDR10" : "The console is asked for SDR";
-	card.rows.push_back(noteRow("The console fixes this when a session starts: switching reconnects, about ten seconds without "
-			"picture."));
+	char line[160];
+	snprintf(line, sizeof(line), "%s%s%s%s%u Mbit/s", v.hdr_switchable ? (v.hdr ? "HDR10" : "SDR") : (state.picture_hdr ? "HDR10" : "SDR"),
+			kDot, resolutionName(v.resolution), kDot, v.bitrate_kbps / 1000);
+	card.subtitle = v.hdr_switchable ? line : std::string(line) + kDot + "switched in a stream of a PS5 only";
+	// The switch in the card's head is HDR on or off.
+	card.rows.push_back(noteRow("What the console is asked to send. The switch above is HDR. The console fixes all three when a "
+			"session starts: a change reconnects, about ten seconds without picture."));
+	card.rows.push_back(choiceRow("Resolution", "1080p is the most a PS5 sends.", PanelCommand::SelectResolution,
+			kResolutionChoices, (int)v.resolution));
+	card.rows.push_back(choiceRow("Bitrate", "In Mbit/s. More bits, fewer compression artefacts; over Wi-Fi a lower rate drops fewer frames.",
+			PanelCommand::SelectBitrate, kBitrateChoices, (int)v.bitrate_kbps));
 	return card;
 }
 
@@ -290,6 +382,44 @@ PanelCard fullscreen(const PanelState &state)
 	card.toggle = action(PanelCommand::ToggleFullscreenSync);
 	card.subtitle = !v.fullscreen_sync_applies ? "The pacing is fixed by --pacing"
 			: v.fullscreen_sync ? "Fullscreen: no tearing, about 5 ms slower" : "Fullscreen: shown at once, can tear";
+	return card;
+}
+
+PanelCard cameraWarp(const PanelState &state)
+{
+	const Runner::ViewState &v = state.view;
+	const CameraWarp::State &w = v.camera_warp_state;
+	PanelCard card;
+	card.id = "camera-warp";
+	card.title = "Camera warp";
+	card.icon = "arrow.left.and.right.righttriangle.left.righttriangle.right";
+	card.badge = "Experimental";
+	card.has_toggle = true;
+	card.on = v.camera_warp;
+	card.toggle = action(PanelCommand::ToggleCameraWarp);
+	char buf[240];
+	if(!v.camera_warp)
+		card.subtitle = "Off";
+	else if(!w.learned)
+		card.subtitle = "Learning: turn the camera with the right stick";
+	else
+	{
+		snprintf(buf, sizeof(buf), "%.0f ms behind the stick%s%.0f %% of its motion explained", w.delay_ms, kDot, w.explained * 100.0);
+		card.subtitle = buf;
+	}
+	card.rows.push_back(noteRow("The picture is shown moved by what the right stick has asked for and the console has not shown "
+			"yet, so a turn of the camera is on screen at once. How the game answers the stick is learned while you play "
+			"(for free look, for aiming with L2 and for a wheel held with L1 each) and kept for next time. What stands "
+			"still on screen while the camera turns (the character, a crosshair, a HUD) is left where it is; towards "
+			"it and towards the edge the picture comes in from, the picture is stretched a little. Looking straight up "
+			"or down, where a turn does not slide the picture, nothing is done."));
+	if(v.camera_warp && w.learned)
+	{
+		snprintf(buf, sizeof(buf), "Learned for %s: at full tilt the picture turns %.0f %% of its width a second; %d steps of "
+				"the stick's answer filled in; the picture follows the stick %.0f ms late.", w.mode == 0 ? "free look" : w.mode == 1 ? "aiming (L2)" : w.mode == 2 ? "a wheel (L1)" : w.mode == 5 ? "L2 and R3's other view" : "L1 with L2",
+				w.full_tilt * 100.0, w.steps_learned, w.delay_ms);
+		card.rows.push_back(noteRow(buf));
+	}
 	return card;
 }
 
@@ -354,26 +484,32 @@ PanelModel buildPanel(const PanelState &state)
 
 	PanelPage quality;
 	quality.title = "Quality";
-	quality.cards = { neuralRendering(state), scaling(state) };
+	// In the order of the pipeline: what comes in first.
+	quality.cards = { hdrStream(state), neuralRendering(state), scaling(state), frameGeneration(state) };
 	if(!v.nr && v.nr_available)
 		quality.reset.push_back(action(PanelCommand::ToggleNr));
-	if(v.nr_network != NrNetwork::Small)
-		quality.reset.push_back(action(PanelCommand::SelectNrNetwork, (int)NrNetwork::Small, kNrNetworkChoices[0].title));
+	if(v.nr_network != NrNetwork::HT)
+		quality.reset.push_back(action(PanelCommand::SelectNrNetwork, (int)NrNetwork::HT, kNrNetworkChoices[1].title));
 	if(v.nr_height != kNrHeightDefault)
-		quality.reset.push_back(action(PanelCommand::SelectNrHeight, kNrHeightDefault, kNrHeightChoices[1].title));
+		quality.reset.push_back(action(PanelCommand::SelectNrHeight, kNrHeightDefault, kNrHeightChoices[0].title));
 	if(v.nr_strength != kNrStrengthDefault)
 		quality.reset.push_back(action(PanelCommand::StepNrStrength, 0));
 	if(v.nr_look != NrLook::Standard)
 		quality.reset.push_back(action(PanelCommand::SelectNrLook, (int)NrLook::Standard, kNrLookChoices[0].title));
 	if(v.nr_compare)
 		quality.reset.push_back(action(PanelCommand::ToggleNrCompare));
+	if(v.nr_timing != NrTiming::Wait)
+		quality.reset.push_back(action(PanelCommand::SelectNrTiming, (int)NrTiming::Wait, kNrTimingChoices[0].title));
+
+	if(v.frame_generation)
+		quality.reset.push_back(action(PanelCommand::ToggleFrameGeneration));
 	if(v.scaler != Scaler::Bilinear)
 		quality.reset.push_back(action(PanelCommand::SelectScaler, (int)Scaler::Bilinear, kScalerChoices[0].title));
 
 	// Not the HDR stream itself: that one reconnects.
 	PanelPage colour;
 	colour.title = "Colour";
-	colour.cards = { hdrStream(state), hdrPicture(state), sdrColour(state) };
+	colour.cards = { hdrPicture(state), sdrColour(state) };
 	if(v.hdr_output != HdrOutput::PQ)
 		colour.reset.push_back(action(PanelCommand::SelectHdrOutput, (int)HdrOutput::PQ, kHdrOutputChoices[0].title));
 	if(v.hdr_brightness != kHdrBrightnessDefault)
@@ -385,7 +521,7 @@ PanelModel buildPanel(const PanelState &state)
 
 	PanelPage display;
 	display.title = "Display";
-	display.cards = { fullscreen(state), fpsOverlay(state), analysis(state), thisPanel(state) };
+	display.cards = { fullscreen(state), cameraWarp(state), fpsOverlay(state), analysis(state), thisPanel(state) };
 	if(!v.fullscreen_sync && v.fullscreen_sync_applies)
 		display.reset.push_back(action(PanelCommand::ToggleFullscreenSync));
 	if(!v.fps_overlay)
@@ -420,7 +556,10 @@ PanelModel buildPanel(const PanelState &state)
 			m.footer += " / NR " + size(info.nr_width, info.nr_height);
 		if(info.picture_width > 0)
 			m.footer += " / output " + size(info.picture_width, info.picture_height);
-		m.footer += nr ? std::string(kDot) + "mixed in the scaler's pass, the network beside the stream" : "";
+		if(nr)
+			m.footer += std::string(kDot) + (v.nr_timing == NrTiming::Wait ? "every frame shown waits for the network's result of itself"
+					: v.nr_timing == NrTiming::Guided ? "the network's tone follows the picture, its detail where the picture is still"
+					: "mixed in the scaler's pass, the network beside the stream");
 	}
 	else
 		m.footer = "Waiting for the first frame";

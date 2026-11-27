@@ -2,83 +2,31 @@
 
 #include "AwdlGuard.h"
 
+#include "AwdlHelperClient.h"
+
 #include <SystemConfiguration/SystemConfiguration.h>
 #include <dispatch/dispatch.h>
 
 #include <arpa/inet.h>
-#include <fcntl.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
-#include <pwd.h>
-#include <spawn.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
-#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
-
-extern char **environ;
 
 namespace plk {
 
 namespace {
 
 const char *const kAwdl = "awdl0";
-const char *const kSudoersFile = "/private/etc/sudoers.d/chiaki-awdl";
-
-// Runs a program and waits for it. Output is dropped: none of these commands says anything
-// worth keeping, and sudo -n complains on purpose when the rule is missing.
-int run(const std::vector<std::string> &args)
-{
-	std::vector<char *> argv;
-	for(const std::string &a : args)
-		argv.push_back(const_cast<char *>(a.c_str()));
-	argv.push_back(nullptr);
-	posix_spawn_file_actions_t fa;
-	posix_spawn_file_actions_init(&fa);
-	posix_spawn_file_actions_addopen(&fa, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
-	posix_spawn_file_actions_addopen(&fa, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
-	posix_spawn_file_actions_addopen(&fa, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-	pid_t pid = 0;
-	const int r = posix_spawn(&pid, argv[0], &fa, nullptr, argv.data(), environ);
-	posix_spawn_file_actions_destroy(&fa);
-	if(r != 0)
-		return -1;
-	int status = 0;
-	while(waitpid(pid, &status, 0) < 0)
-	{
-		if(errno != EINTR)
-			return -1;
-	}
-	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
-
-bool ifconfigAwdl(const char *what)
-{
-	return run({"/usr/bin/sudo", "-n", "/sbin/ifconfig", kAwdl, what}) == 0;
-}
-
-// The name goes into a sudoers line and a shell command: anything unusual is refused.
-bool plainName(const std::string &s)
-{
-	if(s.empty() || !(isalpha((unsigned char)s[0]) || s[0] == '_'))
-		return false;
-	for(char c : s)
-	{
-		if(!(isalnum((unsigned char)c) || c == '_' || c == '-'))
-			return false;
-	}
-	return true;
-}
 
 std::string toStd(CFStringRef s)
 {
@@ -171,37 +119,6 @@ void activeServices(std::vector<std::string> &order, std::vector<std::pair<std::
 		CFRelease(pattern);
 	}
 	CFRelease(store);
-}
-
-// 0 installed (and awdl0 taken down), 1 dialog dismissed, -1 failed
-int installRule()
-{
-	const struct passwd *pw = getpwuid(getuid());
-	const std::string user = pw && pw->pw_name ? pw->pw_name : "";
-	if(!plainName(user))
-		return -1;
-	// The rule is checked with visudo before it is installed: a sudoers file with an error in
-	// it would switch sudo off altogether. No double quote or backslash below, so the command
-	// can sit in an AppleScript string as it is.
-	const std::string command =
-		"t=$(/usr/bin/mktemp /tmp/chiaki-awdl.XXXXXX)"
-		" && /bin/echo '" + user + " ALL=(root) NOPASSWD: /sbin/ifconfig awdl0 down, /sbin/ifconfig awdl0 up' > $t"
-		" && /usr/sbin/visudo -cf $t > /dev/null"
-		" && /usr/bin/install -m 0440 -o root -g wheel $t " + kSudoersFile +
-		" && /bin/rm -f $t"
-		" && /sbin/ifconfig awdl0 down";
-	const std::string prompt =
-		"The stream runs over Wi-Fi, and AWDL (AirDrop, AirPlay, Handoff) takes the Wi-Fi radio "
-		"off its channel for up to 100 ms at a time, which makes the picture stutter. "
-		"Allow Pleikkari to switch AWDL off while a stream runs? This installs a rule that lets "
-		"only the commands 'ifconfig awdl0 down' and 'ifconfig awdl0 up' run without a password.";
-	const std::string script = "do shell script \"" + command + "\" with prompt \"" + prompt + "\" with administrator privileges";
-	const int r = run({"/usr/bin/osascript", "-e", script});
-	if(r == 0)
-		return 0;
-	// osascript answers 1 both for a dismissed dialog and for a failed command; what tells
-	// them apart is whether the rule is there now.
-	return access(kSudoersFile, F_OK) == 0 ? -1 : 1;
 }
 
 } // namespace
@@ -330,52 +247,48 @@ struct AwdlGuard::Impl
 	int users = 0;
 	uint64_t release_generation = 0;
 	bool watching = false;
-	bool install_tried = false;
 	bool gave_up = false;
 	bool allow_prompt = true;
+	bool waiting_said = false;
 	std::atomic<bool> brought_down{false};
-	std::atomic<bool> prompt_open{false};
 
+	// Once a second while a stream runs, until the helper holds awdl0 down. After that the
+	// helper keeps it down by itself; this only notices when the helper is gone.
 	void tick()
 	{
-		if(gave_up || users == 0 || AwdlGuard::awdlIsUp() != 1)
+		if(gave_up || users == 0 || AwdlHelperClient::holding())
 			return;
-		if(ifconfigAwdl("down"))
+		std::string detail;
+		switch(AwdlHelperClient::hold(allow_prompt, detail))
 		{
-			if(!brought_down.exchange(true))
-				fprintf(stderr, "[awdl] awdl0 taken down for the stream\n");
-			return;
+			case AwdlHelperClient::Result::Held:
+				if(!brought_down.exchange(true))
+					fprintf(stderr, "[awdl] awdl0 taken down for the stream\n");
+				waiting_said = false;
+				break;
+			case AwdlHelperClient::Result::NeedsApproval:
+				// The user may allow it while the stream runs: keep asking.
+				if(!detail.empty())
+					fprintf(stderr, "[awdl] %s\n", detail.c_str());
+				if(!waiting_said)
+					fprintf(stderr, "[awdl] AWDL stays up until the helper is allowed\n");
+				waiting_said = true;
+				brought_down = false;
+				break;
+			case AwdlHelperClient::Result::Unavailable:
+				gave_up = true;
+				brought_down = false;
+				fprintf(stderr, "[awdl] %s: AWDL is left alone\n", detail.empty() ? "no AWDL helper" : detail.c_str());
+				break;
 		}
-		// sudo -n fails when the rule is not there yet.
-		if(install_tried || !allow_prompt)
-		{
-			gave_up = true;
-			return;
-		}
-		install_tried = true;
-		prompt_open = true;
-		const int r = installRule();
-		prompt_open = false;
-		if(r == 0)
-		{
-			brought_down = true;
-			fprintf(stderr, "[awdl] rule installed in %s, awdl0 taken down\n", kSudoersFile);
-			// The stream may have ended while the dialog was open.
-			if(users == 0)
-				bringUp();
-			return;
-		}
-		gave_up = true;
-		fprintf(stderr, r == 1 ? "[awdl] password dialog dismissed: AWDL is left alone (--keep-awdl skips the question)\n"
-							   : "[awdl] installing the AWDL rule failed: AWDL is left alone\n");
 	}
 
 	void bringUp()
 	{
-		if(!brought_down.exchange(false))
-			return;
-		ifconfigAwdl("up");
-		fprintf(stderr, "[awdl] stream ended: awdl0 brought back up\n");
+		const bool was_down = brought_down.exchange(false);
+		AwdlHelperClient::release();
+		if(was_down)
+			fprintf(stderr, "[awdl] stream ended: awdl0 brought back up\n");
 	}
 
 	void setWatching(bool on)
@@ -451,8 +364,7 @@ void AwdlGuard::release()
 void AwdlGuard::restoreNow()
 {
 	Impl *impl = impl_;
-	// The queue is busy for as long as the password dialog is open: at exit, do not wait for it.
-	if(impl->prompt_open || !impl->brought_down)
+	if(!impl->brought_down)
 		return;
 	dispatch_sync(impl->queue, ^{
 		impl->users = 0;

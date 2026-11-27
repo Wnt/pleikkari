@@ -2,6 +2,10 @@
 
 #include "Runner.h"
 
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
 #include "AudioOutput.h"
 #include "Controller.h"
 #include "FrameHud.h"
@@ -54,15 +58,251 @@ Runner::Runner(const Options &options) : options_(options), secrets_(std::make_u
 
 void Runner::pushControllerState(bool from_gamepads, const ChiakiControllerState &state)
 {
-	ChiakiControllerState merged;
 	{
 		std::lock_guard<std::mutex> lk(pad_state_mutex_);
 		(from_gamepads ? gamepad_state_ : dualsense_state_) = state;
+	}
+	sendControllerState();
+}
+
+void Runner::sendControllerState()
+{
+	ChiakiControllerState merged;
+	{
+		std::lock_guard<std::mutex> lk(pad_state_mutex_);
 		// The DualSense first: it is the one with motion.
 		chiaki_controller_state_or(&merged, &dualsense_state_, &gamepad_state_);
 	}
+	if(play_holds_.load())
+	{
+		std::lock_guard<std::mutex> lk(pad_state_mutex_);
+		merged = play_state_;
+	}
+	if(probe_holds_.load())
+	{
+		merged.right_x = (int16_t)std::lround(std::max(-1.0f, std::min(1.0f, probe_stick_.load())) * 32767.0f);
+		merged.right_y = (int16_t)std::lround(std::max(-1.0f, std::min(1.0f, probe_stick_y_.load())) * 32767.0f);
+		if(options_.probe_hold_l2)
+		{
+			merged.l2_state = 0xff;
+			merged.buttons |= CHIAKI_CONTROLLER_ANALOG_BUTTON_L2;
+		}
+	}
+	const double now_us = video::hostTimeUs();
+	// L2 held far enough to aim: the game answers the stick another way then.
+	const bool aiming = merged.l2_state > 100;
+	// And L1, which in many games opens a wheel that the stick then picks from.
+	// And a view that R3 switches to while L2 is held, and that lasts until L2 is let go (a
+	// scope; in one game a closer look at things): the stick is answered differently there.
+	const bool r3 = (merged.buttons & CHIAKI_CONTROLLER_BUTTON_R3) != 0;
+	if(!aiming)
+		warp_other_view_ = false;
+	else if(r3 && !warp_r3_was_)
+		warp_other_view_ = !warp_other_view_;
+	warp_r3_was_ = r3;
+	const int warp_mode = (aiming ? 1 : 0) | ((merged.buttons & CHIAKI_CONTROLLER_BUTTON_L1) ? 2 : 0) | (warp_other_view_ ? 4 : 0);
+	camera_warp_.onStick(now_us, merged.right_x / 32767.0f, merged.right_y / 32767.0f, warp_mode);
+	if(pipeline_)
+		pipeline_->setTurning(std::max(std::abs((int)merged.right_x), std::abs((int)merged.right_y)) > 16400);
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		if(sweep_stick_)
+			fprintf(sweep_stick_, "%.0f,%.4f,%.4f,%d\n", now_us, merged.right_x / 32767.0, merged.right_y / 32767.0, aiming ? 1 : 0);
+		// The buttons, the triggers and the sticks, whenever one of them changed. (Not the
+		// touchpad nor the motion sensors: a game played with them is not played back by this.)
+		if(input_log_ && (merged.buttons != input_logged_.buttons || merged.l2_state != input_logged_.l2_state
+				|| merged.r2_state != input_logged_.r2_state || merged.left_x != input_logged_.left_x
+				|| merged.left_y != input_logged_.left_y || merged.right_x != input_logged_.right_x
+				|| merged.right_y != input_logged_.right_y || ftell(input_log_) < 60))
+		{
+			fprintf(input_log_, "%.0f,%u,%u,%u,%d,%d,%d,%d\n", now_us, (unsigned)merged.buttons, (unsigned)merged.l2_state,
+					(unsigned)merged.r2_state, (int)merged.left_x, (int)merged.left_y, (int)merged.right_x, (int)merged.right_y);
+			input_logged_ = merged;
+			fflush(input_log_);
+		}
+	}
 	if(session_)
 		session_->setControllerState(merged);
+}
+
+// The pipeline measures how far each new picture moved only while someone wants to know.
+void Runner::applyWarp()
+{
+	if(!pipeline_)
+		return;
+	const bool warp = view_.camera_warp, probe = options_.lag_probe > 0 || !options_.stick_sweep.empty()
+			|| !options_.record_input.empty() || !options_.control_socket.empty();
+	if(!warp && !probe)
+	{
+		pipeline_->setWarp(nullptr, nullptr);
+		return;
+	}
+	pipeline_->setWarp([this](const video::PictureMotion &m) {
+		camera_warp_.onMotion(m.previousUs, m.pictureUs, m.dx, m.dy, m.valid);
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		// Every ten seconds or so, what the warp has learned, for the log.
+		if(view_.camera_warp && ++warp_logged_ % 400 == 0)
+		{
+			double cost = 0;
+			uint64_t skipped = 0;
+			if(pipeline_)
+				pipeline_->motionCost(&cost, &skipped);
+			PLK_LOGI("camera warp: measuring a picture takes %.1f ms, %llu not measured, told %.0f ms after it arrived; %s", cost,
+					(unsigned long long)skipped, (video::hostTimeUs() - m.pictureUs) / 1000.0, camera_warp_.describe().c_str());
+		}
+		if(sweep_motion_)
+		{
+			// With what the camera warp would show this picture moved by, a refresh from now.
+			float wx = 0, wy = 0;
+			camera_warp_.predict(m.pictureUs, m.pictureUs + 8000.0, &wx, &wy);
+			const CameraWarp::State w = camera_warp_.state();
+			fprintf(sweep_motion_, "%.0f,%.0f,%.6f,%.6f,%d,%.6f,%.6f,%.0f,%.4f,%.4f,%.3f\n", m.previousUs, m.pictureUs, m.dx, m.dy,
+					m.valid ? 1 : 0, wx, wy, w.delay_ms, w.gain_x, w.gain_y, w.explained);
+		}
+		// A pair of pictures with no common shift moved, and far, as far as the probe goes.
+		const double moved = m.valid ? std::abs((double)m.dx) : 1.0;
+		if(!probe_armed_)
+		{
+			if(m.valid)
+				probe_recent_[probe_recent_at_++ % 8] = moved;
+			return;
+		}
+		// The first picture that moves clearly more than the pictures did while the stick
+		// was still (a camera that drifts back by itself is not the stick's doing): three
+		// times that, and at least 0.3 % of the width, six pixels of 1920.
+		double quiet = 0;
+		for(double r : probe_recent_)
+			quiet = std::max(quiet, r);
+		if(probe_arrival_us_ == 0 && m.pictureUs > probe_stick_us_ && moved > std::max(0.003, quiet * 3.0))
+		{
+			probe_arrival_us_ = m.pictureUs;
+			probe_cond_.notify_all();
+		}
+	}, warp ? std::function<void(double, double, float *, float *)>([this](double picture_us, double display_us, float *dx, float *dy) {
+		camera_warp_.predict(picture_us, display_us, dx, dy);
+		// Never a jump: what is shown moves towards what is guessed at no more than two
+		// pictures' width a second. A guess that changes its mind between two frames (a new
+		// picture came, a step of the table was relearned) is then a glide, not a jerk.
+		const double step = std::max(0.0, std::min(0.05, (display_us - warp_shown_us_) / 1e6)) * 2.0;
+		warp_shown_x_ += (float)std::max(-step, std::min(step, (double)(*dx - warp_shown_x_)));
+		warp_shown_y_ += (float)std::max(-step, std::min(step, (double)(*dy - warp_shown_y_)));
+		warp_shown_us_ = display_us;
+		*dx = warp_shown_x_;
+		*dy = warp_shown_y_;
+	}) : nullptr);
+}
+
+void Runner::setCameraWarp(bool on)
+{
+	view_.camera_warp = on;
+	applyWarp();
+	PLK_LOGI("Video: camera warp %s", on ? "on" : "off");
+}
+
+// --lag-probe: the right stick is pushed over, to the right and to the left in turn, and
+// the time to the first picture that moves is taken: to when it arrived, and to when it was
+// on screen. The player has to stand where the camera can turn and nothing else moves it.
+void Runner::lagProbeLoop()
+{
+	pthread_setname_np("plk.lag-probe");
+	auto wait = [this](double seconds) {
+		std::unique_lock<std::mutex> lk(probe_mutex_);
+		return !probe_cond_.wait_for(lk, std::chrono::duration<double>(seconds), [this] { return probe_stop_; });
+	};
+	// The stream has to be up and the picture settled.
+	for(int i = 0; i < 600; i++)
+	{
+		if(!wait(0.1))
+			return;
+		if(pipeline_ && pipeline_->counters().framesRendered > 300)
+			break;
+	}
+	if(!wait(2.0))
+		return;
+	std::vector<double> arrival, glass;
+	int skipped = 0;
+	uint32_t random = 12345;
+	PLK_LOGI("lag-probe: %d measurements with the right stick", options_.lag_probe);
+	for(int i = 0; i < options_.lag_probe; i++)
+	{
+		// A pause of 1.2 to 1.7 s with the stick still: the camera comes to rest, and no two
+		// pushes fall in step with the stream's frames.
+		random = random * 1664525u + 1013904223u;
+		if(!wait(1.2 + (double)(random >> 16) / 65535.0 * 0.5))
+			break;
+		const int direction = i % 2 == 0 ? 1 : -1;
+		double quiet;
+		{
+			std::lock_guard<std::mutex> lk(probe_mutex_);
+			quiet = 0;
+			for(double r : probe_recent_)
+				quiet = std::max(quiet, r);
+			probe_arrival_us_ = probe_glass_us_ = 0;
+			probe_armed_ = true;
+			probe_stick_us_ = video::hostTimeUs();
+		}
+		probe_holds_.store(true);
+		probe_stick_.store((float)direction);
+		sendControllerState();
+		double stick_us, arrival_us, glass_us;
+		{
+			std::unique_lock<std::mutex> lk(probe_mutex_);
+			probe_cond_.wait_for(lk, std::chrono::milliseconds(250), [this] { return probe_stop_; });
+			if(probe_stop_)
+				break;
+			lk.unlock();
+			// A quarter of a second over, then back: the next one turns the camera the other way.
+			probe_stick_.store(0.0f);
+			sendControllerState();
+			lk.lock();
+			probe_cond_.wait_for(lk, std::chrono::milliseconds(450), [this] { return probe_stop_ || (probe_arrival_us_ > 0 && probe_glass_us_ > 0); });
+			if(probe_stop_)
+				break;
+			probe_armed_ = false;
+			stick_us = probe_stick_us_;
+			arrival_us = probe_arrival_us_;
+			glass_us = probe_glass_us_;
+		}
+		// Over the last eight pictures before the push: under 0.4 % of the width a picture.
+		if(quiet > 0.004 || arrival_us == 0)
+		{
+			skipped++;
+			PLK_LOGI("lag-probe: %d %s skipped (%s)", i + 1, direction > 0 ? "right" : "left",
+					arrival_us == 0 ? "the picture did not move" : "the picture was moving before the stick was");
+			continue;
+		}
+		arrival.push_back((arrival_us - stick_us) / 1000.0);
+		if(glass_us > 0)
+			glass.push_back((glass_us - stick_us) / 1000.0);
+		PLK_LOGI("lag-probe: %d %s stick to picture arrived %.1f ms, to on screen %.1f ms", i + 1, direction > 0 ? "right" : "left",
+				(arrival_us - stick_us) / 1000.0, glass_us > 0 ? (glass_us - stick_us) / 1000.0 : -1.0);
+	}
+	probe_stick_.store(0.0f);
+	sendControllerState();
+	probe_holds_.store(false);
+	auto summary = [](std::vector<double> v) {
+		char line[200] = "none";
+		if(!v.empty())
+		{
+			std::sort(v.begin(), v.end());
+			double sum = 0;
+			for(double x : v)
+				sum += x;
+			snprintf(line, sizeof(line), "n=%zu min=%.1f p10=%.1f median=%.1f mean=%.1f p90=%.1f max=%.1f", v.size(), v.front(),
+					v[v.size() / 10], v[v.size() / 2], sum / (double)v.size(), v[std::min(v.size() - 1, v.size() * 9 / 10)], v.back());
+		}
+		return std::string(line);
+	};
+	PLK_LOGI("lag-probe result: stream %s %d fps %u kbit/s %s; stick to picture arrived ms: %s", resolutionName(stream_config_.session.resolution),
+			stream_config_.fps, stream_config_.effective_bitrate_kbps, codecName(stream_config_.session.codec), summary(arrival).c_str());
+	PLK_LOGI("lag-probe result: stick to on screen ms: %s; skipped %d", summary(glass).c_str(), skipped);
+	bool stopped;
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		stopped = probe_stop_;
+	}
+	if(!stopped)
+		requestStop();
 }
 
 Runner::~Runner()
@@ -182,9 +422,19 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 	analysis_ = std::make_unique<FrameAnalysis>();
 	FrameLogger *logger = frame_logger_.get();
 	FrameAnalysis *analysis = analysis_.get();
-	pc.onFrame = [logger, analysis](const video::FrameTiming &t) {
+	pc.onFrame = [this, logger, analysis](const video::FrameTiming &t) {
 		logger->onFrame(t);
 		analysis->onFrame(t);
+		// The lag probe: when the picture it waits for was on screen.
+		if(options_.lag_probe > 0 && t.presented)
+		{
+			std::lock_guard<std::mutex> lk(probe_mutex_);
+			if(probe_armed_ && probe_arrival_us_ > 0 && probe_glass_us_ == 0 && t.decodedUs >= probe_arrival_us_)
+			{
+				probe_glass_us_ = t.presentedUs;
+				probe_cond_.notify_all();
+			}
+		}
 	};
 	pc.onEnhance = [analysis](const video::EnhanceTiming &t) { analysis->onEnhance(t, video::hostTimeUs()); };
 
@@ -234,6 +484,31 @@ bool Runner::createPipeline(void *metalLayer, float display_refresh_hz)
 	// Neural rendering: the engine is loaded beside the stream, which starts without it.
 	nr_thread_ = std::thread([this] { nrLoop(); });
 	applyEnhanceConfig();
+	if(view_.frame_generation)
+		setFrameGeneration(true);
+	if(!options_.record_input.empty() && options_.command == Command::Stream)
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		input_log_ = fopen((options_.record_input + "-input.csv").c_str(), "w");
+		sweep_motion_ = fopen((options_.record_input + "-motion.csv").c_str(), "w");
+		if(!input_log_ || !sweep_motion_)
+			PLK_LOGE("record-input: cannot write %s-*.csv", options_.record_input.c_str());
+		if(input_log_)
+			fprintf(input_log_, "t_us,buttons,l2,r2,left_x,left_y,right_x,right_y\n");
+		if(sweep_motion_)
+			fprintf(sweep_motion_, "previous_us,picture_us,dx,dy,valid,warp_x,warp_y,delay_ms,gain_x,gain_y,explained\n");
+		PLK_LOGI("record-input: to %s-input.csv, -motion.csv and the video dump", options_.record_input.c_str());
+	}
+	loadWarp();
+	applyWarp();
+	if(!options_.control_socket.empty() && options_.command == Command::Stream)
+		control_thread_ = std::thread([this] { controlLoop(); });
+	if(!options_.play_input.empty() && options_.command == Command::Stream)
+		probe_thread_ = std::thread([this] { inputPlayLoop(); });
+	else if(options_.lag_probe > 0 && options_.command == Command::Stream)
+		probe_thread_ = std::thread([this] { lagProbeLoop(); });
+	else if(!options_.stick_sweep.empty() && options_.command == Command::Stream)
+		probe_thread_ = std::thread([this] { stickSweepLoop(); });
 	if(view_.nr)
 	{
 		const std::string missing = nrMissing(resolveNrPaths(options_, view_.nr_network));
@@ -276,6 +551,22 @@ Runner::ViewState Runner::viewState() const
 	v.nr_strength = view_.nr_strength;
 	v.nr_look = view_.nr_look;
 	v.nr_compare = nr_compare_;
+	v.nr_compare_split = nr_compare_split_;
+	v.resolution = stream_config_.session.resolution;
+	v.bitrate_kbps = stream_config_.effective_bitrate_kbps;
+	v.nr_timing = view_.nr_timing;
+	v.frame_generation = view_.frame_generation;
+	v.frame_generation_factor = view_.frame_generation_factor;
+	v.camera_warp = view_.camera_warp;
+	v.camera_warp_state = camera_warp_.state();
+	{
+		const std::string missing = frameGenerationMissing(resolveNrPaths(options_, view_.nr_network).library,
+				frameGenerationWeightsPath(options_));
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		v.frame_generation_available = missing.empty() && fg_failure_.empty();
+		v.frame_generation_status = !missing.empty() ? missing : !fg_failure_.empty() ? fg_failure_
+				: fg_loading_ ? "loading" : fg_engine_ ? fg_engine_->describe() : "not loaded";
+	}
 	v.fps_overlay = view_.fps_overlay;
 	v.panel_beside = view_.panel_beside;
 	std::string failure;
@@ -483,6 +774,52 @@ bool Runner::setHdr(bool on)
 	return true;
 }
 
+// The console fixes the picture's size when a session starts, as it does the codec: the
+// session is restarted with the other preset, and hdrSwitchSettled() says when it is back.
+bool Runner::setStreamResolution(ChiakiVideoResolutionPreset resolution)
+{
+	if(!viewState().hdr_switchable)
+		return false;
+	StreamSettings settings = stream_config_.session;
+	if(settings.resolution == resolution)
+		return true;
+	settings.resolution = resolution;
+	PLK_LOGI("Stream resolution %s: restarting the session", resolutionName(resolution));
+	const uint64_t restarts = session_->restarts();
+	if(!session_->restart(settings))
+		return false;
+	hdr_switch_restart_ = restarts + 1;
+	stream_config_.session = settings;
+	ChiakiConnectVideoProfile profile;
+	memset(&profile, 0, sizeof(profile));
+	chiaki_connect_video_profile_preset(&profile, resolution, settings.fps);
+	stream_config_.width = (int)profile.width;
+	stream_config_.height = (int)profile.height;
+	if(analysis_)
+		analysis_->clearBaseline();
+	return true;
+}
+
+bool Runner::setStreamBitrate(unsigned kbps)
+{
+	if(!viewState().hdr_switchable || kbps < 1000 || kbps > 100000)
+		return false;
+	if(stream_config_.effective_bitrate_kbps == kbps)
+		return true;
+	StreamSettings settings = stream_config_.session;
+	settings.bitrate_kbps = kbps;
+	PLK_LOGI("Stream bitrate %u kbit/s: restarting the session", kbps);
+	const uint64_t restarts = session_->restarts();
+	if(!session_->restart(settings))
+		return false;
+	hdr_switch_restart_ = restarts + 1;
+	stream_config_.session = settings;
+	stream_config_.effective_bitrate_kbps = kbps;
+	if(analysis_)
+		analysis_->clearBaseline();
+	return true;
+}
+
 bool Runner::hdrSwitchSettled() const
 {
 	return session_ && session_->restarts() >= hdr_switch_restart_ && session_->connected();
@@ -520,7 +857,9 @@ void Runner::applyEnhanceConfig()
 	c.enabled = view_.nr;
 	c.processHeight = view_.nr_height;
 	c.strength = (float)view_.nr_strength / 100.0f;
-	c.compareSplit = nr_compare_ ? 0.5f : 0.0f;
+	c.compareSplit = nr_compare_ ? nr_compare_split_ : 0.0f;
+	c.wait = view_.nr_timing == NrTiming::Wait;
+	c.guided = view_.nr_timing == NrTiming::Guided;
 	pipeline_->setEnhanceConfig(c);
 	std::lock_guard<std::mutex> lk(nr_mutex_);
 	syncAnalysisActiveLocked();
@@ -703,6 +1042,455 @@ void Runner::setNrCompare(bool on)
 	PLK_LOGI("Video: neural rendering comparison %s", on ? "on (left half as decoded)" : "off");
 }
 
+void Runner::setNrCompareSplit(float share)
+{
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		// Never at an edge: the line stays where it can be taken hold of again.
+		nr_compare_split_ = std::min(0.98f, std::max(0.02f, share));
+	}
+	applyEnhanceConfig();
+}
+
+// Frame generation on or off. The first time on, the generator is loaded beside the stream,
+// which goes on as it was until it is there.
+void Runner::setFrameGeneration(bool on)
+{
+	view_.frame_generation = on;
+	if(!pipeline_)
+		return;
+	pipeline_->setFrameGeneration(on ? view_.frame_generation_factor - 1 : 0);
+	PLK_LOGI("Video: frame generation %s (%dx)", on ? "on" : "off", view_.frame_generation_factor);
+	if(!on)
+		return;
+	{
+		std::lock_guard<std::mutex> lk(nr_mutex_);
+		if(fg_engine_ || fg_loading_ || nr_stop_)
+			return;
+		fg_loading_ = true;
+	}
+	if(fg_thread_.joinable())
+		fg_thread_.join();
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		probe_stop_ = true;
+	}
+	probe_cond_.notify_all();
+	if(probe_thread_.joinable())
+		probe_thread_.join();
+	if(control_thread_.joinable())
+	{
+		if(pipeline_)
+			pipeline_->setFrameTap(nullptr);
+		// The thread waits in accept() or read(): both end when their socket is shut.
+		const int listening = control_listen_.exchange(-1), client = control_client_.load();
+		if(client >= 0)
+			shutdown(client, SHUT_RDWR);
+		if(listening >= 0)
+		{
+			shutdown(listening, SHUT_RDWR);
+			close(listening);
+		}
+		control_thread_.join();
+	}
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		if(input_log_)
+		{
+			fclose(input_log_);
+			input_log_ = nullptr;
+			if(sweep_motion_)
+				fclose(sweep_motion_);
+			sweep_motion_ = nullptr;
+		}
+	}
+	fg_thread_ = std::thread([this] {
+		pthread_setname_np("plk.fg-load");
+		const std::string library = resolveNrPaths(options_, view_.nr_network).library;
+		const std::string weights = frameGenerationWeightsPath(options_);
+		std::string failure = frameGenerationMissing(library, weights);
+		std::shared_ptr<FrameGenerator> engine;
+		if(failure.empty())
+			engine = FrameGenerator::load(library, weights, &failure);
+		if(engine)
+		{
+			PLK_LOGI("Frame generation: %s, weights %s", engine->describe().c_str(), weights.c_str());
+			pipeline_->setInterpolator(engine);
+		}
+		else
+			PLK_LOGW("Frame generation is not available: %s", failure.c_str());
+		std::function<void(const std::string &)> tell;
+		{
+			std::lock_guard<std::mutex> lk(nr_mutex_);
+			fg_engine_ = engine;
+			fg_failure_ = engine ? std::string() : failure;
+			fg_loading_ = false;
+			tell = notice_;
+		}
+		if(tell)
+			tell(engine ? "Frame generation ready" : "Frame generation is not available: " + failure);
+	});
+}
+
+void Runner::setFrameGenerationFactor(int factor)
+{
+	view_.frame_generation_factor = factor == 4 ? 4 : 2;
+	if(pipeline_ && view_.frame_generation)
+		pipeline_->setFrameGeneration(view_.frame_generation_factor - 1);
+	PLK_LOGI("Video: frame generation %dx", view_.frame_generation_factor);
+}
+
+void Runner::setNrTiming(NrTiming timing)
+{
+	view_.nr_timing = timing;
+	applyEnhanceConfig();
+	PLK_LOGI("Video: neural rendering timing %s", toString(timing));
+}
+
+// --stick-sweep: the right stick moved through set profiles, every one followed by its
+// mirror image so that the camera ends where it began, and everything written down: the
+// stick, how far each picture moved, and what the camera warp made of it at that moment.
+// A recorded sitting played back: each state the controller sent, at the time it sent it,
+// counted from the first. The game is not told that anything is different, and it is not:
+// what it does with the same input depends on where it was when the input began.
+void Runner::inputPlayLoop()
+{
+	pthread_setname_np("plk.input-play");
+	auto wait = [this](double seconds) {
+		std::unique_lock<std::mutex> lk(probe_mutex_);
+		return !probe_cond_.wait_for(lk, std::chrono::duration<double>(seconds), [this] { return probe_stop_; });
+	};
+	struct Row { double t; ChiakiControllerState s; };
+	std::vector<Row> rows;
+	if(FILE *f = fopen(options_.play_input.c_str(), "r"))
+	{
+		char line[256];
+		while(fgets(line, sizeof(line), f))
+		{
+			Row r;
+			chiaki_controller_state_set_idle(&r.s);
+			unsigned buttons, l2, r2;
+			int lx, ly, rx, ry;
+			if(sscanf(line, "%lf,%u,%u,%u,%d,%d,%d,%d", &r.t, &buttons, &l2, &r2, &lx, &ly, &rx, &ry) != 8)
+				continue;
+			r.s.buttons = buttons;
+			r.s.l2_state = (uint8_t)l2;
+			r.s.r2_state = (uint8_t)r2;
+			r.s.left_x = (int16_t)lx;
+			r.s.left_y = (int16_t)ly;
+			r.s.right_x = (int16_t)rx;
+			r.s.right_y = (int16_t)ry;
+			rows.push_back(r);
+		}
+		fclose(f);
+	}
+	if(rows.size() < 2)
+	{
+		PLK_LOGE("play-input: nothing to play in %s", options_.play_input.c_str());
+		requestStop();
+		return;
+	}
+	for(int i = 0; i < 600; i++)
+	{
+		if(!wait(0.1))
+			return;
+		if(pipeline_ && pipeline_->counters().framesRendered > 300)
+			break;
+	}
+	if(!wait(2.0))
+		return;
+	PLK_LOGI("play-input: %zu controller states over %.1f s from %s", rows.size(), (rows.back().t - rows.front().t) / 1e6,
+			options_.play_input.c_str());
+	const double began = video::hostTimeUs();
+	bool stopped = false;
+	for(const Row &r : rows)
+	{
+		const double due = began + (r.t - rows.front().t), now = video::hostTimeUs();
+		if(due > now && !wait((due - now) / 1e6))
+		{
+			stopped = true;
+			break;
+		}
+		{
+			std::lock_guard<std::mutex> lk(pad_state_mutex_);
+			play_state_ = r.s;
+		}
+		play_holds_.store(true);
+		sendControllerState();
+	}
+	{
+		std::lock_guard<std::mutex> lk(pad_state_mutex_);
+		chiaki_controller_state_set_idle(&play_state_);
+	}
+	sendControllerState();
+	if(!stopped)
+		stopped = !wait(1.5);
+	play_holds_.store(false);
+	sendControllerState();
+	PLK_LOGI("play-input: done");
+	if(!stopped)
+		requestStop();
+}
+
+// --control: one program at a time. It gets every new picture and what it sends is the
+// controller, whole: the buttons, the triggers and both sticks. When it goes, or says
+// "release", the controllers in the player's hands are the controller again.
+void Runner::controlLoop()
+{
+	pthread_setname_np("plk.control");
+	const int listening = socket(AF_UNIX, SOCK_STREAM, 0);
+	sockaddr_un addr{};
+	addr.sun_family = AF_UNIX;
+	if(listening < 0 || options_.control_socket.size() >= sizeof(addr.sun_path))
+	{
+		PLK_LOGE("control: cannot make a socket at %s", options_.control_socket.c_str());
+		return;
+	}
+	strncpy(addr.sun_path, options_.control_socket.c_str(), sizeof(addr.sun_path) - 1);
+	unlink(addr.sun_path);
+	if(bind(listening, (const sockaddr *)&addr, sizeof(addr)) != 0 || listen(listening, 1) != 0)
+	{
+		PLK_LOGE("control: cannot listen at %s: %s", options_.control_socket.c_str(), strerror(errno));
+		close(listening);
+		return;
+	}
+	control_listen_.store(listening);
+	PLK_LOGI("control: waiting at %s", options_.control_socket.c_str());
+	while(control_listen_.load() >= 0)
+	{
+		const int client = accept(listening, nullptr, nullptr);
+		if(client < 0)
+			break;
+		int on = 1;
+		setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+		int room = 1 << 20;
+		setsockopt(client, SOL_SOCKET, SO_SNDBUF, &room, sizeof(room));
+		control_client_.store(client);
+		PLK_LOGI("control: a program is connected");
+		if(pipeline_)
+			pipeline_->setFrameTap([this](const uint8_t *grey, int w, int h, double picture_us) {
+				std::lock_guard<std::mutex> lk(control_send_mutex_);
+				const int to = control_client_.load();
+				if(to < 0)
+					return;
+				// Never waiting: this runs where the pictures' motion is measured. The picture
+				// is left for a thread of its own to send, the newest in place of one not yet
+				// sent. (Sent from here it waited, MSG_DONTWAIT or not, for as long as the
+				// program did not read: a program that only sent the stick stopped all
+				// measuring while it was connected. 2026-11-27.)
+				control_out_.resize(16 + (size_t)w * (size_t)h);
+				const uint8_t header[8] = { 'P', 'L', 'K', 'F', (uint8_t)(w & 0xff), (uint8_t)(w >> 8), (uint8_t)(h & 0xff), (uint8_t)(h >> 8) };
+				memcpy(control_out_.data(), header, 8);
+				memcpy(control_out_.data() + 8, &picture_us, 8);
+				memcpy(control_out_.data() + 16, grey, (size_t)w * (size_t)h);
+				control_out_new_ = true;
+				control_send_cond_.notify_one();
+			});
+		std::thread sender([this, client] {
+			pthread_setname_np("plk.control-send");
+			std::vector<uint8_t> out;
+			for(;;)
+			{
+				{
+					std::unique_lock<std::mutex> lk(control_send_mutex_);
+					control_send_cond_.wait(lk, [this] { return control_out_new_ || control_client_.load() < 0; });
+					if(control_client_.load() < 0)
+						return;
+					out.swap(control_out_);
+					control_out_new_ = false;
+				}
+				size_t sent = 0;
+				while(sent < out.size())
+				{
+					const ssize_t n = send(client, out.data() + sent, out.size() - sent, 0);
+					if(n <= 0)
+						return;
+					sent += (size_t)n;
+				}
+			}
+		});
+		std::string pending;
+		char buf[512];
+		for(;;)
+		{
+			const ssize_t n = read(client, buf, sizeof(buf));
+			if(n <= 0)
+				break;
+			pending.append(buf, (size_t)n);
+			size_t end;
+			while((end = pending.find('\n')) != std::string::npos)
+			{
+				const std::string line = pending.substr(0, end);
+				pending.erase(0, end + 1);
+				unsigned buttons, l2, r2;
+				int lx, ly, rx, ry;
+				if(line == "release")
+					play_holds_.store(false);
+				else if(sscanf(line.c_str(), "%u %u %u %d %d %d %d", &buttons, &l2, &r2, &lx, &ly, &rx, &ry) == 7)
+				{
+					ChiakiControllerState s;
+					chiaki_controller_state_set_idle(&s);
+					s.buttons = buttons;
+					s.l2_state = (uint8_t)std::min(255u, l2);
+					s.r2_state = (uint8_t)std::min(255u, r2);
+					auto stick = [](int v) { return (int16_t)std::max(-32767, std::min(32767, v)); };
+					s.left_x = stick(lx);
+					s.left_y = stick(ly);
+					s.right_x = stick(rx);
+					s.right_y = stick(ry);
+					{
+						std::lock_guard<std::mutex> lk(pad_state_mutex_);
+						play_state_ = s;
+					}
+					play_holds_.store(true);
+				}
+				sendControllerState();
+			}
+		}
+		if(pipeline_)
+			pipeline_->setFrameTap(nullptr);
+		{
+			std::lock_guard<std::mutex> lk(control_send_mutex_);
+			control_client_.store(-1);
+			control_out_new_ = false;
+		}
+		// The sender may be waiting in send(): shutting the socket ends that.
+		shutdown(client, SHUT_RDWR);
+		control_send_cond_.notify_all();
+		sender.join();
+		close(client);
+		play_holds_.store(false);
+		sendControllerState();
+		PLK_LOGI("control: the program has gone");
+	}
+}
+
+void Runner::stickSweepLoop()
+{
+	pthread_setname_np("plk.stick-sweep");
+	auto wait = [this](double seconds) {
+		std::unique_lock<std::mutex> lk(probe_mutex_);
+		return !probe_cond_.wait_for(lk, std::chrono::duration<double>(seconds), [this] { return probe_stop_; });
+	};
+	for(int i = 0; i < 600; i++)
+	{
+		if(!wait(0.1))
+			return;
+		if(pipeline_ && pipeline_->counters().framesRendered > 300)
+			break;
+	}
+	if(!wait(2.0))
+		return;
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		sweep_stick_ = fopen((options_.stick_sweep + "-stick.csv").c_str(), "w");
+		sweep_motion_ = fopen((options_.stick_sweep + "-motion.csv").c_str(), "w");
+		if(!sweep_stick_ || !sweep_motion_)
+		{
+			PLK_LOGE("stick-sweep: cannot write %s-*.csv", options_.stick_sweep.c_str());
+			return;
+		}
+		fprintf(sweep_stick_, "t_us,x,y,aiming\n");
+		fprintf(sweep_motion_, "previous_us,picture_us,dx,dy,valid,warp_x,warp_y,delay_ms,gain_x,gain_y,explained\n");
+	}
+	FILE *marks = fopen((options_.stick_sweep + "-profiles.csv").c_str(), "w");
+	if(marks)
+		fprintf(marks, "t_us,profile\n");
+	// A profile: the stick's place (share of full tilt) at `t` seconds into it, and how long it is.
+	struct Profile
+	{
+		const char *name;
+		double seconds;
+		bool vertical;
+		std::function<double(double)> at;
+		std::function<double(double)> also = nullptr;  // the other way at the same time
+	};
+	std::vector<Profile> profiles;
+	for(double level : { 0.25, 0.5, 0.75, 1.0 })
+	{
+		static char names[4][24];
+		const size_t n = profiles.size();
+		snprintf(names[n], sizeof(names[n]), "step-%d", (int)(level * 100));
+		profiles.push_back({ names[n], 0.45, false, [level](double) { return level; } });
+	}
+	profiles.push_back({ "ramp-300ms", 0.5, false, [](double t) { return std::min(1.0, t / 0.3); } });
+	profiles.push_back({ "ramp-600ms", 0.7, false, [](double t) { return std::min(1.0, t / 0.6); } });
+	profiles.push_back({ "tap-60ms", 0.06, false, [](double) { return 1.0; } });
+	profiles.push_back({ "tap-120ms", 0.12, false, [](double) { return 1.0; } });
+	profiles.push_back({ "reversal", 0.5, false, [](double t) { return t < 0.25 ? 1.0 : -1.0; } });
+	profiles.push_back({ "sine-1.5Hz", 1.333, false, [](double t) { return 0.7 * std::sin(2.0 * M_PI * 1.5 * t); } });
+	profiles.push_back({ "half-then-full", 0.6, false, [](double t) { return t < 0.3 ? 0.5 : 1.0; } });
+	profiles.push_back({ "step-10", 0.6, false, [](double) { return 0.1; } });
+	profiles.push_back({ "step-40-long", 1.0, false, [](double) { return 0.4; } });
+	profiles.push_back({ "wiggle-3Hz", 1.0, false, [](double t) { return 0.35 * std::sin(2.0 * M_PI * 3.0 * t); } });
+	profiles.push_back({ "diagonal-60", 0.4, false, [](double) { return 0.6; }, [](double) { return 0.45; } });
+	profiles.push_back({ "figure-eight", 1.0, false, [](double t) { return 0.6 * std::sin(2.0 * M_PI * t); },
+			[](double t) { return 0.4 * std::sin(4.0 * M_PI * t); } });
+	profiles.push_back({ "vertical-50", 0.3, true, [](double) { return 0.5; } });
+	profiles.push_back({ "vertical-100", 0.3, true, [](double) { return 1.0; } });
+	PLK_LOGI("stick-sweep: %zu profiles, three rounds, to %s-*.csv", profiles.size(), options_.stick_sweep.c_str());
+	probe_holds_.store(true);
+	bool stopped = false;
+	for(int round = 0; round < 3 && !stopped; round++)
+	{
+		for(const Profile &p : profiles)
+		{
+			// Once as it is and once mirrored: the camera comes back.
+			for(double sign : { 1.0, -1.0 })
+			{
+				if(!wait(1.2))
+				{
+					stopped = true;
+					break;
+				}
+				const double start_us = video::hostTimeUs();
+				if(marks)
+					fprintf(marks, "%.0f,%s%s\n", start_us, p.name, sign < 0 ? "-mirrored" : "");
+				for(;;)
+				{
+					const double t = (video::hostTimeUs() - start_us) / 1e6;
+					if(t >= p.seconds)
+						break;
+					const float v = (float)(sign * p.at(t));
+					probe_stick_.store(p.vertical ? 0.0f : v);
+					probe_stick_y_.store(p.vertical ? v : p.also ? (float)(sign * p.also(t)) : 0.0f);
+					sendControllerState();
+					// As often as a controller reports.
+					if(!wait(0.004))
+					{
+						stopped = true;
+						break;
+					}
+				}
+				probe_stick_.store(0.0f);
+				probe_stick_y_.store(0.0f);
+				sendControllerState();
+				if(stopped)
+					break;
+			}
+			if(stopped)
+				break;
+		}
+	}
+	probe_holds_.store(false);
+	sendControllerState();
+	wait(1.0);
+	{
+		std::lock_guard<std::mutex> lk(probe_mutex_);
+		if(sweep_stick_)
+			fclose(sweep_stick_);
+		if(sweep_motion_)
+			fclose(sweep_motion_);
+		sweep_stick_ = sweep_motion_ = nullptr;
+		stopped = probe_stop_;
+	}
+	if(marks)
+		fclose(marks);
+	PLK_LOGI("stick-sweep: done");
+	if(!stopped)
+		requestStop();
+}
+
 AnalysisReport Runner::analysis() const
 {
 	AnalysisReport r;
@@ -836,6 +1624,16 @@ bool Runner::pressKey(const std::string &key, std::string *what)
 		case 'x': setNrStrength(stepNrStrength(v.nr_strength, 1)); done = "neural rendering stronger"; break;
 		case 'z': setNrStrength(stepNrStrength(v.nr_strength, -1)); done = "neural rendering weaker"; break;
 		case 'e': setNrLook(nextNrLook(v.nr_look)); done = std::string("neural rendering look ") + toString(nextNrLook(v.nr_look)); break;
+		case 'k': setCameraWarp(!v.camera_warp); done = v.camera_warp ? "camera warp off" : "camera warp on"; break;
+		case 'j': setFrameGeneration(!v.frame_generation); done = v.frame_generation ? "frame generation off" : "frame generation on"; break;
+		case 'w':
+		{
+			const NrTiming next = v.nr_timing == NrTiming::Wait ? NrTiming::Guided
+					: v.nr_timing == NrTiming::Guided ? NrTiming::Beside : NrTiming::Wait;
+			setNrTiming(next);
+			done = std::string("neural rendering timing ") + toString(next);
+			break;
+		}
 		case 'c': setNrCompare(!v.nr_compare); done = v.nr_compare ? "comparison off" : "comparison on"; break;
 		case 'f': setFpsOverlay(!v.fps_overlay); done = v.fps_overlay ? "frame rate overlay off" : "frame rate overlay on"; break;
 		default: return false;
@@ -1003,6 +1801,8 @@ void Runner::shutdownVideo()
 	nr_cond_.notify_all();
 	if(nr_thread_.joinable())
 		nr_thread_.join();
+	if(fg_thread_.joinable())
+		fg_thread_.join();
 	{
 		std::lock_guard<std::mutex> lk(hud_mutex_);
 		hud_stop_ = true;
@@ -1012,6 +1812,7 @@ void Runner::shutdownVideo()
 		hud_thread_.join();
 	// Nothing submits any more (shutdownWorkers() joined the session or the replay). The
 	// pipeline goes first: its error callback may still reach session_ until it is gone.
+	saveWarp();
 	video_path_.reset();
 	pipeline_.reset();
 	// The engine after the pipeline. Each engine ends on a queue of its own, where it waits
@@ -1049,6 +1850,46 @@ void Runner::shutdownVideo()
 	Log::instance().flush();
 }
 
+// Where what the camera warp learned of this console's game is kept between sittings.
+static std::string warpFile(const std::string &nickname)
+{
+	const char *home = getenv("HOME");
+	std::string name;
+	for(char c : nickname)
+		name += (isalnum((unsigned char)c) || c == '-' || c == '_') ? c : '_';
+	return std::string(home ? home : ".") + "/Library/Application Support/Pleikkari/camera-warp-" + (name.empty() ? "console" : name) + ".txt";
+}
+
+void Runner::loadWarp()
+{
+	if(options_.command != Command::Stream)
+		return;
+	if(FILE *f = fopen(warpFile(options_.nickname).c_str(), "r"))
+	{
+		std::string text;
+		char buf[4096];
+		size_t n;
+		while((n = fread(buf, 1, sizeof(buf), f)) > 0)
+			text.append(buf, n);
+		fclose(f);
+		if(camera_warp_.load(text))
+			PLK_LOGI("camera warp: what was learned before is back (%s)", warpFile(options_.nickname).c_str());
+	}
+}
+
+void Runner::saveWarp()
+{
+	if(options_.command != Command::Stream || !camera_warp_.state().learned)
+		return;
+	const std::string path = warpFile(options_.nickname), text = camera_warp_.save();
+	if(FILE *f = fopen((path + ".new").c_str(), "w"))
+	{
+		const bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
+		if(fclose(f) == 0 && ok)
+			rename((path + ".new").c_str(), path.c_str());
+	}
+}
+
 void Runner::statsLoop()
 {
 	pthread_setname_np("plk.stats");
@@ -1059,6 +1900,7 @@ void Runner::statsLoop()
 			return;
 		lk.unlock();
 		logStats(false);
+		saveWarp();
 		lk.lock();
 	}
 }
@@ -1107,16 +1949,19 @@ void Runner::logStats(bool final_report)
 			nr_strength = view_.nr_strength;
 			nr_compare = nr_compare_;
 		}
-		if(nr_on || s.enhanceOffered || s.enhanceFailed)
+		if(nr_on || s.enhanceOffered || s.enhanceFailed || s.framesGenerated || s.generateFailed)
 		{
 			snprintf(buf, sizeof(buf),
-					"nr%s: %s network=%s size=%dx%d strength=%d%% look=%s compare=%s offered=%llu completed=%llu failed=%llu "
-					"frames_enhanced=%llu/%llu",
+					"nr%s: %s network=%s size=%dx%d strength=%d%% look=%s timing=%s compare=%s offered=%llu completed=%llu failed=%llu "
+					"frames_enhanced=%llu/%llu own_result=%llu held_late=%llu skipped=%llu repeats=%llu repeat_check_us=%.1f generated=%llu (failed %llu, %.1f ms a pair)",
 					final_report ? " (last window)" : "", nr_on ? "on" : "off", toString(nr_network), s.enhanceWidth,
-					s.enhanceHeight, nr_strength, toString(nr_look), nr_compare ? "on" : "off",
-					(unsigned long long)s.enhanceOffered, (unsigned long long)s.enhanceCompleted,
+					s.enhanceHeight, nr_strength, toString(nr_look), toString(view_.nr_timing), nr_compare ? "on" : "off", (unsigned long long)s.enhanceOffered, (unsigned long long)s.enhanceCompleted,
 					(unsigned long long)s.enhanceFailed, (unsigned long long)s.framesEnhanced,
-					(unsigned long long)s.framesRendered);
+					(unsigned long long)s.framesRendered, (unsigned long long)s.framesEnhancedExact,
+					(unsigned long long)s.enhanceLate, (unsigned long long)s.enhanceSkipped,
+					(unsigned long long)s.framesRepeated, s.repeatChecks ? s.repeatCheckUs / (double)s.repeatChecks : 0.0,
+					(unsigned long long)s.framesGenerated, (unsigned long long)s.generateFailed,
+					s.generatePairs ? s.generateMsTotal / (double)s.generatePairs : 0.0);
 			line = buf;
 			line += " ms p50/p95/p99/max:";
 			line += distLine("round_trip", s.enhanceMs);

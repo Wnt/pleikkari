@@ -8,6 +8,7 @@
 #import "StreamWindow.h"
 
 #include "Log.h"
+#include "AwdlHelperClient.h"
 #include "Options.h"
 #include "Registration.h"
 #include "Runner.h"
@@ -163,6 +164,7 @@ int runHeadless(const Options &o)
 	PLKPipelinePanelView *_panelView;
 	NSTimer *_panelTimer;  // while either panel is shown: what they show, four times a second
 	int _insets[4];        // what the pipeline was last told the panels cover, in pixels
+	CGFloat _pictureAspect; // width / height of the stream's picture
 }
 
 - (instancetype)initWithOptions:(const Options &)options savedNote:(const std::string &)savedNote
@@ -207,7 +209,12 @@ int runHeadless(const Options &o)
 
 	const StreamConfig &sc = _runner->streamConfig();
 	const CGFloat aspect = sc.height > 0 ? (CGFloat)sc.width / (CGFloat)sc.height : 16.0 / 9.0;
+	_pictureAspect = aspect;
 	_window = [PLKStreamWindow streamWindowWithTitle:@(_runner->title().c_str()) aspect:aspect];
+	PLKAppDelegate *__weak dragSelf = self;
+	_window.videoView.onCompareDrag = ^(CGFloat x) {
+		[dragSelf compareDraggedTo:x];
+	};
 	_window.delegate = self;
 	if(!_runner->createPipeline((__bridge void *)_window.videoView.metalLayer, mainScreenRefreshHz()))
 	{
@@ -301,6 +308,9 @@ int runHeadless(const Options &o)
 			|| action == @selector(plkToggleNr:) || action == @selector(plkSelectNrNetwork:)
 			|| action == @selector(plkSelectNrHeight:) || action == @selector(plkStepNrStrength:)
 			|| action == @selector(plkSelectNrLook:) || action == @selector(plkToggleNrCompare:)
+			|| action == @selector(plkSelectNrTiming:) || action == @selector(plkToggleFrameGeneration:)
+			|| action == @selector(plkSelectResolution:) || action == @selector(plkSelectBitrate:)
+			|| action == @selector(plkSelectFrameGenerationFactor:) || action == @selector(plkToggleCameraWarp:)
 			|| action == @selector(plkToggleAnalysis:) || action == @selector(plkTogglePanel:)
 			|| action == @selector(plkToggleFpsOverlay:);
 	if(!ours)
@@ -358,6 +368,27 @@ int runHeadless(const Options &o)
 		on = item.tag >= 0 && (NSInteger)v.nr_look == item.tag;
 	else if(action == @selector(plkToggleNrCompare:))
 		on = v.nr_compare;
+	else if(action == @selector(plkToggleCameraWarp:))
+		on = v.camera_warp;
+	else if(action == @selector(plkSelectFrameGenerationFactor:))
+		on = v.frame_generation_factor == item.tag;
+	else if(action == @selector(plkSelectBitrate:))
+	{
+		on = (NSInteger)v.bitrate_kbps == item.tag;
+		enabled = v.hdr_switchable;
+	}
+	else if(action == @selector(plkSelectResolution:))
+	{
+		on = (NSInteger)v.resolution == item.tag;
+		enabled = v.hdr_switchable;
+	}
+	else if(action == @selector(plkToggleFrameGeneration:))
+	{
+		on = v.frame_generation;
+		enabled = v.frame_generation_available || v.frame_generation;
+	}
+	else if(action == @selector(plkSelectNrTiming:))
+		on = item.tag >= 0 && (NSInteger)v.nr_timing == item.tag;
 	else if(action == @selector(plkToggleAnalysis:))
 		on = _analysisView != nil;
 	else if(action == @selector(plkTogglePanel:))
@@ -607,7 +638,119 @@ int runHeadless(const Options &o)
 		return;
 	const bool on = !_runner->viewState().nr_compare;
 	_runner->setNrCompare(on);
-	[self showNrNotice:on ? @"Comparison: left half without neural rendering" : @"Comparison off"];
+	[self showNrNotice:on ? @"Comparison: left of the line without neural rendering (drag the line)" : @"Comparison off"];
+	[self panelsChanged];
+}
+
+- (void)plkSelectResolution:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const ChiakiVideoResolutionPreset resolution = (ChiakiVideoResolutionPreset)[sender tag];
+	if(resolution == _runner->viewState().resolution)
+		return;
+	if(!_runner->setStreamResolution(resolution))
+	{
+		[_window.videoView showNotice:@"The stream's resolution can be switched in a stream of a PS5 only"];
+		return;
+	}
+	if(_options.saved_choices)
+		saveResolution(resolution);
+	[_window.videoView showNotice:[NSString stringWithFormat:@"%s: reconnecting...", resolutionName(resolution)] seconds:0];
+	[self pollResolutionSwitch:++_hdrSwitchSerial name:@(resolutionName(resolution)) since:CFAbsoluteTimeGetCurrent()];
+}
+
+- (void)plkSelectBitrate:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const unsigned kbps = (unsigned)[sender tag];
+	if(kbps == _runner->viewState().bitrate_kbps)
+		return;
+	if(!_runner->setStreamBitrate(kbps))
+	{
+		[_window.videoView showNotice:@"The stream's bitrate can be switched in a stream of a PS5 only"];
+		return;
+	}
+	if(_options.saved_choices)
+		saveBitrate(kbps);
+	NSString *name = [NSString stringWithFormat:@"%u Mbit/s", kbps / 1000];
+	[_window.videoView showNotice:[name stringByAppendingString:@": reconnecting..."] seconds:0];
+	[self pollResolutionSwitch:++_hdrSwitchSerial name:name since:CFAbsoluteTimeGetCurrent()];
+}
+
+- (void)pollResolutionSwitch:(NSUInteger)serial name:(NSString *)name since:(CFAbsoluteTime)since
+{
+	if(serial != _hdrSwitchSerial || !_runner || _terminating || _cleanedUp)
+		return;
+	if(_runner->hdrSwitchSettled())
+	{
+		PLK_LOGI("Stream resolution %s: connected again after %.1f s", name.UTF8String, CFAbsoluteTimeGetCurrent() - since);
+		[_window.videoView showNotice:[@"Stream at " stringByAppendingString:name]];
+		return;
+	}
+	if(CFAbsoluteTimeGetCurrent() - since > 60)
+	{
+		[_window.videoView showNotice:@"Still reconnecting"];
+		return;
+	}
+	PLKAppDelegate *__weak weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		[weakSelf pollResolutionSwitch:serial name:name since:since];
+	});
+}
+
+- (void)plkToggleCameraWarp:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const bool on = !_runner->viewState().camera_warp;
+	_runner->setCameraWarp(on);
+	if(_options.saved_choices)
+		saveCameraWarp(on);
+	[_window.videoView showNotice:on ? @"Camera warp on: learning how the game answers the right stick" : @"Camera warp off"];
+}
+
+- (void)plkSelectFrameGenerationFactor:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const int factor = [sender tag] == 4 ? 4 : 2;
+	_runner->setFrameGenerationFactor(factor);
+	if(_options.saved_choices)
+		saveFrameGenerationFactor(factor);
+	[_window.videoView showNotice:factor == 4 ? @"Frame generation 4x: three pictures between two, 120 a second"
+			: @"Frame generation 2x: one picture between two, 60 a second"];
+}
+
+- (void)plkToggleFrameGeneration:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const Runner::ViewState v = _runner->viewState();
+	const bool on = !v.frame_generation;
+	_runner->setFrameGeneration(on);
+	if(_options.saved_choices)
+		saveFrameGeneration(on);
+	[_window.videoView showNotice:!on ? @"Frame generation off"
+			: v.frame_generation_available ? @"Frame generation on: 60 pictures a second, each real one about 25 ms later"
+			: [@"Frame generation is not installed: " stringByAppendingString:@(v.frame_generation_status.c_str())]];
+}
+
+- (void)plkSelectNrTiming:(id)sender
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const NSInteger tag = [sender tag];
+	const NrTiming timing = tag >= 0 ? (NrTiming)tag
+			: _runner->viewState().nr_timing == NrTiming::Wait ? NrTiming::Guided
+			: _runner->viewState().nr_timing == NrTiming::Guided ? NrTiming::Beside : NrTiming::Wait;
+	_runner->setNrTiming(timing);
+	if(_options.saved_choices)
+		saveNrTiming(timing);
+	[self showNrNotice:timing == NrTiming::Guided ? @"Neural rendering guided: its tone follows the picture, nothing waits"
+			: timing == NrTiming::Wait ? @"Neural rendering: every frame waits for its own result"
+			: @"Neural rendering beside the stream"];
 }
 
 #pragma mark - Analysis panel
@@ -696,6 +839,12 @@ int runHeadless(const Options &o)
 		case PanelCommand::StepNrStrength: [self plkStepNrStrength:item]; break;
 		case PanelCommand::SelectNrLook: [self plkSelectNrLook:item]; break;
 		case PanelCommand::ToggleNrCompare: [self plkToggleNrCompare:item]; break;
+		case PanelCommand::SelectNrTiming: [self plkSelectNrTiming:item]; break;
+		case PanelCommand::ToggleFrameGeneration: [self plkToggleFrameGeneration:item]; break;
+		case PanelCommand::SelectResolution: [self plkSelectResolution:item]; break;
+		case PanelCommand::SelectBitrate: [self plkSelectBitrate:item]; break;
+		case PanelCommand::ToggleCameraWarp: [self plkToggleCameraWarp:item]; break;
+		case PanelCommand::SelectFrameGenerationFactor: [self plkSelectFrameGenerationFactor:item]; break;
 		case PanelCommand::ToggleAnalysis: [self plkToggleAnalysis:item]; break;
 		case PanelCommand::ToggleFpsOverlay: [self plkToggleFpsOverlay:item]; break;
 		case PanelCommand::SelectPanelPicture:
@@ -770,6 +919,42 @@ int runHeadless(const Options &o)
 		memcpy(_insets, insets, sizeof(insets));
 		_runner->setContentInsets(insets[0], insets[1], insets[2], insets[3]);
 	}
+	// Where the comparison line is in the view, for the pointer: the pipeline draws it.
+	const Runner::ViewState v = _runner->viewState();
+	const NSRect picture = [self pictureRect];
+	view.compareLineX = v.nr && v.nr_compare ? NSMinX(picture) + v.nr_compare_split * picture.size.width : -1;
+}
+
+// The picture's place in the view, in points: fitted into what the panels leave of it, as
+// the pipeline does it (VideoPipeline's pictureRegion()).
+- (NSRect)pictureRect
+{
+	PLKVideoView *view = _window.videoView;
+	const CGFloat scale = MAX(1.0, _window.backingScaleFactor);
+	NSRect space = view.bounds;
+	space.size.width -= _insets[2] / scale;
+	space.size.height -= _insets[3] / scale;
+	if(space.size.width < 1 || space.size.height < 1 || _pictureAspect <= 0)
+		return view.bounds;
+	CGFloat w = space.size.width, h = w / _pictureAspect;
+	if(h > space.size.height)
+	{
+		h = space.size.height;
+		w = h * _pictureAspect;
+	}
+	// The view's y goes up and the pipeline's insets are at the bottom of the picture's space.
+	return NSMakeRect(NSMinX(space) + (space.size.width - w) / 2, NSMaxY(view.bounds) - space.size.height + (space.size.height - h) / 2, w, h);
+}
+
+- (void)compareDraggedTo:(CGFloat)x
+{
+	if(!_runner || _terminating || _cleanedUp)
+		return;
+	const NSRect picture = [self pictureRect];
+	if(picture.size.width < 1)
+		return;
+	_runner->setNrCompareSplit((float)((x - NSMinX(picture)) / picture.size.width));
+	[self layoutPanels];
 }
 
 - (void)updatePanels
@@ -813,6 +998,13 @@ int runHeadless(const Options &o)
 {
 	if(_terminating || !_window)
 		return;
+	// Not a key: what a move of the pointer over the picture does.
+	if([name isEqualToString:@"pointer"])
+	{
+		PLK_LOGI("--keys: pointer");
+		[_window.videoView pointerMoved];
+		return;
+	}
 	struct Special { const char *name; unichar character; unsigned short code; };
 	static const Special specials[] = {
 		{ "up", NSUpArrowFunctionKey, 126 }, { "down", NSDownArrowFunctionKey, 125 }, { "left", NSLeftArrowFunctionKey, 123 },
@@ -824,7 +1016,7 @@ int runHeadless(const Options &o)
 		{ '1', 18 }, { '2', 19 }, { '3', 20 }, { '4', 21 }, { 'a', 0 }, { 'v', 9 }, { 'h', 4 }, { 'p', 35 },
 		{ 'l', 37 }, { 'm', 46 }, { 'f', 3 }, { '5', 23 }, { '6', 22 }, { '7', 26 }, { '8', 28 }, { '9', 25 },
 		{ '0', 29 }, { 't', 17 }, { 'n', 45 }, { 's', 1 }, { 'x', 7 }, { 'z', 6 }, { 'e', 14 }, { 'c', 8 },
-		{ 'i', 34 }, { 'g', 5 },
+		{ 'i', 34 }, { 'g', 5 }, { 'w', 13 }, { 'j', 38 }, { 'k', 40 },
 	};
 	NSString *characters = name;
 	unsigned short code = 90;
@@ -937,6 +1129,45 @@ int main(int argc, const char *argv[])
 			fprintf(stderr, "Pleikkari: %s\n\n%s", err.c_str(), usageText().c_str());
 			return 2;
 		}
+		// Opened like any app (the Finder, Spotlight, a launcher), with no command: stream from
+		// the registered console at the address the Qt app has for it, with a log file of its
+		// own. From a terminal the same start prints the usage, as it always did.
+		if(o.no_command && !isatty(STDIN_FILENO))
+		{
+			std::vector<RegisteredConsole> consoles;
+			std::vector<std::string> hosts;
+			const std::string plist = qtSettingsPlistPath(o.profile);
+			loadRegisteredConsoles(plist, consoles);
+			loadManualHosts(plist, hosts);
+			const RegisteredConsole *console = nullptr;
+			for(const auto &c : consoles)
+				if(c.usable() && !console)
+					console = &c;
+			if(!console || hosts.empty())
+			{
+				[NSApplication sharedApplication];
+				[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+				[NSApp activateIgnoringOtherApps:YES];
+				NSAlert *alert = [[NSAlert alloc] init];
+				alert.messageText = console ? @"No console address" : @"No registered console";
+				alert.informativeText = console
+						? @"Pleikkari found a registered console but no address for it. Add the console by its address in chiaki-ng (the Qt app), or start Pleikkari from a terminal: Pleikkari stream <nickname> <host>."
+						: @"Pleikkari reads the console registration of chiaki-ng (the Qt app). Register the console there first.";
+				[alert runModal];
+				return 1;
+			}
+			o.command = Command::Stream;
+			o.nickname = console->nickname;
+			o.host = hosts.front();
+			if(o.log_path.empty())
+			{
+				NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Logs/Pleikkari"];
+				[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+				NSDateFormatter *stamp = [[NSDateFormatter alloc] init];
+				stamp.dateFormat = @"yyyy-MM-dd-HHmmss";
+				o.log_path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"stream-%@.log", [stamp stringFromDate:NSDate.date]]].UTF8String;
+			}
+		}
 		switch(o.command)
 		{
 			case Command::Help:
@@ -944,6 +1175,12 @@ int main(int argc, const char *argv[])
 				return 0;
 			case Command::List:
 				return listConsoles(o);
+			case Command::AwdlHelper:
+			{
+				const std::string said = plk::AwdlHelperClient::manage(o.awdl_helper_action);
+				printf("%s\n", said.c_str());
+				return 0;
+			}
 			case Command::Stream:
 			case Command::Replay:
 				break;

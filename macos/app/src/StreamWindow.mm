@@ -34,6 +34,12 @@ NSCursor *blankCursor()
 	NSView *_noticeBox;
 	NSTextField *_noticeLabel;
 	NSUInteger _noticeSerial;
+	// The pointer bar: what a moving pointer brings up over the picture's top right corner.
+	NSView *_pointerBar;
+	NSButton *_panelButton;
+	NSTrackingArea *_tracking;
+	NSUInteger _pointerSerial;
+	BOOL _pointerShown;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame
@@ -42,6 +48,7 @@ NSCursor *blankCursor()
 	{
 		self.wantsLayer = YES;
 		self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
+		_compareLineX = -1;
 		self.layer.backgroundColor = NSColor.blackColor.CGColor;
 	}
 	return self;
@@ -117,33 +124,22 @@ NSCursor *blankCursor()
 		return;
 	if([NSApp.mainMenu performKeyEquivalent:event])
 		return;
-	if([chars.lowercaseString isEqualToString:@"m"])
-		[self popUpVideoMenuWithEvent:nil];
 }
 
-- (void)rightMouseDown:(NSEvent *)event
+// The comparison line follows the pointer while the button is down on the picture.
+- (void)mouseDown:(NSEvent *)event
 {
-	[self popUpVideoMenuWithEvent:event];
+	if(_compareLineX < 0 || !self.onCompareDrag)
+		return;
+	const NSPoint at = [self convertPoint:event.locationInWindow fromView:nil];
+	if(at.x <= self.bounds.size.width - _rightInset)
+		self.onCompareDrag(at.x);
 }
 
-- (void)popUpVideoMenuWithEvent:(NSEvent *)event
+- (void)mouseDragged:(NSEvent *)event
 {
-	NSMenu *menu = PLKMakeVideoMenu();
-	NSPoint at;
-	if(event)
-		at = [self convertPoint:event.locationInWindow fromView:nil];
-	else
-	{
-		// From the keyboard: in the middle of the picture, top edge a little above it.
-		const NSSize size = menu.size;
-		at = NSMakePoint((self.bounds.size.width - _rightInset) / 2 - size.width / 2, NSMidY(self.bounds) + size.height / 2);
-	}
-	// The view's cursor is blank; the menu needs one.
-	[NSCursor.arrowCursor push];
-	[NSCursor unhide];
-	[menu popUpMenuPositioningItem:nil atLocation:at inView:self];
-	[NSCursor pop];
-	[self.window invalidateCursorRectsForView:self];
+	[self mouseDown:event];
+	[self pointerMoved];
 }
 
 - (void)showNotice:(NSString *)text
@@ -189,11 +185,166 @@ NSCursor *blankCursor()
 {
 }
 
+#pragma mark - Pointer bar
+
+// The keys are not found by someone who was not told about them. A
+// pointer that moves over the picture is shown, and with it a bar with the ways in: the
+// picture settings (the pipeline panel) and fullscreen. Both go away again when
+// the pointer has rested for a moment anywhere but on the bar or the panel.
+
+- (void)updateTrackingAreas
+{
+	[super updateTrackingAreas];
+	if(_tracking)
+		[self removeTrackingArea:_tracking];
+	_tracking = [[NSTrackingArea alloc] initWithRect:NSZeroRect
+											 options:NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingActiveInActiveApp
+													 | NSTrackingInVisibleRect
+											   owner:self
+											userInfo:nil];
+	[self addTrackingArea:_tracking];
+}
+
+- (void)mouseMoved:(NSEvent *)event
+{
+	[self pointerMoved];
+}
+
+- (void)mouseExited:(NSEvent *)event
+{
+	[self hidePointerBar];
+}
+
+- (NSButton *)barButton:(NSString *)title symbol:(NSString *)symbol tip:(NSString *)tip action:(SEL)action target:(id)target
+{
+	NSButton *button = [NSButton buttonWithTitle:title target:target action:action];
+	button.bordered = NO;
+	button.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:title];
+	button.imagePosition = title.length ? NSImageLeading : NSImageOnly;
+	button.imageHugsTitle = YES;
+	button.contentTintColor = NSColor.whiteColor;
+	button.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+	button.attributedTitle = [[NSAttributedString alloc] initWithString:title
+			attributes:@{ NSForegroundColorAttributeName: NSColor.whiteColor, NSFontAttributeName: button.font }];
+	button.toolTip = tip;
+	button.focusRingType = NSFocusRingTypeNone;
+	button.refusesFirstResponder = YES; // the keys stay with the picture
+	[button sizeToFit];
+	return button;
+}
+
+- (void)layoutPointerBar
+{
+	const CGFloat pad = 6, gap = 4, height = 34;
+	NSString *title = _rightInset > 0 ? @"Hide settings" : @"Picture settings";
+	_panelButton.attributedTitle = [[NSAttributedString alloc] initWithString:title
+			attributes:@{ NSForegroundColorAttributeName: NSColor.whiteColor, NSFontAttributeName: _panelButton.font }];
+	CGFloat x = pad;
+	for(NSButton *button in _pointerBar.subviews)
+	{
+		// From the button's own size every time: this runs with every move of the pointer.
+		[button sizeToFit];
+		const CGFloat w = button.frame.size.width + 14;
+		button.frame = NSMakeRect(x, 3, w, height - 6);
+		x += w + gap;
+	}
+	const CGFloat width = x - gap + pad, margin = 14;
+	_pointerBar.frame = NSMakeRect(round(self.bounds.size.width - _rightInset - margin - width),
+			round(self.bounds.size.height - margin - height), width, height);
+}
+
+- (void)pointerMoved
+{
+	if(!self.window)
+		return;
+	if(!_pointerBar)
+	{
+		_pointerBar = [[NSView alloc] initWithFrame:NSZeroRect];
+		_pointerBar.wantsLayer = YES;
+		_pointerBar.layer.backgroundColor = [NSColor colorWithWhite:0.0 alpha:0.72].CGColor;
+		_pointerBar.layer.cornerRadius = 10;
+		_pointerBar.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
+		// No target: the first responder that has the action gets it, as with the menu's items.
+		_panelButton = [self barButton:@"Picture settings" symbol:@"slider.horizontal.3"
+								   tip:@"Scaling, colour, HDR and neural rendering, laid out as the pipeline (G)"
+								action:@selector(plkTogglePanel:) target:nil];
+		[_pointerBar addSubview:_panelButton];
+		[_pointerBar addSubview:[self barButton:@"" symbol:@"arrow.up.left.and.arrow.down.right" tip:@"Fullscreen (Cmd-F)"
+										 action:@selector(toggleFullScreen:) target:nil]];
+	}
+	[self layoutPointerBar];
+	if(_pointerBar.superview != self)
+	{
+		_pointerBar.alphaValue = 0;
+		[self addSubview:_pointerBar];
+		_pointerBar.animator.alphaValue = 1;
+	}
+	if(!_pointerShown)
+	{
+		_pointerShown = YES;
+		[self.window invalidateCursorRectsForView:self];
+	}
+	const NSUInteger serial = ++_pointerSerial;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		if(serial == self->_pointerSerial)
+			[self pointerRested];
+	});
+}
+
+- (void)pointerRested
+{
+	// Resting on the bar or on the panel is not being done with them.
+	if(self.window)
+	{
+		const NSPoint at = [self convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];
+		const BOOL onPanel = _rightInset > 0 && at.x >= self.bounds.size.width - _rightInset;
+		if(NSPointInRect(at, self.bounds) && (onPanel || NSPointInRect(at, NSInsetRect(_pointerBar.frame, -8, -8))))
+		{
+			const NSUInteger serial = ++_pointerSerial;
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+				if(serial == self->_pointerSerial)
+					[self pointerRested];
+			});
+			return;
+		}
+	}
+	[self hidePointerBar];
+}
+
+- (void)hidePointerBar
+{
+	++_pointerSerial;
+	// Off the picture, not only invisible: nothing but the video layer is composited then.
+	[_pointerBar removeFromSuperview];
+	if(_pointerShown)
+	{
+		_pointerShown = NO;
+		[self.window invalidateCursorRectsForView:self];
+	}
+}
+
 - (void)resetCursorRects
 {
+	// The pointer is hidden over the picture while it rests (a blank cursor), and shown
+	// while it moves.
+	if(_pointerShown)
+	{
+		// Over the comparison line: it can be dragged.
+		if(_compareLineX >= 0)
+			[self addCursorRect:NSMakeRect(_compareLineX - 8, 0, 16, self.bounds.size.height) cursor:NSCursor.resizeLeftRightCursor];
+		return;
+	}
 	NSRect picture = self.bounds;
 	picture.size.width = MAX(0, picture.size.width - _rightInset);
 	[self addCursorRect:picture cursor:blankCursor()];
+}
+
+- (void)setCompareLineX:(CGFloat)x
+{
+	if(x == _compareLineX)
+		return;
+	_compareLineX = x;
+	[self.window invalidateCursorRectsForView:self];
 }
 
 - (void)setRightInset:(CGFloat)inset
@@ -202,6 +353,8 @@ NSCursor *blankCursor()
 		return;
 	_rightInset = inset;
 	[self.window invalidateCursorRectsForView:self];
+	if(_pointerBar.superview == self)
+		[self layoutPointerBar];
 }
 
 - (void)setFrameSize:(NSSize)size
@@ -355,7 +508,17 @@ NSMenu *PLKMakeVideoMenu(void)
 	addChoice(menu, @"Weaker", @selector(plkStepNrStrength:), -1, @"z");
 	addChoices(menu, kNrLookChoices, @selector(plkSelectNrLook:));
 	addChoice(menu, @"Next look", @selector(plkSelectNrLook:), -1, @"e");
-	addChoice(menu, @"Compare: left half without", @selector(plkToggleNrCompare:), 0, @"c");
+	addChoices(menu, kNrTimingChoices, @selector(plkSelectNrTiming:));
+	addChoice(menu, @"Next timing", @selector(plkSelectNrTiming:), -1, @"w");
+	addChoice(menu, @"Compare: left of the line without", @selector(plkToggleNrCompare:), 0, @"c");
+	addHeader(menu, @"Stream");
+	addChoices(menu, kResolutionChoices, @selector(plkSelectResolution:));
+	addChoices(menu, kBitrateChoices, @selector(plkSelectBitrate:));
+	addHeader(menu, @"Frame generation");
+	addChoice(menu, @"Frame generation: the picture between two (later by about 25 ms)", @selector(plkToggleFrameGeneration:), 0, @"j");
+	addChoices(menu, kFrameGenerationChoices, @selector(plkSelectFrameGenerationFactor:));
+	addHeader(menu, @"Input lag");
+	addChoice(menu, @"Camera warp: the picture follows the right stick at once", @selector(plkToggleCameraWarp:), 0, @"k");
 	addHeader(menu, @"Panels");
 	addChoice(menu, @"Pipeline panel", @selector(plkTogglePanel:), 0, @"g");
 	addChoice(menu, @"Frame rate overlay", @selector(plkToggleFpsOverlay:), 0, @"f");

@@ -40,8 +40,12 @@ extern const NamedChoice kScalerChoices[4];
 extern const NamedChoice kSdrColorChoices[2];
 extern const NamedChoice kHdrOutputChoices[2];
 extern const NamedChoice kNrNetworkChoices[2];
-extern const NamedChoice kNrHeightChoices[3];
+extern const NamedChoice kNrHeightChoices[4];
 extern const NamedChoice kNrLookChoices[4];
+extern const NamedChoice kNrTimingChoices[3];
+extern const NamedChoice kResolutionChoices[4];
+extern const NamedChoice kBitrateChoices[5];
+extern const NamedChoice kFrameGenerationChoices[2];
 
 enum class PanelCommand
 {
@@ -59,6 +63,12 @@ enum class PanelCommand
 	StepNrStrength,      // tag +1, -1, or 0 for 100 %
 	SelectNrLook,
 	ToggleNrCompare,
+	SelectNrTiming,
+	ToggleFrameGeneration,
+	ToggleCameraWarp,
+	SelectFrameGenerationFactor,  // tag 2 or 4
+	SelectBitrate,       // tag: kbit/s; reconnects
+	SelectResolution,    // tag: a ChiakiVideoResolutionPreset; reconnects
 	ToggleAnalysis,
 	ToggleFpsOverlay,
 	SelectPanelPicture,  // tag 1: beside the panel, 0: under it
